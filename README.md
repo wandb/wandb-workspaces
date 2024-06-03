@@ -45,7 +45,8 @@ workspace = ws.Workspace(
 ).save()
 ```
 
-![image](https://github.com/wandb/wandb-workspaces/assets/15385696/a526eb45-d84c-482a-9681-d9048a29641e)
+![image](https://github.com/wandb/wandb-workspaces/assets/15385696/796083f4-2aa6-432f-b585-c04abca9022f)
+
 
 ### 3. Create a report
 
@@ -74,7 +75,8 @@ report = wr.Report(
 ).save()
 ```
 
-![image](https://github.com/wandb/wandb-workspaces/assets/15385696/9c3a39db-224b-40a7-ad29-e1cb33232909)
+![image](https://github.com/wandb/wandb-workspaces/assets/15385696/25939b7c-1f2c-4df7-9936-692464e6e3fc)
+
 
 ## More examples
 
