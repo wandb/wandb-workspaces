@@ -30,12 +30,10 @@ jobs:
               echo "Running $script"
               poetry run python "$script" || exit 1  # Exit on any error
             done
-
-      # TODO: Configure Codecov for wandb-workspaces
-      # - run:
-      #     name: Upload coverage to Codecov
-      #     command: |
-      #       curl -s https://codecov.io/bash | bash -s -- -t ${CODECOV_TOKEN} -f coverage.xml
+      - run:
+          name: Upload coverage to Codecov
+          command: |
+            curl -s https://codecov.io/bash | bash -s -- -t ${CODECOV_TOKEN} -f coverage.xml
 
 workflows:
   version: 2
