@@ -22,18 +22,25 @@ jobs:
           command: poetry install -E test -vvv
       - run:
           name: Run tests
-          command: poetry run pytest
+          command: poetry run coverage -m pytest
       - run:
           name: Run examples
           command: |
             find examples/ -name "*.py" -print | while read script; do
               echo "Running $script"
-              poetry run python "$script" || exit 1  # Exit on any error
+              poetry run coverage run --append "$script" || exit 1  # Exit on any error
             done
       - run:
+          name: Combine coverage reports
+          command: poetry run coverage combine
+      - run:
+          name: Report coverage
+          command: poetry run coverage report
+      - run:
           name: Upload coverage to Codecov
-          command: |
-            curl -s https://codecov.io/bash | bash -s -- -t ${CODECOV_TOKEN} -f coverage.xml
+          command: poetry run codecov
+          environment:
+            CODECOV_TOKEN: $CODECOV_TOKEN
 
 workflows:
   version: 2
