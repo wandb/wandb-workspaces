@@ -191,7 +191,13 @@ def get_view_dict(entity: str, project: str, view_name: str) -> Dict[str, Any]:
         },
     )
 
-    edges = response.get("project", {}).get("allViews", {}).get("edges", [])
+    p = response.get("project")
+    if p is None:
+        raise ValueError(
+            f"Project `{entity}/{project}` not found.  Do you have access to this project?"
+        )
+
+    edges = p.get("allViews", {}).get("edges", [])
 
     try:
         view = edges[0]["node"]
