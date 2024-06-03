@@ -42,10 +42,11 @@ jobs:
           name: Report coverage
           command: poetry run coverage xml
       - run:
-          name: Upload coverage to Codecov
-          command: poetry run codecov
-          environment:
-            CODECOV_TOKEN: $CODECOV_TOKEN
+          name: Manually upload coverage
+          command: |
+            curl -Os https://uploader.codecov.io/latest/linux/codecov
+            chmod +x codecov
+            ./codecov -t $CODECOV_TOKEN -f coverage.xml
 
 workflows:
   version: 2
