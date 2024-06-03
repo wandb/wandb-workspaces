@@ -22,20 +22,25 @@ jobs:
           command: poetry install -E test -vvv
       - run:
           name: Run tests
-          command: poetry run coverage -m pytest
+          command: poetry run pytest --cov
       - run:
           name: Run examples
           command: |
-            find examples/ -name "*.py" -print | while read script; do
+            find examples/ -name "*.py" -print | while read -r script; do
               echo "Running $script"
-              poetry run coverage run --append "$script" || exit 1  # Exit on any error
+              coverage_file=".coverage_$(basename $script .py)"
+              poetry run coverage run --source=wandb_workspaces --data-file="$coverage_file" "$script"
+              if [ $? -ne 0 ]; then
+                echo "Script $script failed. Exiting."
+                exit 1
+              fi
             done
       - run:
           name: Combine coverage reports
-          command: poetry run coverage combine
+          command: poetry run coverage combine .coverage*
       - run:
           name: Report coverage
-          command: poetry run coverage report
+          command: poetry run coverage xml
       - run:
           name: Upload coverage to Codecov
           command: poetry run codecov
