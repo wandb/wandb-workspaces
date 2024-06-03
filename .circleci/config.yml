@@ -22,20 +22,31 @@ jobs:
           command: poetry install -E test -vvv
       - run:
           name: Run tests
-          command: poetry run pytest
+          command: poetry run pytest --cov
       - run:
           name: Run examples
           command: |
-            find examples/ -name "*.py" -print | while read script; do
+            find examples/ -name "*.py" -print | while read -r script; do
               echo "Running $script"
-              poetry run python "$script" || exit 1  # Exit on any error
+              coverage_file=".coverage_$(basename $script .py)"
+              poetry run coverage run --source=wandb_workspaces --data-file="$coverage_file" "$script"
+              if [ $? -ne 0 ]; then
+                echo "Script $script failed. Exiting."
+                exit 1
+              fi
             done
-
-      # TODO: Configure Codecov for wandb-workspaces
-      # - run:
-      #     name: Upload coverage to Codecov
-      #     command: |
-      #       curl -s https://codecov.io/bash | bash -s -- -t ${CODECOV_TOKEN} -f coverage.xml
+      - run:
+          name: Combine coverage reports
+          command: poetry run coverage combine .coverage*
+      - run:
+          name: Report coverage
+          command: poetry run coverage xml
+      - run:
+          name: Manually upload coverage
+          command: |
+            curl -Os https://uploader.codecov.io/latest/linux/codecov
+            chmod +x codecov
+            ./codecov -t $CODECOV_TOKEN -f coverage.xml
 
 workflows:
   version: 2

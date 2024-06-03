@@ -4,7 +4,7 @@
 
 # wandb-workspaces
 
-[![PyPI](https://img.shields.io/pypi/v/wandb-workspaces)](https://pypi.python.org/pypi/wandb-workspaces) [![CircleCI](https://img.shields.io/circleci/build/github/wandb/wandb-workspaces/main)](https://circleci.com/gh/wandb/wandb-workspaces) [![Codecov](https://img.shields.io/codecov/c/gh/wandb/wandb-workspaces)](https://codecov.io/gh/wandb/wandb-workspaces)
+[![PyPI](https://img.shields.io/pypi/v/wandb-workspaces)](https://pypi.python.org/pypi/wandb-workspaces) [![CircleCI](https://img.shields.io/circleci/build/github/wandb/wandb-workspaces/main)](https://circleci.com/gh/wandb/wandb-workspaces) [![codecov](https://codecov.io/gh/wandb/wandb-workspaces/graph/badge.svg?token=XGL5D4023X)](https://codecov.io/gh/wandb/wandb-workspaces)
 
 `wandb-workspaces` is a Python library for programatically working with [Weights & Biases](https://wandb.ai) workspaces and reports.
 
@@ -47,7 +47,6 @@ workspace = ws.Workspace(
 
 ![image](https://github.com/wandb/wandb-workspaces/assets/15385696/796083f4-2aa6-432f-b585-c04abca9022f)
 
-
 ### 3. Create a report
 
 ```python
@@ -76,7 +75,6 @@ report = wr.Report(
 ```
 
 ![image](https://github.com/wandb/wandb-workspaces/assets/15385696/25939b7c-1f2c-4df7-9936-692464e6e3fc)
-
 
 ## More examples
 

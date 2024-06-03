@@ -1,0 +1,29 @@
+codecov:
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+    patch:
+      default:
+        target: 80%
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: yes
+      loop: yes
+      method: no
+      macro: no
+
+github_checks:
+  annotations: true
