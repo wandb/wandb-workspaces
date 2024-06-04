@@ -27,3 +27,6 @@ parsers:
 
 github_checks:
   annotations: true
+
+ignore:
+  - "wandb_workspaces/reports/v1"
