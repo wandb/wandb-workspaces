@@ -120,9 +120,9 @@ class View(WorkspaceAPIBaseModel):
 def upsert_view2(view: View) -> Dict[str, Any]:
     query = gql(
         """
-        mutation UpsertView2($id: ID, $entityName: String, $projectName: String, $type: String, $name: String, $displayName: String, $description: String, $spec: String, $parentId: ID, $locked: Boolean, $previewUrl: String, $coverUrl: String, $showcasedAt: DateTime, $createdUsing: ViewSource) {
+        mutation UpsertView2($id: ID, $entityName: String, $projectName: String, $type: String, $name: String, $displayName: String, $description: String, $spec: String) {
         upsertView(
-            input: {id: $id, entityName: $entityName, projectName: $projectName, name: $name, displayName: $displayName, description: $description, type: $type, spec: $spec, parentId: $parentId, locked: $locked, previewUrl: $previewUrl, coverUrl: $coverUrl, showcasedAt: $showcasedAt, createdUsing: $createdUsing}
+            input: {id: $id, entityName: $entityName, projectName: $projectName, name: $name, displayName: $displayName, description: $description, type: $type, spec: $spec, createdUsing: WANDB_SDK}
         ) {
             view {
                 id
