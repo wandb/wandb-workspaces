@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional, Tuple, Union
 from typing import List as LList
 
-from annotated_types import Annotated, Ge, Le
+from annotated_types import Annotated, Ge, Le, Len
 
 try:
     from typing import Literal
@@ -74,7 +74,9 @@ GroupAgg = Literal["mean", "min", "max", "median", "sum", "samples"]
 GroupArea = Literal["minmax", "stddev", "stderr", "none", "samples"]
 Mark = Literal["solid", "dashed", "dotted", "dotdash", "dotdotdash"]
 Timestep = Literal["seconds", "minutes", "hours", "days"]
-SmoothingType = Literal["exponentialTimeWeighted", "exponential", "gaussian", "average", "none"]
+SmoothingType = Literal[
+    "exponentialTimeWeighted", "exponential", "gaussian", "average", "none"
+]
 CodeCompareDiff = Literal["split", "unified"]
 Range = Tuple[Optional[float], Optional[float]]
 Language = Literal["javascript", "python", "css", "json", "html", "markdown", "yaml"]
@@ -286,7 +288,7 @@ class PanelGridMetadata(ReportAPIBaseModel):
     panel_bank_section_config: PanelBankSectionConfig = Field(
         default_factory=PanelBankSectionConfig
     )
-    custom_run_colors: Dict[str, str] = Field(default_factory=dict)
+    custom_run_colors: Dict[str, Union[str, dict]] = Field(default_factory=dict)
     # custom_run_colors: PanelGridCustomRunColors = Field(
     #     default_factory=PanelGridCustomRunColors
     # )
@@ -769,35 +771,17 @@ class RunComparer(Panel):
     config: RunComparerConfig
 
 
-class QueryFieldsValue(ReportAPIBaseModel):
-    name: str
-    value: Any
-
-
-class QueryFieldsField(ReportAPIBaseModel):
-    name: str = ""
-    fields: Optional[LList["QueryFieldsField"]] = None
-    value: LList[QueryFieldsValue] = Field(default_factory=list)
-
-
 class QueryField(ReportAPIBaseModel):
-    args: LList[QueryFieldsValue] = Field(
-        default_factory=lambda: [
-            QueryFieldsValue(name="runSets", value="${runSets}"),
-            QueryFieldsValue(name="limit", value=500),
-        ]
-    )
-    fields: LList[QueryFieldsField] = Field(
-        default_factory=lambda: [
-            QueryFieldsField(name="id", value=[], fields=None),
-            QueryFieldsField(name="name", value=[], fields=None),
-        ]
-    )
     name: str = "runSets"
+    args: Optional[LList["QueryField"]] = None
+    fields: Optional[LList["QueryField"]] = None
+    value: Optional[Union[list, float, str]] = None
 
 
 class UserQuery(ReportAPIBaseModel):
-    query_fields: LList[QueryField] = Field(default_factory=lambda: [QueryField()])
+    query_fields: Annotated[LList[QueryField], Len(min_length=1, max_length=1)] = Field(
+        default_factory=lambda: [QueryField()]
+    )
 
 
 class Vega2ConfigTransform(ReportAPIBaseModel):
