@@ -851,10 +851,11 @@ BlockTypes = Union[
     TableOfContents,
     BlockQuote,
     Twitter,
+    WeaveBlock,
     UnknownBlock,
 ]
 
-block_type_mapping = {
+block_type_mapping: Dict[str, BlockTypes] = {
     "twitter": Twitter,
     "heading": Heading,
     "paragraph": Paragraph,
@@ -873,3 +874,11 @@ block_type_mapping = {
     "table-of-contents": TableOfContents,
     "block-quote": BlockQuote,
 }
+
+
+def _get_weave_block_inputs(config: dict) -> dict:
+    return config["panelConfig"]["exp"]["fromOp"]["inputs"]
+
+
+def _get_weave_panel_inputs(config: dict) -> dict:
+    return config["panel2Config"]["exp"]["fromOp"]["inputs"]
