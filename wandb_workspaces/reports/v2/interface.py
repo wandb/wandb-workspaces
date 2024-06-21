@@ -1257,56 +1257,6 @@ class MarkdownPanel(Panel):
         return obj
 
 
-# @dataclass(config=dataclass_config, repr=False)
-# class ConfusionMatrix(Panel):
-#     def to_model(self):
-#         ...
-
-#     @classmethod
-#     def from_model(cls, model: internal.ConfusionMatrix):
-#         ...
-
-
-# @dataclass(config=dataclass_config, repr=False)
-# class DataFrames(Panel):
-#     def to_model(self):
-#         ...
-
-#     @classmethod
-#     def from_model(cls, model: internal.ScatterPlot):
-#         ...
-
-
-# @dataclass(config=dataclass_config, repr=False)
-# class MultiRunTable(Panel):
-#     def to_model(self):
-#         ...
-
-#     @classmethod
-#     def from_model(cls, model: internal.ScatterPlot):
-#         ...
-
-
-# @dataclass(config=dataclass_config, repr=False)
-# class Vega(Panel):
-#     def to_model(self):
-#         ...
-
-#     @classmethod
-#     def from_model(cls, model: internal.ScatterPlot):
-#         ...
-
-
-# @dataclass(config=dataclass_config, repr=False)
-# class Vega3(Panel):
-#     def to_model(self):
-#         ...
-
-#     @classmethod
-#     def from_model(cls, model: internal.ScatterPlot):
-#         ...
-
-
 @dataclass(config=dataclass_config, repr=False)
 class CustomChart(Panel):
     query: dict = Field(default_factory=dict)
