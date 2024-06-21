@@ -578,6 +578,9 @@ class Workspace(Base):
         view.name = internal._generate_view_name()
         view.id = ""
 
+        # Set to default display name
+        view.displayName = "Untitled view"
+        
         resp = internal.upsert_view2(view)
         self._internal_name = resp["upsertView"]["view"]["name"]
         self._internal_id = resp["upsertView"]["view"]["id"]
