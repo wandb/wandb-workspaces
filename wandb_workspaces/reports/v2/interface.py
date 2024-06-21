@@ -642,7 +642,7 @@ class PanelGrid(Block):
     runsets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
     panels: LList["PanelTypes"] = Field(default_factory=list)
     active_runset: int = 0
-    custom_run_colors: Dict[Union[RunId, RunsetGroup], str] = Field(
+    custom_run_colors: Dict[Union[RunId, RunsetGroup], Union[str, dict]] = Field(
         default_factory=dict
     )
 
@@ -1259,8 +1259,9 @@ class MarkdownPanel(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class CustomChart(Panel):
+    # Custom chart configs should look exactly like they do in the UI.  Please check the query carefully!
     query: dict = Field(default_factory=dict)
-    chart_name: str = Field(default_factory=dict)
+    chart_name: str = Field(default_factory=str)
     chart_fields: dict = Field(default_factory=dict)
     chart_strings: dict = Field(default_factory=dict)
 
@@ -1275,34 +1276,77 @@ class CustomChart(Panel):
         )
 
     def to_model(self):
+        def dict_to_fields(d):
+            fields = []
+            for k, v in d.items():
+                if k in ("runSets", "limit"):
+                    continue
+                if isinstance(v, dict) and len(v) > 0:
+                    field = internal.QueryField(
+                        name=k, args=dict_to_fields(v), fields=[]
+                    )
+                elif isinstance(v, dict) and len(v) == 0 or v is None:
+                    field = internal.QueryField(name=k, fields=[])
+                else:
+                    field = internal.QueryField(name=k, value=v)
+                fields.append(field)
+            return fields
+
+        d = self.query
+        d.setdefault("id", None)
+        d.setdefault("name", None)
+
+        _query = [
+            internal.QueryField(
+                name="runSets",
+                args=[
+                    internal.QueryField(name="runSets", value=r"${runSets}"),
+                    internal.QueryField(name="limit", value=500),
+                ],
+                fields=dict_to_fields(d),
+            )
+        ]
+        user_query = internal.UserQuery(query_fields=_query)
+
         return internal.Vega2(
             config=internal.Vega2Config(
-                # user_query=internal.UserQuery(
-                #     query_fields=[
-                #         internal.QueryField(
-                #             args=...,
-                #             fields=...,
-                #             name=...,
-                #         )
-                #     ]
-                # )
+                user_query=user_query,
+                panel_def_id=self.chart_name,
+                field_settings=self.chart_fields,
+                string_settings=self.chart_strings,
             ),
             layout=self.layout.to_model(),
-            id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
-        obj = cls(
-            # query=model.config.user_query.query_fields,
-            # chart_name=model.config.panel_def_id,
-            # chart_fields=model.config.field_settings,
-            # chart_strings=model.config.string_settings,
+    def from_model(cls, model: internal.Vega2):
+        def fields_to_dict(fields):
+            d = {}
+            for field in fields:
+                if field.args:
+                    for arg in field.args:
+                        d[arg.name] = arg.value
+
+                if field.fields:
+                    for subfield in field.fields:
+                        if subfield.args is not None:
+                            d[subfield.name] = fields_to_dict(subfield.args)
+                        else:
+                            d[subfield.name] = subfield.value
+
+                d[field.name] = field.value
+
+            return d
+
+        query = fields_to_dict(model.config.user_query.query_fields)
+
+        return cls(
+            query=query,
+            chart_name=model.config.panel_def_id,
+            chart_fields=model.config.field_settings,
+            chart_strings=model.config.string_settings,
             layout=Layout.from_model(model.layout),
         )
-
-        obj._id = model.id
-        return obj
 
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))

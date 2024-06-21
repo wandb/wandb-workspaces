@@ -174,6 +174,10 @@ class CodeComparerFactory(CustomDataclassFactory[wr.CodeComparer]):
 class CustomChartFactory(CustomDataclassFactory[wr.CustomChart]):
     __model__ = wr.CustomChart
 
+    @classmethod
+    def query(cls):
+        return {"history": {"keys": ["x", "y"], "id": None, "name": None}}
+
 
 @register_fixture
 class LinePlotFactory(CustomDataclassFactory[wr.LinePlot]):
