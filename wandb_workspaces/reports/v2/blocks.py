@@ -21,5 +21,7 @@ from .interface import (
     UnorderedList,
     UnorderedListItem,
     Video,
-    WeaveBlock,
+    WeaveBlockArtifact,
+    WeaveBlockArtifactVersionedFile,
+    WeaveBlockSummaryTable,
 )
