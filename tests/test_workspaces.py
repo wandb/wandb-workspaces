@@ -134,7 +134,7 @@ def test_filter_expr(expr, spec):
 
 
 def test_load_workspace_from_url():
-    url = "https://wandb.ai/megatruong/workspace-api-demo?nw=puwusholo4x"
+    url = "https://wandb.ai/wandb/workspace-api-demo?nw=kbrek2ozu3"
     workspace = ws.Workspace.from_url(url)  # noqa: F841
 
 
