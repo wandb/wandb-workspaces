@@ -15,7 +15,7 @@ def validate_no_emoji(s: str) -> str:
 def validate_spec_version(
     spec: Dict[str, Any], *, expected_version: int
 ) -> Dict[str, Any]:
-    spec_section = spec.get("section", {})
+    spec_section = spec.get("section", dict())
     actual_version = spec_section.get("version", -1)
 
     if actual_version < expected_version:
