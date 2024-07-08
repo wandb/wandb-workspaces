@@ -226,6 +226,10 @@ class WorkspaceSettings(Base):
     ignore_outliers: bool = False
     "Ignore outliers in all panels."
 
+    # Section settings
+    sort_panels_alphabetically: bool = False
+    "Sorts panels in all sections alphabetically"
+
     # Panel settings
     remove_legends_from_panels: bool = False
     "Remove legends from all panels."
@@ -492,6 +496,11 @@ class Workspace(Base):
         sections = base_sections + hidden_sections
         is_regex = True if self.runset_settings.regex_query else None
 
+        if self.settings.sort_panels_alphabetically:
+            wandb.termwarn(
+                "settings.sort_panels_alphabetically=True; this may change panel order from what is currently defined in sections!"
+            )
+
         return internal.View(
             entity=self.entity,
             project=self.project,
@@ -502,6 +511,9 @@ class Workspace(Base):
                 section=internal.ViewspecSection(
                     panel_bank_config=internal.PanelBankConfig(
                         state=1,  # TODO: What is this?
+                        settings=internal.PanelBankConfigSettings(
+                            sort_alphabetically=self.settings.sort_panels_alphabetically
+                        ),
                         sections=sections,
                     ),
                     panel_bank_section_config=internal.PanelBankSectionConfig(
