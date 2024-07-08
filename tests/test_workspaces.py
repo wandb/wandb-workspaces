@@ -50,6 +50,13 @@ class WorkspaceFactory(CustomDataclassFactory[ws.Workspace]):
                 wandb_workspaces.expr.Metric("vwx").notin([8, 9, 0, "broccoli"]),
             ],
         )
+    
+    @classmethod
+    def sections(cls):
+        return [
+            ws.Section(name="section1", panels=[wr.LinePlot()]),
+            ws.Section(name="section2", panels=[wr.BarPlot(title='tomato')]),
+        ]
 
 
 @register_fixture
