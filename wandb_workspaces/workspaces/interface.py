@@ -230,7 +230,7 @@ class WorkspaceSettings(Base):
     sort_panels_alphabetically: bool = False
     "Sorts panels in all sections alphabetically"
 
-    group_by_prefix: Literal["first", "last"] = "first"
+    group_by_prefix: Literal["first", "last"] = "last"
     """
     Group panels by the first or up to last prefix
     
