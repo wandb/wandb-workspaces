@@ -230,6 +230,14 @@ class WorkspaceSettings(Base):
     sort_panels_alphabetically: bool = False
     "Sorts panels in all sections alphabetically"
 
+    group_by_prefix: Literal["first", "last"] = "first"
+    """
+    Group panels by the first or up to last prefix
+    
+    first: "a/b/c/d" -> section a
+    last: "a/b/c/d" -> section a/b/c
+    """
+
     # Panel settings
     remove_legends_from_panels: bool = False
     "Remove legends from all panels."
@@ -495,6 +503,7 @@ class Workspace(Base):
 
         sections = base_sections + hidden_sections
         is_regex = True if self.runset_settings.regex_query else None
+        auto_organize_prefix = 2 if self.settings.group_by_prefix == "last" else 1
 
         if self.settings.sort_panels_alphabetically:
             wandb.termwarn(
@@ -512,7 +521,8 @@ class Workspace(Base):
                     panel_bank_config=internal.PanelBankConfig(
                         state=1,  # TODO: What is this?
                         settings=internal.PanelBankConfigSettings(
-                            sort_alphabetically=self.settings.sort_panels_alphabetically
+                            sort_alphabetically=self.settings.sort_panels_alphabetically,
+                            auto_organize_prefix=auto_organize_prefix
                         ),
                         sections=sections,
                     ),
