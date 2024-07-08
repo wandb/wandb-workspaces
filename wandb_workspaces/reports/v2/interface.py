@@ -1,4 +1,5 @@
 """Public interfaces for the Report API."""
+
 import os
 from datetime import datetime
 from typing import Dict, Iterable, Optional, Tuple, Union
@@ -1081,7 +1082,13 @@ class WeaveBlockArtifactVersionedFile(Block):
             "val"
         ]
         file = inputs["path"]["val"]
-        return cls(entity=entity, project=project, artifact=artifact, version=version, file=file)
+        return cls(
+            entity=entity,
+            project=project,
+            artifact=artifact,
+            version=version,
+            file=file,
+        )
 
 
 @dataclass(config=dataclass_config)

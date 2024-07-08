@@ -6,8 +6,8 @@ from polyfactory.factories import DataclassFactory
 from polyfactory.pytest_plugin import register_fixture
 
 import wandb_workspaces.expr
-import wandb_workspaces.workspaces as ws
 import wandb_workspaces.reports.v2 as wr
+import wandb_workspaces.workspaces as ws
 from wandb_workspaces.utils.validators import (
     validate_no_emoji,
     validate_spec_version,
@@ -50,18 +50,13 @@ class WorkspaceFactory(CustomDataclassFactory[ws.Workspace]):
                 wandb_workspaces.expr.Metric("vwx").notin([8, 9, 0, "broccoli"]),
             ],
         )
-    
+
     @classmethod
     def sections(cls):
         return [
             ws.Section(name="section1", panels=[wr.LinePlot()]),
-            ws.Section(name="section2", panels=[wr.BarPlot(title='tomato')]),
+            ws.Section(name="section2", panels=[wr.BarPlot(title="tomato")]),
         ]
-
-
-@register_fixture
-class WorkspaceSettingsFactory(CustomDataclassFactory[ws.WorkspaceSettings]):
-    __model__ = ws.WorkspaceSettings
 
 
 @register_fixture
@@ -85,7 +80,6 @@ class SectionPanelSettingsFactory(CustomDataclassFactory[ws.SectionPanelSettings
 
 factory_names = [
     "workspace_factory",
-    "workspace_settings_factory",
     "section_factory",
     "section_panel_settings_factory",
     "section_panel_settings_factory",
