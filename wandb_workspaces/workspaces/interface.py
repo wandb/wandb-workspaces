@@ -354,7 +354,7 @@ class RunsetSettings(Base):
     groupby: LList[expr.MetricType] = Field(default_factory=list)
     "A list of metrics to group by in the runset."
 
-    order: LList[expr.Ordering] = Field(default_factory=list)
+    order: LList[expr.Ordering] = Field(default_factory=lambda: [expr.Ordering(expr.Metric("CreatedTimestamp"), ascending=False)])
     "A list of metrics and ordering to apply to the runset."
 
     run_settings: Dict[str, RunSettings] = Field(default_factory=dict)
