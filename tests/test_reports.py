@@ -177,11 +177,11 @@ class CustomChartFactory(CustomDataclassFactory[wr.CustomChart]):
     @classmethod
     def query(cls):
         return {"history": {"keys": ["x", "y"], "id": None, "name": None}}
-    
+
     @classmethod
     def chart_fields(cls):
         return {"x": "x", "y": "y"}
-    
+
     @classmethod
     def chart_strings(cls):
         return {"x": "x-axis", "y": "y-axis"}
