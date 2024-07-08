@@ -7,6 +7,7 @@ from polyfactory.pytest_plugin import register_fixture
 
 import wandb_workspaces.expr
 import wandb_workspaces.workspaces as ws
+import wandb_workspaces.reports.v2 as wr
 from wandb_workspaces.utils.validators import (
     validate_no_emoji,
     validate_spec_version,
@@ -49,6 +50,13 @@ class WorkspaceFactory(CustomDataclassFactory[ws.Workspace]):
                 wandb_workspaces.expr.Metric("vwx").notin([8, 9, 0, "broccoli"]),
             ],
         )
+    
+    @classmethod
+    def sections(cls):
+        return [
+            ws.Section(name="section1", panels=[wr.LinePlot()]),
+            ws.Section(name="section2", panels=[wr.BarPlot(title='tomato')]),
+        ]
 
 
 @register_fixture
@@ -59,6 +67,10 @@ class WorkspaceSettingsFactory(CustomDataclassFactory[ws.WorkspaceSettings]):
 @register_fixture
 class SectionFactory(CustomDataclassFactory[ws.Section]):
     __model__ = ws.Section
+
+    @classmethod
+    def panels(cls):
+        return [wr.LinePlot()]
 
 
 @register_fixture
