@@ -4,11 +4,18 @@
 
 # wandb-workspaces
 
-[![PyPI](https://img.shields.io/pypi/v/wandb-workspaces)](https://pypi.python.org/pypi/wandb-workspaces) [![CircleCI](https://img.shields.io/circleci/build/github/wandb/wandb-workspaces/main)](https://circleci.com/gh/wandb/wandb-workspaces) [![codecov](https://codecov.io/gh/wandb/wandb-workspaces/graph/badge.svg?token=XGL5D4023X)](https://codecov.io/gh/wandb/wandb-workspaces)
+<p align='center'>
+<a href="https://pypi.python.org/pypi/wandb-workspaces"><img src="https://img.shields.io/pypi/v/wandb-workspaces" /></a>
+<a href="https://circleci.com/gh/wandb/wandb-workspaces"><img src="https://img.shields.io/circleci/build/github/wandb/wandb-workspaces" /></a>
+<a href="https://codecov.io/gh/wandb/wandb-workspaces/graph/badge.svg?token=XGL5D4023X"><img src="https://img.shields.io/codecov/c/gh/wandb/wandb-workspaces" /></a>
+</p>
 
 `wandb-workspaces` is a Python library for programatically working with [Weights & Biases](https://wandb.ai) workspaces and reports.
 
 ## Quickstart
+<p align='center'>
+<a href="https://colab.research.google.com/github/wandb/wandb-workspaces/blob/example-notebook/Workspace_tutorial.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" /></a>
+</p>
 
 ### 1. Install
 
@@ -77,5 +84,9 @@ report = wr.Report(
 ![image](https://github.com/wandb/wandb-workspaces/assets/15385696/25939b7c-1f2c-4df7-9936-692464e6e3fc)
 
 ## More examples
+<p align='center'>
+<a href="https://colab.research.google.com/github/wandb/wandb-workspaces/blob/example-notebook/Workspace_tutorial.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" /></a>
+</p>
 
 See [examples](https://github.com/wandb/wandb-workspaces/tree/main/examples) for more detailed usage.
+
