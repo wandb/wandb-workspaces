@@ -258,7 +258,7 @@ class P(Block):
 
 
 @dataclass(config=dataclass_config, repr=False)
-class ListItem(Base):
+class _ListItem(Base):
     @classmethod
     def from_model(cls, model: internal.ListItem):
         text = _internal_children_to_text(model.children)
@@ -310,14 +310,14 @@ class UnorderedListItem(Base):
 
 
 @dataclass(config=dataclass_config, repr=False)
-class List(Block):
+class _List(Block):
     @classmethod
     def from_model(cls, model: internal.List):
         if not model.children:
             return UnorderedList()
 
         item = model.children[0]
-        items = [ListItem.from_model(x) for x in model.children]
+        items = [_ListItem.from_model(x) for x in model.children]
         if item.checked is not None:
             return CheckedList(items=items)
 
@@ -329,7 +329,7 @@ class List(Block):
 
 
 @dataclass(config=dataclass_config, repr=False)
-class CheckedList(List):
+class CheckedList(_List):
     items: LList[CheckedListItem] = Field(default_factory=lambda: [CheckedListItem()])
 
     def to_model(self):
@@ -338,7 +338,7 @@ class CheckedList(List):
 
 
 @dataclass(config=dataclass_config, repr=False)
-class OrderedList(List):
+class OrderedList(_List):
     items: LList[str] = Field(default_factory=lambda: [""])
 
     def to_model(self):
@@ -347,7 +347,7 @@ class OrderedList(List):
 
 
 @dataclass(config=dataclass_config, repr=False)
-class UnorderedList(List):
+class UnorderedList(_List):
     items: LList[str] = Field(default_factory=lambda: [""])
 
     def to_model(self):
@@ -1253,7 +1253,7 @@ block_mapping = {
     internal.HorizontalRule: HorizontalRule,
     internal.Image: Image,
     internal.LatexBlock: LatexBlock,
-    internal.List: List,
+    internal.List: _List,
     internal.MarkdownBlock: MarkdownBlock,
     internal.PanelGrid: PanelGrid,
     internal.TableOfContents: TableOfContents,
