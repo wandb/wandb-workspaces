@@ -20,12 +20,12 @@ def validate_spec_version(
 
     if actual_version < expected_version:
         raise SpecVersionError(
-            f"Workspace {actual_version=} < {expected_version=}, please visit the workspace in the web app to upgrade the workspace spec."
+            f"Workspace actual_version={actual_version} < expected_version={expected_version}, please visit the workspace in the web app to upgrade the workspace spec."
         )
 
     if actual_version > expected_version:
         raise SpecVersionError(
-            f"Workspace {actual_version=} > {expected_version=}, please upgrade the `wandb-workspace` package to the latest version."
+            f"Workspace actual_version={actual_version} > expected_version={expected_version}, please upgrade the `wandb-workspace` package to the latest version."
         )
 
     return spec
