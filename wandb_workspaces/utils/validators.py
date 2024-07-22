@@ -20,16 +20,15 @@ def validate_spec_version(
 
     if actual_version < expected_version:
         raise SpecVersionError(
-            f"Workspace actual_version={actual_version} < expected_version={expected_version}, please visit the workspace in the web app to upgrade the workspace spec."
+            "Workspace actual_version={} < expected_version={}, please visit the workspace in the web app to upgrade the workspace spec.".format(actual_version, expected_version)
         )
 
     if actual_version > expected_version:
         raise SpecVersionError(
-            f"Workspace actual_version={actual_version} > expected_version={expected_version}, please upgrade the `wandb-workspace` package to the latest version."
+            "Workspace actual_version={} > expected_version={}, please upgrade the `wandb-workspace` package to the latest version.".format(actual_version, expected_version)
         )
 
     return spec
-
 
 def validate_url(url: str) -> str:
     parsed_url = urlparse(url)
