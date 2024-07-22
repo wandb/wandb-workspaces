@@ -133,6 +133,7 @@ def test_filter_expr(expr, spec):
     assert expr.to_model().model_dump(by_alias=True, exclude_none=True) == spec
 
 
+@pytest.mark.xfail(reason="We using prod data for spec version checks which is unstable")
 def test_load_workspace_from_url():
     url = "https://wandb.ai/wandb/workspace-api-demo?nw=kbrek2ozu3"
     workspace = ws.Workspace.from_url(url)  # noqa: F841
