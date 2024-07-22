@@ -21,7 +21,7 @@ from wandb_workspaces.reports.v2.internal import (
 )
 from wandb_workspaces.utils.validators import validate_spec_version
 
-CLIENT_SPEC_VERSION = -1
+CLIENT_SPEC_VERSION = 1
 SPEC_VERSION_KEY = "version"
 
 
