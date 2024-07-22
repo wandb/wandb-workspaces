@@ -17,7 +17,10 @@ def validate_spec_version(
 ) -> Dict[str, Any]:
     spec_section = spec.get("section", dict())
     actual_version = spec_section.get("version", -1)
-
+    print(spec)
+    print(spec_section)
+    print(actual_version)
+    actual_version = spec.get("version", -1)
     if actual_version < expected_version:
         raise SpecVersionError(
             "Workspace actual_version={} < expected_version={}, please visit the workspace in the web app to upgrade the workspace spec.".format(actual_version, expected_version)
