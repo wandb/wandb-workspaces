@@ -21,7 +21,7 @@ from wandb_workspaces.reports.v2.internal import (
 )
 from wandb_workspaces.utils.validators import validate_spec_version
 
-CLIENT_SPEC_VERSION = -1
+CLIENT_SPEC_VERSION = 1
 SPEC_VERSION_KEY = "version"
 
 
@@ -71,6 +71,7 @@ class ViewspecSection(WorkspaceAPIBaseModel):
     # this is intentionally dict because it has arbitrary keys (the run ids)
     custom_run_colors: dict
 
+    version: Optional[int] = None
     name: str = ""
     run_sets: LList[Runset] = Field(default_factory=lambda: [Runset()])
     settings: ViewspecSectionSettings = Field(default_factory=ViewspecSectionSettings)
