@@ -328,7 +328,16 @@ class RunsetSettings(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Workspace(Base):
-    """Represents a W&B workspace, including sections, settings, and config for run sets."""
+    """Represents a W&B workspace, including sections, settings, and config for run sets.
+    
+    Arguments:
+        entity: The entity this workspace will be saved to (usually user or team name).
+        project: The project this workspace will be saved to.
+        name: The name of the workspace.
+        sections: An ordered list of sections in the workspace.  The first section is at the top of the workspace.
+        settings: Settings for the workspace, typically seen at the top of the workspace in the UI.
+        runset_settings: Settings for the runset (the left bar containing runs) in a workspace.
+    """
 
     entity: str
     "The entity this workspace will be saved to (usually user or team name)."
