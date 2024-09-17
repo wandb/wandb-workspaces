@@ -1,4 +1,12 @@
-"""Public interfaces for the Report API."""
+"""Python library for programmatically working with Weights & Biases Reports API.
+
+```python
+# How to import
+import wandb_workspaces.reports.v2
+```
+
+"""
+
 
 import os
 from datetime import datetime
@@ -73,7 +81,7 @@ class Base:
 
     @property
     def _model(self):
-        return self.to_model()
+        return self.__to_model()
 
     @property
     def _spec(self):
@@ -114,11 +122,11 @@ class Layout(Base):
     w: int = 8
     h: int = 6
 
-    def to_model(self):
+    def __to_model(self):
         return internal.Layout(x=self.x, y=self.y, w=self.w, h=self.h)
 
     @classmethod
-    def from_model(cls, model: internal.Layout):
+    def _from_model(cls, model: internal.Layout):
         return cls(x=model.x, y=model.y, w=model.w, h=model.h)
 
 
@@ -135,12 +143,12 @@ class UnknownBlock(Block):
         )
         return f"{class_name}({attributes})"
 
-    def to_model(self):
+    def _to_model(self):
         d = self.__dict__
         return internal.UnknownBlock.model_validate(d)
 
     @classmethod
-    def from_model(cls, model: internal.UnknownBlock):
+    def _from_model(cls, model: internal.UnknownBlock):
         d = model.model_dump()
         return cls(**d)
 
@@ -157,7 +165,7 @@ class TextWithInlineComments(Base):
 @dataclass(config=dataclass_config, repr=False)
 class Heading(Block):
     @classmethod
-    def from_model(cls, model: internal.Heading):
+    def _from_model(cls, model: internal.Heading):
         text = _internal_children_to_text(model.children)
 
         blocks = None
@@ -177,10 +185,10 @@ class H1(Heading):
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
-    def to_model(self):
+    def _to_model(self):
         collapsed_children = self.collapsed_blocks
         if collapsed_children is not None:
-            collapsed_children = [b.to_model() for b in collapsed_children]
+            collapsed_children = [b._to_model() for b in collapsed_children]
 
         return internal.Heading(
             level=1,
@@ -194,10 +202,10 @@ class H2(Heading):
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
-    def to_model(self):
+    def _to_model(self):
         collapsed_children = self.collapsed_blocks
         if collapsed_children is not None:
-            collapsed_children = [b.to_model() for b in collapsed_children]
+            collapsed_children = [b._to_model() for b in collapsed_children]
 
         return internal.Heading(
             level=2,
@@ -211,10 +219,10 @@ class H3(Heading):
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
-    def to_model(self):
+    def _to_model(self):
         collapsed_children = self.collapsed_blocks
         if collapsed_children is not None:
-            collapsed_children = [b.to_model() for b in collapsed_children]
+            collapsed_children = [b._to_model() for b in collapsed_children]
 
         return internal.Heading(
             level=3,
@@ -247,12 +255,12 @@ class InlineCode(Base):
 class P(Block):
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         children = _text_to_internal_children(self.text)
         return internal.Paragraph(children=children)
 
     @classmethod
-    def from_model(cls, model: internal.Paragraph):
+    def _from_model(cls, model: internal.Paragraph):
         pieces = _internal_children_to_text(model.children)
         return cls(text=pieces)
 
@@ -260,7 +268,7 @@ class P(Block):
 @dataclass(config=dataclass_config, repr=False)
 class ListItem(Base):
     @classmethod
-    def from_model(cls, model: internal.ListItem):
+    def _from_model(cls, model: internal.ListItem):
         text = _internal_children_to_text(model.children)
         if model.checked is not None:
             return CheckedListItem(text=text, checked=model.checked)
@@ -275,7 +283,7 @@ class CheckedListItem(Base):
     text: TextLikeField = ""
     checked: bool = False
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ListItem(
             children=[
                 internal.Paragraph(children=_text_to_internal_children(self.text))
@@ -288,7 +296,7 @@ class CheckedListItem(Base):
 class OrderedListItem(Base):
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ListItem(
             children=[
                 internal.Paragraph(children=_text_to_internal_children(self.text))
@@ -301,7 +309,7 @@ class OrderedListItem(Base):
 class UnorderedListItem(Base):
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ListItem(
             children=[
                 internal.Paragraph(children=_text_to_internal_children(self.text))
@@ -312,12 +320,12 @@ class UnorderedListItem(Base):
 @dataclass(config=dataclass_config, repr=False)
 class List(Block):
     @classmethod
-    def from_model(cls, model: internal.List):
+    def _from_model(cls, model: internal.List):
         if not model.children:
             return UnorderedList()
 
         item = model.children[0]
-        items = [ListItem.from_model(x) for x in model.children]
+        items = [ListItem._from_model(x) for x in model.children]
         if item.checked is not None:
             return CheckedList(items=items)
 
@@ -332,8 +340,8 @@ class List(Block):
 class CheckedList(List):
     items: LList[CheckedListItem] = Field(default_factory=lambda: [CheckedListItem()])
 
-    def to_model(self):
-        items = [x.to_model() for x in self.items]
+    def _to_model(self):
+        items = [x._to_model() for x in self.items]
         return internal.List(children=items)
 
 
@@ -341,8 +349,8 @@ class CheckedList(List):
 class OrderedList(List):
     items: LList[str] = Field(default_factory=lambda: [""])
 
-    def to_model(self):
-        children = [OrderedListItem(li).to_model() for li in self.items]
+    def _to_model(self):
+        children = [OrderedListItem(li)._to_model() for li in self.items]
         return internal.List(children=children, ordered=True)
 
 
@@ -350,8 +358,8 @@ class OrderedList(List):
 class UnorderedList(List):
     items: LList[str] = Field(default_factory=lambda: [""])
 
-    def to_model(self):
-        children = [UnorderedListItem(li).to_model() for li in self.items]
+    def _to_model(self):
+        children = [UnorderedListItem(li)._to_model() for li in self.items]
         return internal.List(children=children)
 
 
@@ -359,11 +367,11 @@ class UnorderedList(List):
 class BlockQuote(Block):
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.BlockQuote(children=_text_to_internal_children(self.text))
 
     @classmethod
-    def from_model(cls, model: internal.BlockQuote):
+    def _from_model(cls, model: internal.BlockQuote):
         return cls(text=_internal_children_to_text(model.children))
 
 
@@ -372,7 +380,7 @@ class CodeBlock(Block):
     code: TextLikeField = ""
     language: Optional[Language] = "python"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.CodeBlock(
             children=[
                 internal.CodeLine(
@@ -384,7 +392,7 @@ class CodeBlock(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.CodeBlock):
+    def _from_model(cls, model: internal.CodeBlock):
         code = _internal_children_to_text(model.children[0].children)
         return cls(code=code, language=model.language)
 
@@ -393,11 +401,11 @@ class CodeBlock(Block):
 class MarkdownBlock(Block):
     text: str = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.MarkdownBlock(content=self.text)
 
     @classmethod
-    def from_model(cls, model: internal.MarkdownBlock):
+    def _from_model(cls, model: internal.MarkdownBlock):
         return cls(text=model.content)
 
 
@@ -405,11 +413,11 @@ class MarkdownBlock(Block):
 class LatexBlock(Block):
     text: str = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.LatexBlock(content=self.text)
 
     @classmethod
-    def from_model(cls, model: internal.LatexBlock):
+    def _from_model(cls, model: internal.LatexBlock):
         return cls(text=model.content)
 
 
@@ -418,7 +426,7 @@ class Image(Block):
     url: str = "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
     caption: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         has_caption = False
         children = _text_to_internal_children(self.caption)
         if children:
@@ -427,7 +435,7 @@ class Image(Block):
         return internal.Image(children=children, url=self.url, has_caption=has_caption)
 
     @classmethod
-    def from_model(cls, model: internal.Image):
+    def _from_model(cls, model: internal.Image):
         caption = _internal_children_to_text(model.children)
         return cls(url=model.url, caption=caption)
 
@@ -436,7 +444,7 @@ class Image(Block):
 class CalloutBlock(Block):
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.CalloutBlock(
             children=[
                 internal.CalloutLine(children=_text_to_internal_children(self.text))
@@ -444,18 +452,18 @@ class CalloutBlock(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.CalloutBlock):
+    def _from_model(cls, model: internal.CalloutBlock):
         text = _internal_children_to_text(model.children[0].children)
         return cls(text=text)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class HorizontalRule(Block):
-    def to_model(self):
+    def _to_model(self):
         return internal.HorizontalRule()
 
     @classmethod
-    def from_model(cls, model: internal.HorizontalRule):
+    def _from_model(cls, model: internal.HorizontalRule):
         return cls()
 
 
@@ -463,11 +471,11 @@ class HorizontalRule(Block):
 class Video(Block):
     url: str = "https://www.youtube.com/watch?v=krWjJcW80_A"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Video(url=self.url)
 
     @classmethod
-    def from_model(cls, model: internal.Video):
+    def _from_model(cls, model: internal.Video):
         return cls(url=model.url)
 
 
@@ -475,11 +483,11 @@ class Video(Block):
 class Spotify(Block):
     spotify_id: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Spotify(spotify_id=self.spotify_id)
 
     @classmethod
-    def from_model(cls, model: internal.Spotify):
+    def _from_model(cls, model: internal.Spotify):
         return cls(spotify_id=model.spotify_id)
 
 
@@ -487,11 +495,11 @@ class Spotify(Block):
 class SoundCloud(Block):
     html: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.SoundCloud(html=self.html)
 
     @classmethod
-    def from_model(cls, model: internal.SoundCloud):
+    def _from_model(cls, model: internal.SoundCloud):
         return cls(html=model.html)
 
 
@@ -512,7 +520,7 @@ class GalleryURL(Base):
 class Gallery(Block):
     items: LList[Union[GalleryReport, GalleryURL]] = Field(default_factory=list)
 
-    def to_model(self):
+    def _to_model(self):
         links = []
         for x in self.items:
             if isinstance(x, GalleryReport):
@@ -529,7 +537,7 @@ class Gallery(Block):
         return internal.Gallery(links=links)
 
     @classmethod
-    def from_model(cls, model: internal.Gallery):
+    def _from_model(cls, model: internal.Gallery):
         items = []
         if model.ids:
             items = [GalleryReport(x) for x in model.ids]
@@ -554,14 +562,14 @@ class OrderBy(Base):
     name: MetricType
     ascending: bool = False
 
-    def to_model(self):
+    def _to_model(self):
         return internal.SortKey(
             key=internal.SortKeyKey(name=_metric_to_backend(self.name)),
             ascending=self.ascending,
         )
 
     @classmethod
-    def from_model(cls, model: internal.SortKey):
+    def _from_model(cls, model: internal.SortKey):
         return cls(
             name=_metric_to_frontend(model.key.name),
             ascending=model.ascending,
@@ -587,7 +595,7 @@ class Runset(Base):
 
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
 
-    def to_model(self):
+    def _to_model(self):
         project = None
         if self.entity or self.project:
             project = internal.Project(entity_name=self.entity, name=self.project)
@@ -599,13 +607,13 @@ class Runset(Base):
             grouping=[
                 internal.Key(name=expr_parsing.to_backend_name(g)) for g in self.groupby
             ],
-            sort=internal.Sort(keys=[o.to_model() for o in self.order]),
+            sort=internal.Sort(keys=[o._to_model() for o in self.order]),
         )
         obj.id = self._id
         return obj
 
     @classmethod
-    def from_model(cls, model: internal.Runset):
+    def _from_model(cls, model: internal.Runset):
         entity = ""
         project = ""
 
@@ -622,7 +630,7 @@ class Runset(Base):
             name=model.name,
             filters=expr_parsing.filters_to_expr(model.filters),
             groupby=[expr_parsing.to_frontend_name(k.name) for k in model.grouping],
-            order=[OrderBy.from_model(s) for s in model.sort.keys],
+            order=[OrderBy._from_model(s) for s in model.sort.keys],
         )
         obj._id = model.id
         return obj
@@ -651,12 +659,12 @@ class PanelGrid(Block):
         default_factory=list, init=False, repr=False
     )
 
-    def to_model(self):
+    def _to_model(self):
         return internal.PanelGrid(
             metadata=internal.PanelGridMetadata(
-                run_sets=[rs.to_model() for rs in self.runsets],
+                run_sets=[rs._to_model() for rs in self.runsets],
                 panel_bank_section_config=internal.PanelBankSectionConfig(
-                    panels=[p.to_model() for p in self.panels],
+                    panels=[p._to_model() for p in self.panels],
                 ),
                 panels=internal.PanelGridMetadataPanels(
                     panel_bank_config=internal.PanelBankConfig(),
@@ -667,8 +675,8 @@ class PanelGrid(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.PanelGrid):
-        runsets = [Runset.from_model(rs) for rs in model.metadata.run_sets]
+    def _from_model(cls, model: internal.PanelGrid):
+        runsets = [Runset._from_model(rs) for rs in model.metadata.run_sets]
         obj = cls(
             runsets=runsets,
             panels=[
@@ -698,11 +706,11 @@ class PanelGrid(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class TableOfContents(Block):
-    def to_model(self):
+    def _to_model(self):
         return internal.TableOfContents()
 
     @classmethod
-    def from_model(cls, model: internal.TableOfContents):
+    def _from_model(cls, model: internal.TableOfContents):
         return cls()
 
 
@@ -710,11 +718,11 @@ class TableOfContents(Block):
 class Twitter(Block):
     html: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Twitter(html=self.html)
 
     @classmethod
-    def from_model(cls, model: internal.Twitter):
+    def _from_model(cls, model: internal.Twitter):
         return cls(html=model.html)
 
 
@@ -729,7 +737,7 @@ class WeaveBlockSummaryTable(Block):
     project: str
     table_name: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeaveBlock(
             config={
                 "panelConfig": {
@@ -930,7 +938,7 @@ class WeaveBlockSummaryTable(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeaveBlock):
+    def _from_model(cls, model: internal.WeaveBlock):
         inputs = internal._get_weave_block_inputs(model.config)
         entity = inputs["obj"]["fromOp"]["inputs"]["run"]["fromOp"]["inputs"][
             "project"
@@ -951,7 +959,7 @@ class WeaveBlockArtifactVersionedFile(Block):
     version: str
     file: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeaveBlock(
             config={
                 "panelConfig": {
@@ -1069,7 +1077,7 @@ class WeaveBlockArtifactVersionedFile(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeaveBlock):
+    def _from_model(cls, model: internal.WeaveBlock):
         inputs = internal._get_weave_block_inputs(model.config)
         entity = inputs["artifactVersion"]["fromOp"]["inputs"]["project"]["fromOp"][
             "inputs"
@@ -1099,7 +1107,7 @@ class WeaveBlockArtifact(Block):
     artifact: str
     tab: Literal["overview", "metadata", "usage", "files", "lineage"] = "overview"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeaveBlock(
             config={
                 "panelConfig": {
@@ -1196,7 +1204,7 @@ class WeaveBlockArtifact(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeaveBlock):
+    def _from_model(cls, model: internal.WeaveBlock):
         inputs = internal._get_weave_block_inputs(model.config)
         entity = inputs["project"]["fromOp"]["inputs"]["entityName"]["val"]
         project = inputs["project"]["fromOp"]["inputs"]["projectName"]["val"]
@@ -1272,11 +1280,11 @@ class GradientPoint(Base):
     color: Annotated[str, internal.ColorStrConstraints]
     offset: Annotated[float, Ge(0), Le(100)] = 0
 
-    def to_model(self):
+    def _to_model(self):
         return internal.GradientPoint(color=self.color, offset=self.offset)
 
     @classmethod
-    def from_model(cls, model: internal.GradientPoint):
+    def _from_model(cls, model: internal.GradientPoint):
         return cls(color=model.color, offset=model.offset)
 
 
@@ -1308,7 +1316,7 @@ class LinePlot(Panel):
     xaxis_expression: Optional[str] = None
     legend_fields: Optional[LList[str]] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.LinePlot(
             config=internal.LinePlotConfig(
                 chart_title=self.title,
@@ -1340,11 +1348,11 @@ class LinePlot(Panel):
                 legend_fields=self.legend_fields,
             ),
             id=self._id,
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
         )
 
     @classmethod
-    def from_model(cls, model: internal.LinePlot):
+    def _from_model(cls, model: internal.LinePlot):
         obj = cls(
             title=model.config.chart_title,
             x=_metric_to_frontend(model.config.x_axis),
@@ -1370,7 +1378,7 @@ class LinePlot(Panel):
             legend_template=model.config.legend_template,
             aggregate=model.config.aggregate,
             xaxis_expression=model.config.x_expression,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
             legend_fields=model.config.legend_fields,
         )
         obj._id = model.id
@@ -1397,10 +1405,10 @@ class ScatterPlot(Panel):
     font_size: Optional[FontSize] = None
     regression: Optional[bool] = None
 
-    def to_model(self):
+    def _to_model(self):
         custom_gradient = self.gradient
         if custom_gradient is not None:
-            custom_gradient = [cgp.to_model() for cgp in self.gradient]
+            custom_gradient = [cgp._to_model() for cgp in self.gradient]
 
         return internal.ScatterPlot(
             config=internal.ScatterPlotConfig(
@@ -1425,15 +1433,15 @@ class ScatterPlot(Panel):
                 font_size=self.font_size,
                 show_linear_regression=self.regression,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         gradient = model.config.custom_gradient
         if gradient is not None:
-            gradient = [GradientPoint.from_model(cgp) for cgp in gradient]
+            gradient = [GradientPoint._from_model(cgp) for cgp in gradient]
 
         obj = cls(
             title=model.config.chart_title,
@@ -1453,7 +1461,7 @@ class ScatterPlot(Panel):
             gradient=gradient,
             font_size=model.config.font_size,
             regression=model.config.show_linear_regression,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1478,7 +1486,7 @@ class BarPlot(Panel):
     line_titles: Optional[dict] = None
     line_colors: Optional[dict] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.BarPlot(
             config=internal.BarPlotConfig(
                 chart_title=self.title,
@@ -1499,12 +1507,12 @@ class BarPlot(Panel):
                 override_series_titles=self.line_titles,
                 override_colors=self.line_colors,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             title=model.config.chart_title,
             metrics=[_metric_to_frontend(name) for name in model.config.metrics],
@@ -1522,7 +1530,7 @@ class BarPlot(Panel):
             font_size=model.config.font_size,
             line_titles=model.config.override_series_titles,
             line_colors=model.config.override_colors,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1538,7 +1546,7 @@ class ScalarChart(Panel):
     legend_template: Optional[str] = None
     font_size: Optional[FontSize] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ScalarChart(
             config=internal.ScalarChartConfig(
                 chart_title=self.title,
@@ -1549,12 +1557,12 @@ class ScalarChart(Panel):
                 legend_template=self.legend_template,
                 font_size=self.font_size,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             title=model.config.chart_title,
             metric=_metric_to_frontend(model.config.metrics[0]),
@@ -1563,7 +1571,7 @@ class ScalarChart(Panel):
             custom_expressions=model.config.expressions,
             legend_template=model.config.legend_template,
             font_size=model.config.font_size,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1573,18 +1581,18 @@ class ScalarChart(Panel):
 class CodeComparer(Panel):
     diff: CodeCompareDiff = "split"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.CodeComparer(
             config=internal.CodeComparerConfig(diff=self.diff),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             diff=model.config.diff,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1597,7 +1605,7 @@ class ParallelCoordinatesPlotColumn(Base):
     inverted: Optional[bool] = None
     log: Optional[bool] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Column(
             accessor=_metric_to_backend_pc(self.metric),
             display_name=self.display_name,
@@ -1606,7 +1614,7 @@ class ParallelCoordinatesPlotColumn(Base):
         )
 
     @classmethod
-    def from_model(cls, model: internal.Column):
+    def _from_model(cls, model: internal.Column):
         obj = cls(
             metric=_metric_to_frontend_pc(model.accessor),
             display_name=model.display_name,
@@ -1623,37 +1631,37 @@ class ParallelCoordinatesPlot(Panel):
     gradient: Optional[LList[GradientPoint]] = None
     font_size: Optional[FontSize] = None
 
-    def to_model(self):
+    def _to_model(self):
         gradient = self.gradient
         if gradient is not None:
-            gradient = [x.to_model() for x in self.gradient]
+            gradient = [x._to_model() for x in self.gradient]
 
         return internal.ParallelCoordinatesPlot(
             config=internal.ParallelCoordinatesPlotConfig(
                 chart_title=self.title,
-                columns=[c.to_model() for c in self.columns],
+                columns=[c._to_model() for c in self.columns],
                 custom_gradient=gradient,
                 font_size=self.font_size,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         gradient = model.config.custom_gradient
         if gradient is not None:
-            gradient = [GradientPoint.from_model(x) for x in gradient]
+            gradient = [GradientPoint._from_model(x) for x in gradient]
 
         obj = cls(
             columns=[
-                ParallelCoordinatesPlotColumn.from_model(c)
+                ParallelCoordinatesPlotColumn._from_model(c)
                 for c in model.config.columns
             ],
             title=model.config.chart_title,
             gradient=gradient,
             font_size=model.config.font_size,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1663,20 +1671,20 @@ class ParallelCoordinatesPlot(Panel):
 class ParameterImportancePlot(Panel):
     with_respect_to: str = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ParameterImportancePlot(
             config=internal.ParameterImportancePlotConfig(
                 target_key=self.with_respect_to
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             with_respect_to=model.config.target_key,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
 
@@ -1687,18 +1695,18 @@ class ParameterImportancePlot(Panel):
 class RunComparer(Panel):
     diff_only: Optional[Literal["split", True]] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.RunComparer(
             config=internal.RunComparerConfig(diff_only=self.diff_only),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             diff_only=model.config.diff_only,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
 
@@ -1710,22 +1718,22 @@ class MediaBrowser(Panel):
     num_columns: Optional[int] = None
     media_keys: LList[str] = Field(default_factory=list)
 
-    def to_model(self):
+    def _to_model(self):
         return internal.MediaBrowser(
             config=internal.MediaBrowserConfig(
                 column_count=self.num_columns,
                 media_keys=self.media_keys,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.MediaBrowser):
+    def _from_model(cls, model: internal.MediaBrowser):
         obj = cls(
             num_columns=model.config.column_count,
             media_keys=model.config.media_keys,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
 
@@ -1736,18 +1744,18 @@ class MediaBrowser(Panel):
 class MarkdownPanel(Panel):
     markdown: str = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.MarkdownPanel(
             config=internal.MarkdownPanelConfig(value=self.markdown),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             markdown=model.config.value,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
 
@@ -1772,7 +1780,7 @@ class CustomChart(Panel):
             chart_strings=chart_strings,
         )
 
-    def to_model(self):
+    def _to_model(self):
         def dict_to_fields(d):
             fields = []
             for k, v in d.items():
@@ -1812,11 +1820,11 @@ class CustomChart(Panel):
                 field_settings=self.chart_fields,
                 string_settings=self.chart_strings,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
         )
 
     @classmethod
-    def from_model(cls, model: internal.Vega2):
+    def _from_model(cls, model: internal.Vega2):
         def fields_to_dict(fields):
             d = {}
             for field in fields:
@@ -1842,7 +1850,7 @@ class CustomChart(Panel):
             chart_name=model.config.panel_def_id,
             chart_fields=model.config.field_settings,
             chart_strings=model.config.string_settings,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
 
 
@@ -1855,13 +1863,13 @@ class UnknownPanel(Base):
         )
         return f"{class_name}({attributes})"
 
-    def to_model(self):
+    def _to_model(self):
         d = self.__dict__
         print(d)
         return internal.UnknownPanel.model_validate(d)
 
     @classmethod
-    def from_model(cls, model: internal.UnknownPanel):
+    def _from_model(cls, model: internal.UnknownPanel):
         d = model.model_dump()
         return cls(**d)
 
@@ -1870,11 +1878,11 @@ class UnknownPanel(Base):
 class WeavePanel(Panel):
     config: dict = Field(default_factory=dict)
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeavePanel(config=self.config)
 
     @classmethod
-    def from_model(cls, model: internal.WeavePanel):
+    def _from_model(cls, model: internal.WeavePanel):
         return cls(config=model.config)
 
 
@@ -1883,7 +1891,7 @@ class WeavePanelSummaryTable(Panel):
     # TODO: Replace with actual weave panels when ready
     table_name: str = Field(..., kw_only=True)
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeavePanel(
             config={
                 "panel2Config": {
@@ -2060,7 +2068,7 @@ class WeavePanelSummaryTable(Panel):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeavePanel):
+    def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         table_name = inputs["key"]["val"]
         return cls(table_name=table_name)
@@ -2073,7 +2081,7 @@ class WeavePanelArtifactVersionedFile(Panel):
     version: str = Field(..., kw_only=True)
     file: str = Field(..., kw_only=True)
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeavePanel(
             config={
                 "panel2Config": {
@@ -2177,7 +2185,7 @@ class WeavePanelArtifactVersionedFile(Panel):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeavePanel):
+    def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         artifact = inputs["artifactVersion"]["fromOp"]["inputs"]["artifactName"]["val"]
         version = inputs["artifactVersion"]["fromOp"]["inputs"]["artifactVersionAlias"][
@@ -2193,7 +2201,7 @@ class WeavePanelArtifact(WeavePanel):
     artifact: str = Field(...)
     tab: Literal["overview", "metadata", "usage", "files", "lineage"] = "overview"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeavePanel(
             config={
                 "panel2Config": {
@@ -2276,7 +2284,7 @@ class WeavePanelArtifact(WeavePanel):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeavePanel):
+    def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         artifact = inputs["artifactName"]["val"]
         tab = model.config["panel2Config"]["panelConfig"]["tabConfigs"]["overview"].get(
@@ -2305,7 +2313,7 @@ class Report(Base):
         default_factory=lambda: None, init=False, repr=False
     )
 
-    def to_model(self):
+    def _to_model(self):
         blocks = self.blocks
         if len(blocks) > 0 and blocks[0] != P():
             blocks = [P()] + blocks
@@ -2325,7 +2333,7 @@ class Report(Base):
             updated_at=self._updated_at,
             spec=internal.Spec(
                 panel_settings=self._panel_settings,
-                blocks=[b.to_model() for b in blocks],
+                blocks=[b._to_model() for b in blocks],
                 width=self.width,
                 authors=self._authors,
                 discussion_threads=self._discussion_threads,
@@ -2333,7 +2341,7 @@ class Report(Base):
         )
 
     @classmethod
-    def from_model(cls, model: internal.ReportViewspec):
+    def _from_model(cls, model: internal.ReportViewspec):
         blocks = model.spec.blocks
 
         if blocks[0] == internal.Paragraph():
@@ -2377,7 +2385,7 @@ class Report(Base):
         return urlunparse((scheme, netloc, path, params, query, fragment))
 
     def save(self, draft: bool = False, clone: bool = False):
-        model = self.to_model()
+        model = self._to_model()
 
         # create project if not exists
         projects = _get_api().projects(self.entity)
@@ -2419,7 +2427,7 @@ class Report(Base):
         model = internal.ReportViewspec.model_validate(vs)
         if as_model:
             return model
-        return cls.from_model(model)
+        return cls._from_model(model)
 
     def to_html(self, height: int = 1024, hidden: bool = False) -> str:
         """Generate HTML containing an iframe displaying this report."""
@@ -2473,13 +2481,13 @@ def _lookup(block):
     if cls is WeaveBlock:
         for cls in defined_weave_blocks:
             try:
-                cls.from_model(block)
+                cls._from_model(block)
             except Exception:
                 continue
             else:
                 break
 
-    return cls.from_model(block)
+    return cls._from_model(block)
 
 
 def _should_show_attr(k, v):
@@ -2513,13 +2521,13 @@ def _lookup_panel(panel):
         # print('cls is weave panel')
         for cls in defined_weave_panels:
             try:
-                cls.from_model(panel)
+                cls._from_model(panel)
             except Exception:
                 continue
             else:
                 break
 
-    return cls.from_model(panel)
+    return cls._from_model(panel)
 
 
 def _load_spec_from_url(url, as_model=False):
