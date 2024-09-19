@@ -90,28 +90,60 @@ class Base:
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroupKey:
+    """
+    INSERT
+
+    Attributes:
+        key: INSERT
+        value (str): INSERT
+    """
     key: MetricType
     value: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroup:
+    """
+    UI element that shows runsets. 
+
+    Attributes:
+        runset_name (str): The label of a runset.
+        keys (tuple): INSERT
+    """
     runset_name: str
     keys: Tuple[RunsetGroupKey, ...]
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class Metric:
+    """
+    INSERT
+
+    Attributes:
+        name (str): INSERT
+    """
     name: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class Config:
+    """
+    INSERT
+
+    Attributes:
+        name (str): INSERT
+    """
     name: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class SummaryMetric:
+    """
+    INSERT
+
+    Attributes:
+        name (str): INSERT
+    """
     name: str
 
 
@@ -121,10 +153,10 @@ class Layout(Base):
     Adjusts the width, height, x-axis, or y-axis of a plot.
 
     Attributes:
-        x (int): Text
-        y (int): Text
-        w (int): Text
-        h (int): Text
+        x (int): INSERT
+        y (int): INSERT
+        w (int): INSERT
+        h (int): INSERT
     """
     x: int = 0
     y: int = 0
@@ -164,6 +196,12 @@ class UnknownBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class TextWithInlineComments(Base):
+    """
+    INSERT
+
+    Attributes:
+        text (str): INSERT
+    """
     text: str
 
     _inline_comments: Optional[LList[internal.InlineComment]] = Field(
@@ -245,6 +283,14 @@ class H3(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class Link(Base):
+    """
+    Creates a hyperlink.
+
+    Attributes:
+        text: The text you want to add a hyperlink to.
+        url: The URL that the hyperlink uses.
+    """
+
     text: Union[str, TextWithInlineComments]
     url: str
 
@@ -255,11 +301,27 @@ class Link(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineLatex(Base):
+    """
+    Displays LaTeX in a line. Does not add newline
+    character after provided LaTeX. This differs from `LatexBlock`
+    where the latter creates an HTML block with LaTeX
+
+    Attributes:
+        text (str):  Text you want to appear in the LaTeX inline. 
+    """
     text: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineCode(Base):
+    """
+    Displays code in a line. Does not add newline
+    character after provided. This differs from `CodeBlock`
+    where the latter creates an HTML block with code.
+
+    Attributes:
+        text (str): A string that contains example code.
+    """
     text: str
 
 
@@ -1403,6 +1465,13 @@ block_mapping = {
 
 @dataclass(config=dataclass_config, repr=False)
 class GradientPoint(Base):
+    """
+    INSERT
+
+    Attributes:
+        color: INSERT
+        offset: INSERT
+    """
     color: Annotated[str, internal.ColorStrConstraints]
     offset: Annotated[float, Ge(0), Le(100)] = 0
 
@@ -1417,41 +1486,45 @@ class GradientPoint(Base):
 @dataclass(config=dataclass_config, repr=False)
 class LinePlot(Panel):
     """
-    Text
+    A panel object that shows 2D line plots.
 
     Attributes:
-        title (str): The text that appears at the top of the plot.
-        x (str): The name of a metric logged to your W&B project that the
+        title (Optional[str]): The text that appears at the top of the plot.
+        x (Optional[MetricType]): The name of a metric logged to your W&B project that the
             report pulls information from. The metric specified is used for the x-axis.
-        y (list): One or more metrics logged to your W&B project that the report pulls
-            information from. Metrics specified are plotted within the LinePlot panel.
+        y (LList[MetricType]): One or more metrics logged to your W&B project that the report pulls
+            information from. The metric specified is used for the y-axis.
         range_x (tuple): Tuple that specifies the range of the x-axis. 
         range_y (tuple): Tuple that specifies the range of the y-axis. 
-        log_x (bool): Plots the x-coordinates using a base-10 logarithmic scale.
-        log_y (bool): Plots the y-coordinates using a base-10 logarithmic scale.
-        title_x (str): The label of the x-axis.
-        title_y (str): The label of the y-axis.
-        ignore_outliers (bool): If set to `True`, do not plot outliers.
-        groupby (str): Group runs based on a metric logged to your W&B project that the
+        log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
+        log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
+        title_x (Optional[str]): The label of the x-axis.
+        title_y (Optional[str]): The label of the y-axis.
+        ignore_outliers (Optional[bool]): If set to `True`, do not plot outliers.
+        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
             report pulls information from.
-        groupby_aggfunc (str): Aggregate runs with specified function.
-            Options include: "mean", "min", "max", "median", "sum", "samples", or `None`.
-        groupby_rangefunc (str):  Group runs based on a range.
-            Options include: "minmax", "stddev", "stderr", "none", "samples", or `None`.
-        smoothing_factor (float): text
-        smoothing_type: text
-        smoothing_show_original (bool): text
-        max_runs_to_show (int): text
-        custom_expressions (list): text
-        plot_type: text
-        font_size: The size of the line plot's font.
-            Options include: "small", "medium", "large", "auto", or `None`.
-        legend_position: Where to place the plot's legend.
-            Options include: "north", "south", "east", "west", or `None`.
-        legend_template (str): text
-        aggregate (bool): text
-        xaxis_expression (str): text
-        legend_fields (list): text
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        smoothing_factor (Optional[float]): The smoothing factor to apply to the
+            smoothing type. Accepted values range between 0 and 1.
+        smoothing_type Optional[SmoothingType]: Apply a filter based on the specified
+            distribution. Options include "exponentialTimeWeighted", "exponential",
+            "gaussian", "average", or "none".
+        smoothing_show_original (Optional[bool]): INSERT.
+        max_runs_to_show (Optional[int]): The maximum number of runs to show on the line plot.
+        custom_expressions (Optional[LList[str]]): INSERT.
+        plot_type Optional[LinePlotStyle]: The type of line plot to generate.
+            Options include "line", "stacked-area", or "pct-area".
+        font_size Optional[FontSize]: The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        legend_position Optional[LegendPosition]: Where to place the legend.
+            Options include "north", "south", "east", "west", or `None`.
+        legend_template (Optional[str]): INSERT.
+        aggregate (Optional[bool]): INSERT.
+        xaxis_expression (Optional[str]): INSERT.
+        legend_fields (Optional[LList[str]]): INSERT.
     """
 
     title: Optional[str] = None
@@ -1552,26 +1625,29 @@ class LinePlot(Panel):
 @dataclass(config=dataclass_config, repr=False)
 class ScatterPlot(Panel):
     """
-    Text
+    A panel object that shows a 2D or 3D scatter plot.
 
     Arguments:
-        title: text
-        x: text
-        y: text
-        z: text
-        range_x: text
-        range_y: text
-        range_z: text
-        log_x: text
-        log_y: text
-        log_z: text
-        running_ymin: text
-        running_ymax: text
-        running_ymean: text
-        legend_template: text
-        gradient: text
-        font_size: text
-        regression: text
+        title (Optional[str]): The text that appears at the top of the plot.
+        x Optional[SummaryOrConfigOnlyMetric]: The name of a metric logged to your W&B project that the
+            report pulls information from. The metric specified is used for the x-axis.
+        y Optional[SummaryOrConfigOnlyMetric]:  One or more metrics logged to your W&B project that the report pulls
+            information from. Metrics specified are plotted within the y-axis.
+        z Optional[SummaryOrConfigOnlyMetric]:
+        range_x (tuple): Tuple that specifies the range of the x-axis. 
+        range_y (tuple): Tuple that specifies the range of the y-axis. 
+        range_z: Tuple that specifies the range of the z-axis. 
+        log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
+        log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
+        log_z (Optional[bool]): Plots the z-coordinates using a base-10 logarithmic scale.
+        running_ymin (Optional[bool]): Apply a moving average or rolling mean on INSERT.
+        running_ymax (Optional[bool]): Apply a moving average or rolling mean on INSERT.
+        running_ymean (Optional[bool]): Apply a moving average or rolling mean on INSERT.
+        legend_template (Optional[str]): INSERT.
+        gradient (Optional[LList[GradientPoint]]): INSERT.
+        font_size (Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        regression (Optional[bool]): INSERT.
     """
     title: Optional[str] = None
     x: Optional[SummaryOrConfigOnlyMetric] = None
@@ -1655,6 +1731,34 @@ class ScatterPlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class BarPlot(Panel):
+    """
+    A panel object that shows a 2D bar plot.
+
+    Attributes:
+        title (Optional[str]): The text that appears at the top of the plot.
+        metrics LList[MetricType]: 
+        orientation Literal["v", "h"]: The orientation of the bar plot.
+            Set to either vertical ("v") or horizontal ("h"). Defaults to horizontal ("h").
+        range_x (tuple): Tuple that specifies the range of the x-axis. 
+        title_x (Optional[str]): The label of the x-axis.
+        title_y (Optional[str]): The label of the y-axis.
+        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
+            report pulls information from.
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        max_runs_to_show (Optional[int]): The maximum number of runs to show on the plot.
+        max_bars_to_show (Optional[int]): The maximum number of bars to show on the bar plot.
+        custom_expressions (Optional[LList[str]]): INSERT.
+        legend_template (Optional[str]): INSERT
+        font_size( Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        line_titles (Optional[dict]): INSERT.
+        line_colors (Optional[dict]): INSERT.
+    """
+
+
     title: Optional[str] = None
     metrics: LList[MetricType] = Field(default_factory=list)
     orientation: Literal["v", "h"] = "h"
@@ -1724,6 +1828,23 @@ class BarPlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class ScalarChart(Panel):
+    """
+    A panel object that shows a scalar chart.
+
+    Attributes:
+        title (Optional[str]): The text that appears at the top of the plot.
+        metric (Required[MetricType]): The name of a metric logged to your W&B project that the
+            report pulls information from.
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        custom_expressions (Optional[LList[str]]): INSERT.
+        legend_template (Optional[str]): INSERT.
+        font_size Optional[FontSize]: The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+    
+    """
     title: Optional[str] = None
     metric: MetricType = ""
     groupby_aggfunc: Optional[GroupAgg] = None
@@ -1765,6 +1886,13 @@ class ScalarChart(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class CodeComparer(Panel):
+    """
+    A panel object that compares the code between two different runs.
+
+    Attributes:
+        diff (Required): How to display code differences.
+            Options include "split" and "unified". 
+    """
     diff: CodeCompareDiff = "split"
 
     def _to_model(self):
@@ -1823,13 +1951,15 @@ class ParallelCoordinatesPlotColumn(Base):
 @dataclass(config=dataclass_config, repr=False)
 class ParallelCoordinatesPlot(Panel):
     """
-    Creates a parallel coordinates plot.
+    A panel object that shows a parallel coordinates plot.
 
     Attributes:
-        columns (list): A list of one or more `ParallelCoordinatesPlotColumn` objects. 
-        title (str):
-        gradient:
-        font_size:
+        columns (LList[ParallelCoordinatesPlotColumn]): A list of one
+            or more `ParallelCoordinatesPlotColumn` objects. 
+        title (Optional[str]): The text that appears at the top of the plot.
+        gradient (Optional[LList[GradientPoint]]): INSERT.
+        font_size (Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
     """
     columns: LList[ParallelCoordinatesPlotColumn] = Field(default_factory=list)
     title: Optional[str] = None
@@ -1874,6 +2004,16 @@ class ParallelCoordinatesPlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class ParameterImportancePlot(Panel):
+    """
+    A panel that shows how important each hyperparameter
+    is in predicting the chosen metric.
+    
+    Attributes:
+        with_respect_to (str): The metric you want to compare the
+            parameter importance against. Common metrics might include the loss, accuracy,
+            and so forth. The metric you specify must be logged within the project
+            that the report pulls information from.
+    """
     with_respect_to: str = ""
 
     def _to_model(self):
@@ -1898,6 +2038,14 @@ class ParameterImportancePlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class RunComparer(Panel):
+    """
+    A panel that compares metrics across different runs from
+    the project the report pulls information from.
+
+    Attributes:
+        diff_only (Optional[Literal["split", True]]): Display only the
+            difference across runs in a project. You can toggle this feature on and off in the W&B Report UI.
+    """
     diff_only: Optional[Literal["split", True]] = None
 
     def _to_model(self):
@@ -1920,6 +2068,13 @@ class RunComparer(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class MediaBrowser(Panel):
+    """
+    INSERT
+
+    Attributes:
+        num_columns (Optional[int]): INSERT
+        media_keys (LList[str]): INSERT
+    """
     num_columns: Optional[int] = None
     media_keys: LList[str] = Field(default_factory=list)
 
@@ -1947,6 +2102,12 @@ class MediaBrowser(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class MarkdownPanel(Panel):
+    """
+    A panel that renders a markdown.
+
+    Attributes:
+        markdown (str): The text you want to appear in the markdown panel.
+    """
     markdown: str = ""
 
     def _to_model(self):
@@ -1969,6 +2130,17 @@ class MarkdownPanel(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class CustomChart(Panel):
+    """
+    A panel that shows a custom chart. INSERT
+
+    Attributes:
+        query (dict): INSERT
+        chart_name (str): The title of the custom chart.
+        chart_fields (dict): Key-value pairs that define the axis of the
+            plot. Where the key is the label, and the value is the metric.
+        chart_strings (dict): INSERT
+
+    """
     # Custom chart configs should look exactly like they do in the UI.  Please check the query carefully!
     query: dict = Field(default_factory=dict)
     chart_name: str = Field(default_factory=str)
@@ -1979,6 +2151,14 @@ class CustomChart(Panel):
     def from_table(
         cls, table_name: str, chart_fields: dict = None, chart_strings: dict = None
     ):
+        """
+        INSERT
+        
+        Arguments:
+            table_name (str): INSERT
+            chart_fields (dict): INSERT
+            chart_strings (dict): INSERT
+        """
         return cls(
             query={"summaryTable": {"tableKey": table_name}},
             chart_fields=chart_fields,
@@ -2510,7 +2690,7 @@ class Report(Base):
         title: The title of the report. The title appears at the top of the report as an H1 heading.
         description: A description of the report. The description appears underneath the report's title.
         blocks: A list of one or more HTML tags, plots, grids, runsets, or more.
-        width: The width of the report. Options include: 'readable', 'fixed', 'fluid'.
+        width: The width of the report. Options include 'readable', 'fixed', 'fluid'.
     """
     project: str
     entity: str = Field(default_factory=lambda: _get_api().default_entity)
@@ -2647,7 +2827,13 @@ class Report(Base):
 
     @classmethod
     def from_url(cls, url: str, *, as_model: bool = False):
-        """Load in the report  into current environment. Pass in the URL where the report is hosted."""
+        """
+        Load in the report into current environment. Pass in the URL where the report is hosted.
+        
+        Arguments:
+            url: The URL where the report is hosted.
+            as_model: INSERT
+        """
         vs = _url_to_viewspec(url)
         model = internal.ReportViewspec.model_validate(vs)
         if as_model:
@@ -2655,7 +2841,13 @@ class Report(Base):
         return cls._from_model(model)
 
     def to_html(self, height: int = 1024, hidden: bool = False) -> str:
-        """Generate HTML containing an iframe displaying this report."""
+        """
+        Generate HTML containing an iframe displaying this report.
+        
+        Arguments:
+            height: INSERT
+            hidden: INSERT
+        """
         try:
             url = self.url + "?jupyter=true"
             style = f"border:none;width:100%;height:{height}px;"
