@@ -117,10 +117,10 @@ class SectionLayoutSettings(Base):
 @dataclass
 class SectionPanelSettings(Base):
     """
-    Panel settings for a section, similar to WorkspaceSettings for a section.
+    Panel settings for a section, similar to `WorkspaceSettings` for a section.
 
     Settings applied here can be overrided by more granular Panel settings in this priority:
-    Section < Panel
+    Section < Panel.
 
     Attributes:
         x_axis: X-axis metric name setting.
