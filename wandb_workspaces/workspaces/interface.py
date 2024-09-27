@@ -396,22 +396,11 @@ class Workspace(Base):
     """
 
     entity: str
-    "The entity this workspace will be saved to (usually user or team name)."
-
     project: str
-    "The project this workspace will be saved to."
-
     name: Annotated[str, AfterValidator(validate_no_emoji)] = "Untitled view"
-    "The name of the workspace."
-
     sections: LList[Section] = Field(default_factory=list)
-    "An ordered list of sections in the workspace.  The first section is at the top of the workspace."
-
     settings: WorkspaceSettings = Field(default_factory=WorkspaceSettings)
-    "Settings for the workspace, typically seen at the top of the workspace in the UI."
-
     runset_settings: RunsetSettings = Field(default_factory=RunsetSettings)
-    "Settings for the runset (the left bar containing runs) in a workspace."
 
     # Internal only
     _internal_name: str = Field("", init=False, repr=False)
