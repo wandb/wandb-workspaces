@@ -90,12 +90,11 @@ class Base:
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroupKey:
-    """
-    INSERT
-
+    """A key for grouping runsets.
+    
     Attributes:
-        key: INSERT
-        value (str): INSERT
+        key: The metric type to group by.
+        value: The value of the metric to group by.
     """
     key: MetricType
     value: str
@@ -103,12 +102,12 @@ class RunsetGroupKey:
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroup:
-    """
-    UI element that shows runsets. 
-
+    """UI element that shows a group of runsets.
+    
     Attributes:
-        runset_name (str): The label of a runset.
-        keys (tuple): INSERT
+        runset_name: The name of the runset.
+        keys: The keys to group by.
+
     """
     runset_name: str
     keys: Tuple[RunsetGroupKey, ...]
@@ -116,47 +115,43 @@ class RunsetGroup:
 
 @dataclass(config=dataclass_config, frozen=True)
 class Metric:
-    """
-    INSERT
-
+    """A metric to display in a report.
+    
     Attributes:
-        name (str): INSERT
+        name: The name of the metric.
     """
     name: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class Config:
-    """
-    INSERT
-
+    """A configuration for a metric.
+    
     Attributes:
-        name (str): INSERT
+        name: The name of the metric.
     """
     name: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class SummaryMetric:
-    """
-    INSERT
-
+    """A summary metric to display in a report.
+    
     Attributes:
-        name (str): INSERT
+        name: The name of the metric.
     """
     name: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class Layout(Base):
-    """
-    Adjusts the width, height, x-axis, or y-axis of a plot.
-
+    """The layout of a block in a report. Adjusts the size and position of the block.
+    
     Attributes:
-        x (int): INSERT
-        y (int): INSERT
-        w (int): INSERT
-        h (int): INSERT
+        x: The x position of the block.
+        y: The y position of the block.
+        w: The width of the block.
+        h: The height of the block.
     """
     x: int = 0
     y: int = 0
@@ -196,11 +191,10 @@ class UnknownBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class TextWithInlineComments(Base):
-    """
-    INSERT
-
+    """A block of text with inline comments.
+    
     Attributes:
-        text (str): INSERT
+        text: The text of the block.
     """
     text: str
 
@@ -229,7 +223,11 @@ class Heading(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class H1(Heading):
-    """Creates an H1 HTML tag with the text specified."""
+    """Creates an H1 HTML tag with the text specified.
+    
+    Attributes:
+        text: The text of the heading.
+    """
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
@@ -247,7 +245,12 @@ class H1(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class H2(Heading):
-    """Creates an H2 HTML tag with the text specified."""
+    """Creates an H2 HTML tag with the text specified.
+    
+    Attributes:
+        text: The text of the heading.
+        collapsed_blocks: The blocks to show when the heading is collapsed.
+    """
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
@@ -265,7 +268,12 @@ class H2(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class H3(Heading):
-    """Creates an H3 HTML tag with the text specified."""
+    """Creates an H3 HTML tag with the text specified.
+    
+    Attributes:
+        text: The text of the heading.
+        collapsed_blocks: The blocks to show when the heading is collapsed.
+    """
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
@@ -283,14 +291,12 @@ class H3(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class Link(Base):
-    """
-    Creates a hyperlink.
-
+    """A link to a URL.
+    
     Attributes:
-        text: The text you want to add a hyperlink to.
-        url: The URL that the hyperlink uses.
+        text: The text of the link.
+        url: The URL the link points to.
     """
-
     text: Union[str, TextWithInlineComments]
     url: str
 
@@ -301,37 +307,34 @@ class Link(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineLatex(Base):
-    """
-    Displays LaTeX in a line. Does not add newline
-    character after provided LaTeX. This differs from `LatexBlock`
-    where the latter creates an HTML block with LaTeX
-
+    """A block of inline LaTeX. Does not add newline
+    character after LaTeX. This differs from `LatexBlock`
+    which is an HTML block with LaTeX.
+    
     Attributes:
-        text (str):  Text you want to appear in the LaTeX inline. 
+        text: The LaTeX code.
     """
     text: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineCode(Base):
-    """
-    Displays code in a line. Does not add newline
-    character after provided. This differs from `CodeBlock`
-    where the latter creates an HTML block with code.
-
+    """A block of inline code. Does not add newline
+    character after code. This differs from `CodeBlock`
+    which is an HTML block with code.
+    
     Attributes:
-        text (str): A string that contains example code.
+        text: The code.
     """
     text: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class P(Block):
-    """
-    An HTML paragraph block. 
-
+    """A block that contains a paragraph of text.
+    
     Attributes:
-        text (str): The text that appears within the text block.
+        text: The text of the paragraph.
     """
     text: TextLikeField = ""
 
@@ -360,16 +363,12 @@ class ListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class CheckedListItem(Base):
-    """
-    A check mark item. Use with `CheckedList` to add one
-        or more check mark items to your report.
-
+    """A list item with a checkbox. Add one ore more `CheckedListItem` within `CheckList`.
+    
     Attributes:
-        text (str): The text to render next to the list item.
-        checked (bool): Add a check mark to the list item.
+        text: The text of the list item.
+        checked: Whether the checkbox is checked.
     """
-
-
     text: TextLikeField = ""
     checked: bool = False
 
@@ -384,6 +383,11 @@ class CheckedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class OrderedListItem(Base):
+    """A list item in an ordered list.
+    
+    Attributes:
+        text: The text of the list item.
+    """
     text: TextLikeField = ""
 
     def _to_model(self):
@@ -397,6 +401,11 @@ class OrderedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class UnorderedListItem(Base):
+    """A list item in an unordered list.
+    
+    Attributes:
+        text: The text of the list item.
+    """
     text: TextLikeField = ""
 
     def _to_model(self):
@@ -409,6 +418,7 @@ class UnorderedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class List(Block):
+    """A list of items."""
     @classmethod
     def _from_model(cls, model: internal.List):
         if not model.children:
@@ -428,11 +438,10 @@ class List(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class CheckedList(List):
-    """
-    An HTML block that contains a list of checkboxes.
+    """A list of items with checkboxes. Add one or more `CheckedListItem` within `CheckedList`.
     
     Attributes:
-        items (list): A list of one or more `CheckedListItem` objects.
+        items: A list of one or more `CheckedListItem` objects.
     """
     items: LList[CheckedListItem] = Field(default_factory=lambda: [CheckedListItem()])
 
@@ -443,11 +452,10 @@ class CheckedList(List):
 
 @dataclass(config=dataclass_config, repr=False)
 class OrderedList(List):
-    """
-    An HTML block that contains an ordered list.
+    """A list of items in a numbered list.
     
     Attributes:
-        items (list): An ordered list of items. Renders as a numbered list.
+        items: A list of one or more `OrderedListItem` objects.
     """
     items: LList[str] = Field(default_factory=lambda: [""])
 
@@ -458,12 +466,10 @@ class OrderedList(List):
 
 @dataclass(config=dataclass_config, repr=False)
 class UnorderedList(List):
-    """
-    An HTML block that contains an unordered list.
+    """A list of items in a bulleted list.
     
     Attributes:
-        items (list): An unordered list of items.
-            Renders as bullet points (small black circles).
+        items: A list of one or more `UnorderedListItem` objects.
     """
     items: LList[str] = Field(default_factory=lambda: [""])
 
@@ -474,13 +480,11 @@ class UnorderedList(List):
 
 @dataclass(config=dataclass_config, repr=False)
 class BlockQuote(Block):
-    """
-    An HTML block that indents the specified text as a quotation.
-
+    """A block of quoted text.
+    
     Attributes:
-        text (str): Text to render in block quote.
+        text: The text of the block quote.
     """
-
     text: TextLikeField = ""
 
     def _to_model(self):
@@ -493,15 +497,13 @@ class BlockQuote(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class CodeBlock(Block):
-    """
-    An HTML block that contains code samples.
-
+    """A block of code.
+    
     Attributes:
-        code (str): A string that contains example code.
-        language (str): The language the code is written in.
-            The language specified is used for syntax highlighting. 
+        code: The code in the block.
+        language: The language of the code. The language specified
+            is used for syntax highlighting.
     """
-
     code: TextLikeField = ""
     language: Optional[Language] = "python"
 
@@ -524,12 +526,11 @@ class CodeBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class MarkdownBlock(Block):
-    """
-    A Markdown block. Useful if you want to write text
+    """A block of markdown text. Useful if you want to write text
     that uses common markdown syntax.
-
+    
     Attributes:
-        text (str): Text you want to appear in the markdown block.
+        text: The markdown text.
     """
     text: str = ""
 
@@ -543,12 +544,10 @@ class MarkdownBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class LatexBlock(Block):
-    """
-    A LaTeX block. Useful if you want to write formulas with LaTeX syntax.
+    """A block of LaTeX text.
     
     Attributes:
-        text (str): Text you want to appear in the LaTeX block.
-
+        text: The LaTeX text.
     """
     text: str = ""
 
@@ -562,15 +561,12 @@ class LatexBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class Image(Block):
-    """
-    An image HTML block. 
-
+    """A block that renders an image.
+    
     Attributes:
-        url (str): The URL where your image is hosted.
-        caption (str): A description of the image that appears underneath the image.
+        url: The URL of the image.
+        caption: The caption of the image. Caption appears underneath the image.
     """
-
-
     url: str = "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
     caption: TextLikeField = ""
 
@@ -590,11 +586,10 @@ class Image(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class CalloutBlock(Block):
-    """
-    An HTML block that renders a callout block.
-
+    """A block of callout text.
+    
     Attributes:
-        text (str): The text to render in the callout block.
+        text: The callout text.
     """
     text: TextLikeField = ""
 
@@ -624,11 +619,10 @@ class HorizontalRule(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class Video(Block):
-    """
-    An HTML block that renders a video.
+    """A block that renders a video.
     
     Attributes:
-        url (str): The URL where the video is hosted.
+        url: The URL of the video.
     """
     url: str = "https://www.youtube.com/watch?v=krWjJcW80_A"
 
@@ -642,12 +636,10 @@ class Video(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class Spotify(Block):
-    """
-    An HTML block that renders an iFrame with the song, album, playlist, and so forth.
+    """A block that renders a Spotify player.
     
     Attributes:
-        spotify_id (str): The base-62 identifier found at the end
-            of the Spotify URI for an artist, track, album, playlist, and so forth.
+        spotify_id: The Spotify ID of the track or playlist.
     """
     spotify_id: str
 
@@ -727,6 +719,12 @@ class Gallery(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class OrderBy(Base):
+    """A metric to order by.
+    
+    Attributes:
+        name: The name of the metric.
+        ascending: Whether to sort in ascending order.
+    """
     name: MetricType
     ascending: bool = False
 
@@ -746,6 +744,18 @@ class OrderBy(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Runset(Base):
+    """A set of runs to display in a panel grid.
+    
+    Attributes:
+        entity: The entity name.
+        project: The project name.
+        name: The name of the run set.
+        query: A query string to filter runs.
+        filters: A filter string to filter runs.
+        groupby: A list of metric names to group by.
+        order: A list of `OrderBy` objects to order by.
+        custom_run_colors: A dictionary mapping run IDs to colors.
+    """
     entity: str = ""
     project: str = ""
     name: str = "Run set"
@@ -806,6 +816,11 @@ class Runset(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Panel(Base):
+    """A panel to display in a panel grid.
+    
+    Attributes:
+        layout: A `Layout` object.
+    """
     layout: Layout = Field(default_factory=Layout, kw_only=True)
 
     _id: str = Field(
@@ -825,8 +840,8 @@ class PanelGrid(Block):
 
 
     Attributes:
-        runsets (list): A list of one or more Runset objects.
-        panels (list): A list of one or more Panel objects.
+        runsets (list): A list of one or more `Runset` objects.
+        panels (list): A list of one or more `Panel` objects.
         active_runset (int):  The number of runs you want to display within a runset.
         custom_run_colors (dict): Key-value pairs where the key is the name of a
             run and the value is a color specified by a hexadecimal value.
@@ -891,7 +906,7 @@ class PanelGrid(Block):
 @dataclass(config=dataclass_config, repr=False)
 class TableOfContents(Block):
     """
-    An HTML block that contains a list of sections and subsections using
+    A block that contains a list of sections and subsections using
     H1, H2, and H3 HTML tags specified in a report.
     """
     def _to_model(self):
@@ -904,6 +919,11 @@ class TableOfContents(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class Twitter(Block):
+    """A block that displays a Twitter feed.
+    
+    Attributes:
+        html (str): The HTML code to display the Twitter feed.
+    """
     html: str
 
     def _to_model(self):
@@ -1466,11 +1486,11 @@ block_mapping = {
 @dataclass(config=dataclass_config, repr=False)
 class GradientPoint(Base):
     """
-    INSERT
+    A point in a gradient.
 
     Attributes:
-        color: INSERT
-        offset: INSERT
+        color: The color of the point.
+        offset: The position of the point in the gradient. The value should be between 0 and 100.
     """
     color: Annotated[str, internal.ColorStrConstraints]
     offset: Annotated[float, Ge(0), Le(100)] = 0
@@ -1486,7 +1506,7 @@ class GradientPoint(Base):
 @dataclass(config=dataclass_config, repr=False)
 class LinePlot(Panel):
     """
-    A panel object that shows 2D line plots.
+    A panel object with 2D line plots.
 
     Attributes:
         title (Optional[str]): The text that appears at the top of the plot.
@@ -1512,19 +1532,19 @@ class LinePlot(Panel):
         smoothing_type Optional[SmoothingType]: Apply a filter based on the specified
             distribution. Options include "exponentialTimeWeighted", "exponential",
             "gaussian", "average", or "none".
-        smoothing_show_original (Optional[bool]): INSERT.
+        smoothing_show_original (Optional[bool]):   If set to `True`, show the original data.
         max_runs_to_show (Optional[int]): The maximum number of runs to show on the line plot.
-        custom_expressions (Optional[LList[str]]): INSERT.
+        custom_expressions (Optional[LList[str]]): Custom expressions to apply to the data.
         plot_type Optional[LinePlotStyle]: The type of line plot to generate.
             Options include "line", "stacked-area", or "pct-area".
         font_size Optional[FontSize]: The size of the line plot's font.
             Options include "small", "medium", "large", "auto", or `None`.
         legend_position Optional[LegendPosition]: Where to place the legend.
             Options include "north", "south", "east", "west", or `None`.
-        legend_template (Optional[str]): INSERT.
-        aggregate (Optional[bool]): INSERT.
-        xaxis_expression (Optional[str]): INSERT.
-        legend_fields (Optional[LList[str]]): INSERT.
+        legend_template (Optional[str]): The template for the legend.
+        aggregate (Optional[bool]): If set to `True`, aggregate the data.
+        xaxis_expression (Optional[str]): The expression for the x-axis.
+        legend_fields (Optional[LList[str]]): The fields to include in the legend.
     """
 
     title: Optional[str] = None
@@ -1640,14 +1660,14 @@ class ScatterPlot(Panel):
         log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
         log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
         log_z (Optional[bool]): Plots the z-coordinates using a base-10 logarithmic scale.
-        running_ymin (Optional[bool]): Apply a moving average or rolling mean on INSERT.
+        running_ymin (Optional[bool]):  Apply a moving average or rolling mean on  INSERT.
         running_ymax (Optional[bool]): Apply a moving average or rolling mean on INSERT.
         running_ymean (Optional[bool]): Apply a moving average or rolling mean on INSERT.
-        legend_template (Optional[str]): INSERT.
-        gradient (Optional[LList[GradientPoint]]): INSERT.
+        legend_template (Optional[str]):  A string that specifies the format of the legend.
+        gradient (Optional[LList[GradientPoint]]):  A list of gradient points that specify the color gradient of the plot.
         font_size (Optional[FontSize]): The size of the line plot's font.
             Options include "small", "medium", "large", "auto", or `None`.
-        regression (Optional[bool]): INSERT.
+        regression (Optional[bool]): If `True`, a regression line is plotted on the scatter plot.
     """
     title: Optional[str] = None
     x: Optional[SummaryOrConfigOnlyMetric] = None
@@ -1750,12 +1770,12 @@ class BarPlot(Panel):
             include "minmax", "stddev", "stderr", "none", "samples", or `None`.
         max_runs_to_show (Optional[int]): The maximum number of runs to show on the plot.
         max_bars_to_show (Optional[int]): The maximum number of bars to show on the bar plot.
-        custom_expressions (Optional[LList[str]]): INSERT.
-        legend_template (Optional[str]): INSERT
+        custom_expressions (Optional[LList[str]]): A list of custom expressions to be used in the bar plot.
+        legend_template (Optional[str]): The template for the legend.
         font_size( Optional[FontSize]): The size of the line plot's font.
             Options include "small", "medium", "large", "auto", or `None`.
-        line_titles (Optional[dict]): INSERT.
-        line_colors (Optional[dict]): INSERT.
+        line_titles (Optional[dict]): The titles of the lines. The keys are the line names and the values are the titles.
+        line_colors (Optional[dict]): The colors of the lines. The keys are the line names and the values are the colors.
     """
 
 
@@ -1839,8 +1859,8 @@ class ScalarChart(Panel):
             function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
         groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
             include "minmax", "stddev", "stderr", "none", "samples", or `None`.
-        custom_expressions (Optional[LList[str]]): INSERT.
-        legend_template (Optional[str]): INSERT.
+        custom_expressions (Optional[LList[str]]): A list of custom expressions to be used in the scalar chart.
+        legend_template (Optional[str]): The template for the legend.
         font_size Optional[FontSize]: The size of the line plot's font.
             Options include "small", "medium", "large", "auto", or `None`.
     
@@ -1921,8 +1941,8 @@ class ParallelCoordinatesPlotColumn(Base):
     Attributes:
         metric: The name of the metric logged to your W&B project that the report pulls information from.
         display_name (str): The name of the metric 
-        inverted (bool):
-        log (bool):
+        inverted (bool): Whether to invert the metric.
+        log (bool): Whether to apply a log transformation to the metric.
     """
     metric: SummaryOrConfigOnlyMetric
     display_name: Optional[str] = None
@@ -1957,7 +1977,7 @@ class ParallelCoordinatesPlot(Panel):
         columns (LList[ParallelCoordinatesPlotColumn]): A list of one
             or more `ParallelCoordinatesPlotColumn` objects. 
         title (Optional[str]): The text that appears at the top of the plot.
-        gradient (Optional[LList[GradientPoint]]): INSERT.
+        gradient (Optional[LList[GradientPoint]]): INSERT
         font_size (Optional[FontSize]): The size of the line plot's font.
             Options include "small", "medium", "large", "auto", or `None`.
     """
@@ -2069,11 +2089,11 @@ class RunComparer(Panel):
 @dataclass(config=dataclass_config, repr=False)
 class MediaBrowser(Panel):
     """
-    INSERT
+    A panel that displays media files in a grid layout.
 
     Attributes:
-        num_columns (Optional[int]): INSERT
-        media_keys (LList[str]): INSERT
+        num_columns (Optional[int]): The number of columns in the grid.
+        media_keys (LList[str]): A list of media keys that correspond to the media files.
     """
     num_columns: Optional[int] = None
     media_keys: LList[str] = Field(default_factory=list)
@@ -2131,14 +2151,14 @@ class MarkdownPanel(Panel):
 @dataclass(config=dataclass_config, repr=False)
 class CustomChart(Panel):
     """
-    A panel that shows a custom chart. INSERT
+    A panel that shows a custom chart. The chart is defined by a query.
 
     Attributes:
-        query (dict): INSERT
+        query (dict): The query that defines the custom chart. The key is the name of the field, and the value is the query.
         chart_name (str): The title of the custom chart.
         chart_fields (dict): Key-value pairs that define the axis of the
             plot. Where the key is the label, and the value is the metric.
-        chart_strings (dict): INSERT
+        chart_strings (dict): Key-value pairs that define the strings in the chart.
 
     """
     # Custom chart configs should look exactly like they do in the UI.  Please check the query carefully!
@@ -2152,12 +2172,12 @@ class CustomChart(Panel):
         cls, table_name: str, chart_fields: dict = None, chart_strings: dict = None
     ):
         """
-        INSERT
+        Create a custom chart from a table.
         
         Arguments:
-            table_name (str): INSERT
-            chart_fields (dict): INSERT
-            chart_strings (dict): INSERT
+            table_name (str): The name of the table.
+            chart_fields (dict): The fields to display in the chart. The key is the INSERT
+            chart_strings (dict): The strings to display in the chart. The key is the INSERT
         """
         return cls(
             query={"summaryTable": {"tableKey": table_name}},
@@ -2832,7 +2852,7 @@ class Report(Base):
         
         Arguments:
             url: The URL where the report is hosted.
-            as_model: INSERT
+            as_model: If True, return the model object instead of the Report object.
         """
         vs = _url_to_viewspec(url)
         model = internal.ReportViewspec.model_validate(vs)
@@ -2845,8 +2865,8 @@ class Report(Base):
         Generate HTML containing an iframe displaying this report.
         
         Arguments:
-            height: INSERT
-            hidden: INSERT
+            height: Height of the iframe.
+            hidden: If True, the iframe will be hidden by default.
         """
         try:
             url = self.url + "?jupyter=true"
