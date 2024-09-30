@@ -97,8 +97,8 @@ def test_idempotency(request, factory_name) -> None:
     cls = factory.__model__
     assert isinstance(instance, cls)
 
-    model = instance.to_model()
-    model2 = cls.from_model(model).to_model()
+    model = instance._to_model()
+    model2 = cls.from_model(model)._to_model()
 
     assert model.dict() == model2.dict()
 
@@ -136,7 +136,7 @@ def test_idempotency(request, factory_name) -> None:
     ],
 )
 def test_filter_expr(expr, spec):
-    assert expr.to_model().model_dump(by_alias=True, exclude_none=True) == spec
+    assert expr._to_model().model_dump(by_alias=True, exclude_none=True) == spec
 
 
 def test_load_workspace_from_url():
