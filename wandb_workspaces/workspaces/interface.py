@@ -647,7 +647,7 @@ class Workspace(Base):
     @classmethod
     def save(self):
         """Save a workspace to W&B."""
-        view = self._to_model()
+        view = self._to_model(self)
 
         # If creating a new view with `ws.Workspace(...)`
         if not view.name:
@@ -663,7 +663,7 @@ class Workspace(Base):
     @classmethod
     def save_as_new_view(self):
         """Save a workspace to W&B."""
-        view = self._to_model()
+        view = self._to_model(self)
 
         # Generate a new view name and ID
         view.name = internal._generate_view_name()
