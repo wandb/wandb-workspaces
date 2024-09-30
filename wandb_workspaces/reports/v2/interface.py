@@ -82,33 +82,69 @@ class Base:
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroupKey:
+    """A key for grouping runsets.
+    
+    Attributes:
+        key: The metric type to group by.
+        value: The value of the metric to group by.
+    """
     key: MetricType
     value: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroup:
+    """UI element that shows a group of runsets.
+    
+    Attributes:
+        runset_name: The name of the runset.
+        keys: The keys to group by.
+
+    """
     runset_name: str
     keys: Tuple[RunsetGroupKey, ...]
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class Metric:
+    """A metric to display in a report.
+    
+    Attributes:
+        name: The name of the metric.
+    """
     name: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class Config:
+    """A configuration for a metric.
+    
+    Attributes:
+        name: The name of the metric.
+    """
     name: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class SummaryMetric:
+    """A summary metric to display in a report.
+    
+    Attributes:
+        name: The name of the metric.
+    """
     name: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class Layout(Base):
+    """The layout of a block in a report. Adjusts the size and position of the block.
+    
+    Attributes:
+        x: The x position of the block.
+        y: The y position of the block.
+        w: The width of the block.
+        h: The height of the block.
+    """
     x: int = 0
     y: int = 0
     w: int = 8
@@ -147,6 +183,11 @@ class UnknownBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class TextWithInlineComments(Base):
+    """A block of text with inline comments.
+    
+    Attributes:
+        text: The text of the block.
+    """
     text: str
 
     _inline_comments: Optional[LList[internal.InlineComment]] = Field(
@@ -174,6 +215,11 @@ class Heading(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class H1(Heading):
+    """Creates an H1 HTML tag with the text specified.
+    
+    Attributes:
+        text: The text of the heading.
+    """
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
@@ -191,6 +237,12 @@ class H1(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class H2(Heading):
+    """Creates an H2 HTML tag with the text specified.
+    
+    Attributes:
+        text: The text of the heading.
+        collapsed_blocks: The blocks to show when the heading is collapsed.
+    """
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
@@ -208,6 +260,12 @@ class H2(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class H3(Heading):
+    """Creates an H3 HTML tag with the text specified.
+    
+    Attributes:
+        text: The text of the heading.
+        collapsed_blocks: The blocks to show when the heading is collapsed.
+    """
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
@@ -225,6 +283,12 @@ class H3(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class Link(Base):
+    """A link to a URL.
+    
+    Attributes:
+        text: The text of the link.
+        url: The URL the link points to.
+    """
     text: Union[str, TextWithInlineComments]
     url: str
 
@@ -235,16 +299,35 @@ class Link(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineLatex(Base):
+    """A block of inline LaTeX. Does not add newline
+    character after LaTeX. This differs from `LatexBlock`
+    which is an HTML block with LaTeX.
+    
+    Attributes:
+        text: The LaTeX code.
+    """
     text: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineCode(Base):
+    """A block of inline code. Does not add newline
+    character after code. This differs from `CodeBlock`
+    which is an HTML block with code.
+    
+    Attributes:
+        text: The code.
+    """
     text: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class P(Block):
+    """A paragraph of text.
+    
+    Attributes:
+        text: The text of the paragraph.
+    """
     text: TextLikeField = ""
 
     def to_model(self):
@@ -272,6 +355,12 @@ class ListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class CheckedListItem(Base):
+    """A list item with a checkbox. Add one ore more `CheckedListItem` within `CheckList`.
+    
+    Attributes:
+        text: The text of the list item.
+        checked: Whether the checkbox is checked.
+    """
     text: TextLikeField = ""
     checked: bool = False
 
@@ -286,6 +375,11 @@ class CheckedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class OrderedListItem(Base):
+    """A list item in an ordered list.
+    
+    Attributes:
+        text: The text of the list item.
+    """
     text: TextLikeField = ""
 
     def to_model(self):
@@ -299,6 +393,11 @@ class OrderedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class UnorderedListItem(Base):
+    """A list item in an unordered list.
+    
+    Attributes:
+        text: The text of the list item.
+    """
     text: TextLikeField = ""
 
     def to_model(self):
@@ -311,6 +410,7 @@ class UnorderedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class List(Block):
+    """A list of items."""
     @classmethod
     def from_model(cls, model: internal.List):
         if not model.children:
@@ -330,6 +430,11 @@ class List(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class CheckedList(List):
+    """A list of items with checkboxes. Add one or more `CheckedListItem` within `CheckedList`.
+    
+    Attributes:
+        items: A list of one or more `CheckedListItem` objects.
+    """
     items: LList[CheckedListItem] = Field(default_factory=lambda: [CheckedListItem()])
 
     def to_model(self):
@@ -339,6 +444,11 @@ class CheckedList(List):
 
 @dataclass(config=dataclass_config, repr=False)
 class OrderedList(List):
+    """A list of items in a numbered list.
+    
+    Attributes:
+        items: A list of one or more `OrderedListItem` objects.
+    """
     items: LList[str] = Field(default_factory=lambda: [""])
 
     def to_model(self):
@@ -348,6 +458,11 @@ class OrderedList(List):
 
 @dataclass(config=dataclass_config, repr=False)
 class UnorderedList(List):
+    """A list of items in a bulleted list.
+    
+    Attributes:
+        items: A list of one or more `UnorderedListItem` objects.
+    """
     items: LList[str] = Field(default_factory=lambda: [""])
 
     def to_model(self):
@@ -357,6 +472,11 @@ class UnorderedList(List):
 
 @dataclass(config=dataclass_config, repr=False)
 class BlockQuote(Block):
+    """A block of quoted text.
+    
+    Attributes:
+        text: The text of the block quote.
+    """
     text: TextLikeField = ""
 
     def to_model(self):
@@ -369,6 +489,13 @@ class BlockQuote(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class CodeBlock(Block):
+    """A block of code.
+    
+    Attributes:
+        code: The code in the block.
+        language: The language of the code. The language specified
+            is used for syntax highlighting.
+    """
     code: TextLikeField = ""
     language: Optional[Language] = "python"
 
@@ -391,6 +518,11 @@ class CodeBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class MarkdownBlock(Block):
+    """A block of markdown text.
+    
+    Attributes:
+        text: The markdown text.
+    """
     text: str = ""
 
     def to_model(self):
@@ -403,6 +535,11 @@ class MarkdownBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class LatexBlock(Block):
+    """A block of LaTeX text.
+    
+    Attributes:
+        text: The LaTeX text.
+    """
     text: str = ""
 
     def to_model(self):
@@ -415,6 +552,12 @@ class LatexBlock(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class Image(Block):
+    """An image.
+    
+    Attributes:
+        url: The URL of the image.
+        caption: The caption of the image. Caption appears underneath the image.
+    """
     url: str = "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
     caption: TextLikeField = ""
 
@@ -434,6 +577,11 @@ class Image(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class CalloutBlock(Block):
+    """A block of callout text.
+    
+    Attributes:
+        text: The callout text.
+    """
     text: TextLikeField = ""
 
     def to_model(self):
@@ -461,6 +609,11 @@ class HorizontalRule(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class Video(Block):
+    """A block that renders a video.
+    
+    Attributes:
+        url: The URL of the video.
+    """
     url: str = "https://www.youtube.com/watch?v=krWjJcW80_A"
 
     def to_model(self):
@@ -473,6 +626,11 @@ class Video(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class Spotify(Block):
+    """A block that renders a Spotify player.
+    
+    Attributes:
+        spotify_id: The Spotify ID of the track or playlist.
+    """
     spotify_id: str
 
     def to_model(self):
