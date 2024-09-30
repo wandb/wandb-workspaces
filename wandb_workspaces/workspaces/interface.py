@@ -78,7 +78,7 @@ class Base:
 @dataclass(config=dataclass_config, repr=False)
 class SectionLayoutSettings(Base):
     """Panel layout settings for a section, typically seen at the top right of the section in the UI.
-    
+
     Attributes:
         layout: In a standard layout, the number of columns in the layout.
         columns: In a standard layout, the number of columns in the layout.
@@ -174,7 +174,7 @@ class SectionPanelSettings(Base):
 @dataclass(config=dataclass_config, repr=False)
 class Section(Base):
     """Represents a section in a workspace.
-    
+
     Attributes:
         name: The name/title of the section.
         panels: An ordered list of panels in the section.  By default, first is top-left and last is bottom-right.
@@ -236,14 +236,14 @@ class WorkspaceSettings(Base):
     Workspace < Section < Panel
 
     Attributes:
-        x_axis: X-axis metric name setting
-        x_min
-        x_max
-        smoothing_type
-        smoothing_weight
-        ignore_outliers
-        sort_panels_alphabetically
-        group_by_prefix
+        x_axis: X-axis metric name setting.
+        x_min: Minimum value for the x-axis.
+        x_max: Maximum value for the x-axis.
+        smoothing_type: Smoothing type applied to all panels.
+        smoothing_weight: Smoothing weight applied to all panels.
+        ignore_outliers: Ignore outliers in all panels.
+        sort_panels_alphabetically: Sorts panels in all sections alphabetically.
+        group_by_prefix: Group panels by the first or up to last prefix (first or last).
     """
 
     # Axis settings
@@ -319,7 +319,7 @@ class WorkspaceSettings(Base):
 @dataclass(config=dataclass_config, repr=False)
 class RunSettings(Base):
     """Settings for a run in a runset (left hand bar).
-    
+
     Attributes:
         color: The color of the run in the UI.  Can be hex (#ff0000), css color (red), or rgb (rgb(255, 0, 0))
         disabled: Whether the run is disabled (eye closed in the UI).
@@ -335,7 +335,7 @@ class RunSettings(Base):
 @dataclass(config=dataclass_config, repr=False)
 class RunsetSettings(Base):
     """Settings for the runset (the left bar containing runs) in a workspace.
-    
+
     Attributes:
         query: A query to filter the runset (can be a regex expr, see next param).
         regex_query: Controls whether the query (above) is a regex expr.
@@ -343,7 +343,7 @@ class RunsetSettings(Base):
         groupby: A list of metrics to group by in the runset.
         order: A list of metrics and ordering to apply to the runset.
         run_settings: A dictionary of run settings, where the key is the run's ID and the value is a RunSettings object.
-    
+
     """
 
     query: str = ""
@@ -385,7 +385,7 @@ class RunsetSettings(Base):
 @dataclass(config=dataclass_config, repr=False)
 class Workspace(Base):
     """Represents a W&B workspace, including sections, settings, and config for run sets.
-    
+
     Attributes:
         entity: The entity this workspace will be saved to (usually user or team name).
         project: The project this workspace will be saved to.
@@ -659,7 +659,7 @@ class Workspace(Base):
 
         wandb.termlog(f"View saved: {self.url}")
         return self
-    
+
     @classmethod
     def save_as_new_view(self):
         """Save a workspace to W&B."""
