@@ -136,7 +136,7 @@ def test_idempotency(request, factory_name) -> None:
     ],
 )
 def test_filter_expr(expr, spec):
-    assert expr._to_model().model_dump(by_alias=True, exclude_none=True) == spec
+    assert expr.to_model().model_dump(by_alias=True, exclude_none=True) == spec
 
 
 def test_load_workspace_from_url():
