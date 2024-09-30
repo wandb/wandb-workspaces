@@ -163,7 +163,7 @@ class Layout(Base):
     w: int = 8
     h: int = 6
 
-    def __to_model(self):
+    def _to_model(self):
         return internal.Layout(x=self.x, y=self.y, w=self.w, h=self.h)
 
     @classmethod
