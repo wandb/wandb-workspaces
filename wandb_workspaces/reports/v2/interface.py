@@ -205,6 +205,7 @@ class TextWithInlineComments(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Heading(Block):
+    """A heading block. INSERT"""
     @classmethod
     def _from_model(cls, model: internal.Heading):
         text = _internal_children_to_text(model.children)
@@ -653,6 +654,11 @@ class Spotify(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class SoundCloud(Block):
+    """A block that renders a SoundCloud player.
+    
+    Attributes:
+        html: The HTML code to embed the SoundCloud player.
+    """
     html: str
 
     def _to_model(self):
