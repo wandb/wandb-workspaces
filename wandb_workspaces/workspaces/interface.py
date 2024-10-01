@@ -645,7 +645,12 @@ class Workspace(Base):
         return cls._from_model(view)
 
     def save(self):
-        """Save a workspace to W&B."""
+        """
+        Save the current workspace to W&B.
+        
+        Returns:
+            Workspace: The updated workspace with the saved internal name and ID.
+        """
         view = self._to_model()
 
         # If creating a new view with `ws.Workspace(...)`
@@ -660,7 +665,12 @@ class Workspace(Base):
         return self
 
     def save_as_new_view(self):
-        """Save a workspace to W&B."""
+        """
+        Save the current workspace as a new view to W&B.
+        
+        Returns:
+            Workspace: The updated workspace with the saved internal name and ID.
+        """
         view = self._to_model()
 
         # Generate a new view name and ID
