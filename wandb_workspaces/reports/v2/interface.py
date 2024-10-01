@@ -702,11 +702,24 @@ class SoundCloud(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class GalleryReport(Base):
+    """A reference to a report in the gallery.
+    
+    Attributes:
+        report_id: The ID of the report.
+    """
     report_id: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class GalleryURL(Base):
+    """A URL to an external resource.
+    
+    Attributes:
+        url: The URL.
+        title: The title of the resource.
+        description: The description of the resource.
+        image_url: The URL of an image to display.
+    """
     url: str  # app accepts non-standard URL unfortunately
     title: Optional[str] = None
     description: Optional[str] = None
@@ -715,6 +728,12 @@ class GalleryURL(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Gallery(Block):
+    """
+    A block that renders a gallery of reports and URLs.
+    
+    Attributes:
+        items: A list of `GalleryReport` and `GalleryURL` objects.
+    """
     items: LList[Union[GalleryReport, GalleryURL]] = Field(default_factory=list)
 
     def _to_model(self):
