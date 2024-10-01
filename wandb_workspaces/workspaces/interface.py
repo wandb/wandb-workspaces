@@ -644,7 +644,6 @@ class Workspace(Base):
         view = internal.View.from_name(entity, project, internal_view_name)
         return cls._from_model(view)
 
-    
     def save(self):
         """Save a workspace to W&B."""
         view = self._to_model()
@@ -660,7 +659,6 @@ class Workspace(Base):
         wandb.termlog(f"View saved: {self.url}")
         return self
 
-    
     def save_as_new_view(self):
         """Save a workspace to W&B."""
         view = self._to_model()

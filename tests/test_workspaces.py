@@ -158,7 +158,6 @@ def test_save_workspace():
     ), "Workspace internal name should not change after saving"
 
 
-
 def test_save_workspace_as_new_view():
     workspace = ws.Workspace(entity="megatruong", project="workspace-api-demo")
     workspace.save_as_new_view()
