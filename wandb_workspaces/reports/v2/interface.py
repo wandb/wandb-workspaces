@@ -1,4 +1,5 @@
-"""Python library for programmatically working with Weights & Biases Reports API.
+"""
+Python library for programmatically working with W&B Reports API.
 
 ```python
 # How to import
@@ -89,11 +90,13 @@ class Base:
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroupKey:
-    """A key for grouping runsets.
+    """
+    Groups runsets by a metric type and value. Part of a `RunsetGroup`.
+    Specify the metric type and value to group by as key-value pairs.
 
     Attributes:
-        key: The metric type to group by.
-        value: The value of the metric to group by.
+        key (str): The metric type to group by.
+        value (str): The value of the metric to group by.
     """
 
     key: MetricType
@@ -102,11 +105,13 @@ class RunsetGroupKey:
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroup:
-    """UI element that shows a group of runsets.
+    """UI element that shows a group of runsets. 
 
     Attributes:
-        runset_name: The name of the runset.
-        keys: The keys to group by.
+        runset_name (str): The name of the runset.
+        keys (str): The keys to group by.
+            Pass in one or more `RunsetGroupKey`
+            objects to group by.
 
     """
 
@@ -116,10 +121,12 @@ class RunsetGroup:
 
 @dataclass(config=dataclass_config, frozen=True)
 class Metric:
-    """A metric to display in a report.
+    """
+    A metric to display in a report that
+    is logged in your project.
 
     Attributes:
-        name: The name of the metric.
+        name(str): The name of the metric.
     """
 
     name: str
@@ -127,10 +134,15 @@ class Metric:
 
 @dataclass(config=dataclass_config, frozen=True)
 class Config:
-    """A configuration for a metric.
+    """
+    Metrics logged to a run's config object.
+    Config objects are commonly logged using `run.config[name] = ...`
+    or passing a config as a dictionary of key-value pairs,
+    where the key is the name of the metric and the value is
+    the value of that metric. 
 
     Attributes:
-        name: The name of the metric.
+        name (str): The name of the metric.
     """
 
     name: str
@@ -141,7 +153,7 @@ class SummaryMetric:
     """A summary metric to display in a report.
 
     Attributes:
-        name: The name of the metric.
+        name (str): The name of the metric.
     """
 
     name: str
@@ -149,13 +161,13 @@ class SummaryMetric:
 
 @dataclass(config=dataclass_config, repr=False)
 class Layout(Base):
-    """The layout of a block in a report. Adjusts the size and position of the block.
+    """The layout of a panel in a report. Adjusts the size and position of the panel.
 
     Attributes:
-        x: The x position of the block.
-        y: The y position of the block.
-        w: The width of the block.
-        h: The height of the block.
+        x (int): The x position of the panel.
+        y (int): The y position of the panel.
+        w (int): The width of the panel.
+        h (int): The height of the panel.
     """
 
     x: int = 0
@@ -199,7 +211,7 @@ class TextWithInlineComments(Base):
     """A block of text with inline comments.
 
     Attributes:
-        text: The text of the block.
+        text (str): The text of the block.
     """
 
     text: str
@@ -211,7 +223,6 @@ class TextWithInlineComments(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Heading(Block):
-    """A heading block. INSERT"""
 
     @classmethod
     def _from_model(cls, model: internal.Heading):
@@ -231,10 +242,11 @@ class Heading(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class H1(Heading):
-    """Creates an H1 HTML tag with the text specified.
+    """An H1 heading with the text specified.
 
     Attributes:
-        text: The text of the heading.
+        text (str): The text of the heading.
+        collapsed_blocks (Optional[LList["BlockTypes"]]): The blocks to show when the heading is collapsed.
     """
 
     text: TextLikeField = ""
@@ -254,11 +266,12 @@ class H1(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class H2(Heading):
-    """Creates an H2 HTML tag with the text specified.
+    """An H2 heading with the text specified.
 
     Attributes:
-        text: The text of the heading.
-        collapsed_blocks: The blocks to show when the heading is collapsed.
+        text (str): The text of the heading.
+        collapsed_blocks (Optional[LList["BlockTypes"]]): One or more blocks to
+            show when the heading is collapsed.
     """
 
     text: TextLikeField = ""
@@ -278,11 +291,12 @@ class H2(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class H3(Heading):
-    """Creates an H3 HTML tag with the text specified.
+    """An H3 heading with the text specified.
 
     Attributes:
-        text: The text of the heading.
-        collapsed_blocks: The blocks to show when the heading is collapsed.
+        text (str): The text of the heading.
+        collapsed_blocks (Optional[LList["BlockTypes"]]): One or more blocks to
+            show when the heading is collapsed. 
     """
 
     text: TextLikeField = ""
@@ -305,8 +319,8 @@ class Link(Base):
     """A link to a URL.
 
     Attributes:
-        text: The text of the link.
-        url: The URL the link points to.
+        text (Union[str, TextWithInlineComments]): The text of the link.
+        url (str): The URL the link points to.
     """
 
     text: Union[str, TextWithInlineComments]
@@ -319,12 +333,11 @@ class Link(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineLatex(Base):
-    """A block of inline LaTeX. Does not add newline
-    character after LaTeX. This differs from `LatexBlock`
-    which is an HTML block with LaTeX.
+    """Inline LaTeX markdown. Does not add newline
+    character after the LaTeX markdown.
 
     Attributes:
-        text: The LaTeX code.
+        text (str): LaTeX markdown you want to appear in the report.
     """
 
     text: str
@@ -332,12 +345,11 @@ class InlineLatex(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineCode(Base):
-    """A block of inline code. Does not add newline
-    character after code. This differs from `CodeBlock`
-    which is an HTML block with code.
+    """Inline code. Does not add newline
+    character after code.
 
     Attributes:
-        text: The code.
+        text (str): The code you want to appear in the report.
     """
 
     text: str
@@ -345,10 +357,10 @@ class InlineCode(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class P(Block):
-    """A block that contains a paragraph of text.
+    """A paragraph of text.
 
     Attributes:
-        text: The text of the paragraph.
+        text (str): The text of the paragraph.
     """
 
     text: TextLikeField = ""
@@ -378,11 +390,11 @@ class ListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class CheckedListItem(Base):
-    """A list item with a checkbox. Add one ore more `CheckedListItem` within `CheckList`.
+    """A list item with a checkbox. Add one or more `CheckedListItem` within `CheckedList`.
 
     Attributes:
-        text: The text of the list item.
-        checked: Whether the checkbox is checked.
+        text (str): The text of the list item.
+        checked (bool): Whether the checkbox is checked. By default, set to `False`.
     """
 
     text: TextLikeField = ""
@@ -402,7 +414,7 @@ class OrderedListItem(Base):
     """A list item in an ordered list.
 
     Attributes:
-        text: The text of the list item.
+        text (str): The text of the list item.
     """
 
     text: TextLikeField = ""
@@ -421,7 +433,7 @@ class UnorderedListItem(Base):
     """A list item in an unordered list.
 
     Attributes:
-        text: The text of the list item.
+        text (str): The text of the list item.
     """
 
     text: TextLikeField = ""
@@ -436,7 +448,6 @@ class UnorderedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class List(Block):
-    """A list of items."""
 
     @classmethod
     def _from_model(cls, model: internal.List):
@@ -460,7 +471,7 @@ class CheckedList(List):
     """A list of items with checkboxes. Add one or more `CheckedListItem` within `CheckedList`.
 
     Attributes:
-        items: A list of one or more `CheckedListItem` objects.
+        items (LList[CheckedListItem]): A list of one or more `CheckedListItem` objects.
     """
 
     items: LList[CheckedListItem] = Field(default_factory=lambda: [CheckedListItem()])
@@ -475,7 +486,7 @@ class OrderedList(List):
     """A list of items in a numbered list.
 
     Attributes:
-        items: A list of one or more `OrderedListItem` objects.
+        items (LList[str]): A list of one or more `OrderedListItem` objects.
     """
 
     items: LList[str] = Field(default_factory=lambda: [""])
@@ -490,7 +501,7 @@ class UnorderedList(List):
     """A list of items in a bulleted list.
 
     Attributes:
-        items: A list of one or more `UnorderedListItem` objects.
+        items (LList[str]): A list of one or more `UnorderedListItem` objects.
     """
 
     items: LList[str] = Field(default_factory=lambda: [""])
@@ -505,7 +516,7 @@ class BlockQuote(Block):
     """A block of quoted text.
 
     Attributes:
-        text: The text of the block quote.
+        text (str): The text of the block quote.
     """
 
     text: TextLikeField = ""
@@ -523,9 +534,10 @@ class CodeBlock(Block):
     """A block of code.
 
     Attributes:
-        code: The code in the block.
-        language: The language of the code. The language specified
-            is used for syntax highlighting.
+        code (str): The code in the block.
+        language (Optional[Language]): The language of the code. Language specified
+            is used for syntax highlighting. By default, set to "python". Options include
+            'javascript', 'python', 'css', 'json', 'html', 'markdown', 'yaml'.
     """
 
     code: TextLikeField = ""
@@ -554,7 +566,7 @@ class MarkdownBlock(Block):
     that uses common markdown syntax.
 
     Attributes:
-        text: The markdown text.
+        text (str): The markdown text.
     """
 
     text: str = ""
@@ -572,7 +584,7 @@ class LatexBlock(Block):
     """A block of LaTeX text.
 
     Attributes:
-        text: The LaTeX text.
+        text (str): The LaTeX text.
     """
 
     text: str = ""
@@ -590,8 +602,9 @@ class Image(Block):
     """A block that renders an image.
 
     Attributes:
-        url: The URL of the image.
-        caption: The caption of the image. Caption appears underneath the image.
+        url (str): The URL of the image.
+        caption (str): The caption of the image.
+            Caption appears underneath the image.
     """
 
     url: str = "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
@@ -616,7 +629,7 @@ class CalloutBlock(Block):
     """A block of callout text.
 
     Attributes:
-        text: The callout text.
+        text (str): The callout text.
     """
 
     text: TextLikeField = ""
@@ -651,7 +664,7 @@ class Video(Block):
     """A block that renders a video.
 
     Attributes:
-        url: The URL of the video.
+        url (str): The URL of the video.
     """
 
     url: str = "https://www.youtube.com/watch?v=krWjJcW80_A"
@@ -669,7 +682,7 @@ class Spotify(Block):
     """A block that renders a Spotify player.
 
     Attributes:
-        spotify_id: The Spotify ID of the track or playlist.
+        spotify_id (str): The Spotify ID of the track or playlist.
     """
 
     spotify_id: str
@@ -687,7 +700,7 @@ class SoundCloud(Block):
     """A block that renders a SoundCloud player.
 
     Attributes:
-        html: The HTML code to embed the SoundCloud player.
+        html (str): The HTML code to embed the SoundCloud player.
     """
 
     html: str
@@ -705,7 +718,7 @@ class GalleryReport(Base):
     """A reference to a report in the gallery.
     
     Attributes:
-        report_id: The ID of the report.
+        report_id (str): The ID of the report.
     """
     report_id: str
 
@@ -715,10 +728,10 @@ class GalleryURL(Base):
     """A URL to an external resource.
     
     Attributes:
-        url: The URL.
-        title: The title of the resource.
-        description: The description of the resource.
-        image_url: The URL of an image to display.
+        url (str): The URL of the resource.
+        title (Optional[str]): The title of the resource.
+        description (Optional[str]): The description of the resource.
+        image_url (Optional[str]): The URL of an image to display.
     """
     url: str  # app accepts non-standard URL unfortunately
     title: Optional[str] = None
@@ -732,7 +745,8 @@ class Gallery(Block):
     A block that renders a gallery of reports and URLs.
     
     Attributes:
-        items: A list of `GalleryReport` and `GalleryURL` objects.
+        items (List[Union[`GalleryReport`, `GalleryURL`]]): A list of
+            `GalleryReport` and `GalleryURL` objects.
     """
     items: LList[Union[GalleryReport, GalleryURL]] = Field(default_factory=list)
 
@@ -778,8 +792,9 @@ class OrderBy(Base):
     """A metric to order by.
 
     Attributes:
-        name: The name of the metric.
-        ascending: Whether to sort in ascending order.
+        name (str): The name of the metric.
+        ascending (bool): Whether to sort in ascending order.
+            By default set to `False`.
     """
 
     name: MetricType
@@ -804,14 +819,14 @@ class Runset(Base):
     """A set of runs to display in a panel grid.
 
     Attributes:
-        entity: The entity name.
-        project: The project name.
-        name: The name of the run set.
-        query: A query string to filter runs.
-        filters: A filter string to filter runs.
-        groupby: A list of metric names to group by.
-        order: A list of `OrderBy` objects to order by.
-        custom_run_colors: A dictionary mapping run IDs to colors.
+        entity (str): The entity name.
+        project (str): The project name.
+        name (str): The name of the run set. Set to `Run set` by default.
+        query (str): A query string to filter runs.
+        filters (Optional[str]): A filter string to filter runs.
+        groupby (LList[str]): A list of metric names to group by.
+        order (LList[OrderBy]): A list of `OrderBy` objects to order by.
+        custom_run_colors (LList[OrderBy]): A dictionary mapping run IDs to colors.
     """
 
     entity: str = ""
@@ -874,10 +889,10 @@ class Runset(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Panel(Base):
-    """A panel to display in a panel grid.
+    """A panel that displays a visualization in a panel grid.
 
     Attributes:
-        layout: A `Layout` object.
+        layout (Layout): A `Layout` object.
     """
 
     layout: Layout = Field(default_factory=Layout, kw_only=True)
@@ -890,7 +905,8 @@ class Panel(Base):
 @dataclass(config=dataclass_config, repr=False)
 class PanelGrid(Block):
     """
-    An HTML block where you can add `Runset` and `Panel` objects to your project.
+    A grid that consists of runsets and panels. Add runsets and panels with
+    `Runset` and `Panel` objects, respectively.
 
     Available panels include:
     `LinePlot`, `ScatterPlot`, `BarPlot`, `ScalarChart`, `CodeComparer`, `ParallelCoordinatesPlot`,
@@ -899,9 +915,9 @@ class PanelGrid(Block):
 
 
     Attributes:
-        runsets (list): A list of one or more `Runset` objects.
-        panels (list): A list of one or more `Panel` objects.
-        active_runset (int):  The number of runs you want to display within a runset.
+        runsets (LList["Runset"]): A list of one or more `Runset` objects.
+        panels (LList["PanelTypes"]): A list of one or more `Panel` objects.
+        active_runset (int): The number of runs you want to display within a runset. By default, it is set to 0.
         custom_run_colors (dict): Key-value pairs where the key is the name of a
             run and the value is a color specified by a hexadecimal value.
     """
@@ -967,7 +983,7 @@ class PanelGrid(Block):
 class TableOfContents(Block):
     """
     A block that contains a list of sections and subsections using
-    H1, H2, and H3 HTML tags specified in a report.
+    H1, H2, and H3 HTML blocks specified in a report.
     """
 
     def _to_model(self):
@@ -1577,8 +1593,8 @@ class LinePlot(Panel):
             report pulls information from. The metric specified is used for the x-axis.
         y (LList[MetricType]): One or more metrics logged to your W&B project that the report pulls
             information from. The metric specified is used for the y-axis.
-        range_x (tuple): Tuple that specifies the range of the x-axis.
-        range_y (tuple): Tuple that specifies the range of the y-axis.
+        range_x (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the x-axis.
+        range_y (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the y-axis.
         log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
         log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
         title_x (Optional[str]): The label of the x-axis.
@@ -1717,15 +1733,15 @@ class ScatterPlot(Panel):
         y Optional[SummaryOrConfigOnlyMetric]:  One or more metrics logged to your W&B project that the report pulls
             information from. Metrics specified are plotted within the y-axis.
         z Optional[SummaryOrConfigOnlyMetric]:
-        range_x (tuple): Tuple that specifies the range of the x-axis.
-        range_y (tuple): Tuple that specifies the range of the y-axis.
-        range_z: Tuple that specifies the range of the z-axis.
+        range_x (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the x-axis.
+        range_y (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the y-axis.
+        range_z (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the z-axis.
         log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
         log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
         log_z (Optional[bool]): Plots the z-coordinates using a base-10 logarithmic scale.
-        running_ymin (Optional[bool]):  Apply a moving average or rolling mean on  INSERT.
-        running_ymax (Optional[bool]): Apply a moving average or rolling mean on INSERT.
-        running_ymean (Optional[bool]): Apply a moving average or rolling mean on INSERT.
+        running_ymin (Optional[bool]):  Apply a moving average or rolling mean.
+        running_ymax (Optional[bool]): Apply a moving average or rolling mean.
+        running_ymean (Optional[bool]): Apply a moving average or rolling mean.
         legend_template (Optional[str]):  A string that specifies the format of the legend.
         gradient (Optional[LList[GradientPoint]]):  A list of gradient points that specify the color gradient of the plot.
         font_size (Optional[FontSize]): The size of the line plot's font.
@@ -1823,7 +1839,7 @@ class BarPlot(Panel):
         metrics LList[MetricType]:
         orientation Literal["v", "h"]: The orientation of the bar plot.
             Set to either vertical ("v") or horizontal ("h"). Defaults to horizontal ("h").
-        range_x (tuple): Tuple that specifies the range of the x-axis.
+        range_x (Tuple[float | `None`, float | `None`]: Tuple that specifies the range of the x-axis.
         title_x (Optional[str]): The label of the x-axis.
         title_y (Optional[str]): The label of the y-axis.
         groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
@@ -1916,7 +1932,7 @@ class ScalarChart(Panel):
 
     Attributes:
         title (Optional[str]): The text that appears at the top of the plot.
-        metric (Required[MetricType]): The name of a metric logged to your W&B project that the
+        metric (MetricType): The name of a metric logged to your W&B project that the
             report pulls information from.
         groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
             function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
@@ -1974,7 +1990,7 @@ class CodeComparer(Panel):
     A panel object that compares the code between two different runs.
 
     Attributes:
-        diff (Required): How to display code differences.
+        diff (Literal['split', 'unified']): How to display code differences.
             Options include "split" and "unified".
     """
 
@@ -2004,10 +2020,11 @@ class ParallelCoordinatesPlotColumn(Base):
     determine the order of the parallel axis (x-axis) in the parallel coordinates plot.
 
     Attributes:
-        metric: The name of the metric logged to your W&B project that the report pulls information from.
-        display_name (str): The name of the metric
-        inverted (bool): Whether to invert the metric.
-        log (bool): Whether to apply a log transformation to the metric.
+        metric (str | Config | SummaryMetric): The name of the
+            metric logged to your W&B project that the report pulls information from.
+        display_name (Optional[str]): The name of the metric
+        inverted (Optional[bool]): Whether to invert the metric.
+        log (Optional[bool]): Whether to apply a log transformation to the metric.
     """
 
     metric: SummaryOrConfigOnlyMetric
@@ -2043,7 +2060,7 @@ class ParallelCoordinatesPlot(Panel):
         columns (LList[ParallelCoordinatesPlotColumn]): A list of one
             or more `ParallelCoordinatesPlotColumn` objects.
         title (Optional[str]): The text that appears at the top of the plot.
-        gradient (Optional[LList[GradientPoint]]): INSERT
+        gradient (Optional[LList[GradientPoint]]): A list of gradient points.
         font_size (Optional[FontSize]): The size of the line plot's font.
             Options include "small", "medium", "large", "auto", or `None`.
     """
@@ -2131,7 +2148,7 @@ class RunComparer(Panel):
     the project the report pulls information from.
 
     Attributes:
-        diff_only (Optional[Literal["split", True]]): Display only the
+        diff_only (Optional[Literal["split", `True`]]): Display only the
             difference across runs in a project. You can toggle this feature on and off in the W&B Report UI.
     """
 
@@ -2193,7 +2210,7 @@ class MediaBrowser(Panel):
 @dataclass(config=dataclass_config, repr=False)
 class MarkdownPanel(Panel):
     """
-    A panel that renders a markdown.
+    A panel that renders markdown.
 
     Attributes:
         markdown (str): The text you want to appear in the markdown panel.
@@ -2222,7 +2239,7 @@ class MarkdownPanel(Panel):
 @dataclass(config=dataclass_config, repr=False)
 class CustomChart(Panel):
     """
-    A panel that shows a custom chart. The chart is defined by a query.
+    A panel that shows a custom chart. The chart is defined by a weave query.
 
     Attributes:
         query (dict): The query that defines the custom chart. The key is the name of the field, and the value is the query.
@@ -2248,8 +2265,8 @@ class CustomChart(Panel):
 
         Arguments:
             table_name (str): The name of the table.
-            chart_fields (dict): The fields to display in the chart. The key is the INSERT
-            chart_strings (dict): The strings to display in the chart. The key is the INSERT
+            chart_fields (dict): The fields to display in the chart. 
+            chart_strings (dict): The strings to display in the chart. 
         """
         return cls(
             query={"summaryTable": {"tableKey": table_name}},
@@ -2773,8 +2790,8 @@ class WeavePanelArtifact(WeavePanel):
 @dataclass(config=dataclass_config, repr=False)
 class Report(Base):
     """
-    A Data Class that represents a W&B Report. Use the returned object's `blocks` attribute to customize your report.
-    Report Data Class objects do not automatically save. Use the `save()` method to persists changes.
+    An object that represents a W&B Report. Use the returned object's `blocks` attribute to customize your report.
+    Report objects do not automatically save. Use the `save()` method to persists changes.
 
     Attributes:
         project: The name of the W&B project you want to load in. The project specified appears in the report's URL.
@@ -2881,7 +2898,7 @@ class Report(Base):
         return urlunparse((scheme, netloc, path, params, query, fragment))
 
     def save(self, draft: bool = False, clone: bool = False):
-        """Persists changes made to Report Data Class object."""
+        """Persists changes made to a report object."""
         model = self._to_model()
 
         # create project if not exists
@@ -2924,8 +2941,9 @@ class Report(Base):
         Load in the report into current environment. Pass in the URL where the report is hosted.
 
         Arguments:
-            url: The URL where the report is hosted.
-            as_model: If True, return the model object instead of the Report object.
+            url (str): The URL where the report is hosted.
+            as_model (bool): If True, return the model object instead of the Report object.
+                By default, set to `False`.
         """
         vs = _url_to_viewspec(url)
         model = internal.ReportViewspec.model_validate(vs)
@@ -2935,11 +2953,12 @@ class Report(Base):
 
     def to_html(self, height: int = 1024, hidden: bool = False) -> str:
         """
-        Generate HTML containing an iframe displaying this report.
+        Generate HTML containing an iframe displaying this report. Commonly
+        used to within a Python notebook. 
 
         Arguments:
-            height: Height of the iframe.
-            hidden: If True, the iframe will be hidden by default.
+            height (int): Height of the iframe.
+            hidden (bool): If True, hide the iframe. Default set to `False`.
         """
         try:
             url = self.url + "?jupyter=true"

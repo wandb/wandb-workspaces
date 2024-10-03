@@ -1,4 +1,4 @@
-"""Python library for programmatically working with Weights & Biases Workspace API.
+"""Python library for programmatically working with W&B Workspace API.
 
 ```python
 # How to import
@@ -37,14 +37,14 @@ __all__ = [
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid")
 
 
-def __is_internal(k):
+def _is_internal(k):
     return k.startswith("_")
 
 
-def __should_show(v):
+def _should_show(v):
     """This is a workaround because BaseMetric.__eq__ returns FilterExpr."""
     if isinstance(v, Iterable) and not isinstance(v, str):
-        return any(__should_show(x) for x in v)
+        return any(_should_show(x) for x in v)
     if isinstance(v, expr.BaseMetric):
         return True
     return False
@@ -56,14 +56,14 @@ class Base:
         fields = (
             f"{k}={v!r}"
             for k, v in self.__dict__.items()
-            if (not __is_internal(k)) or (__should_show(v))
+            if (not _is_internal(k)) or (_should_show(v))
         )
         fields_str = ", ".join(fields)
         return f"{self.__class__.__name__}({fields_str})"
 
     def __rich_repr__(self):
         for k, v in self.__dict__.items():
-            if (not __is_internal(k)) or (__should_show(v)):
+            if (not _is_internal(k)) or (_should_show(v)):
                 yield k, v
 
     @property
@@ -77,7 +77,8 @@ class Base:
 
 @dataclass(config=dataclass_config, repr=False)
 class SectionLayoutSettings(Base):
-    """Panel layout settings for a section, typically seen at the top right of the section in the UI.
+    """Panel layout settings for a section, typically seen at the
+    top right of the section of the W&B App Workspace UI.
 
     Attributes:
         layout: In a standard layout, the number of columns in the layout.

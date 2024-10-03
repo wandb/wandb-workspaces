@@ -1,11 +1,4 @@
-"""Python library for programmatically working with Weights & Biases Reports API.
-
-```python
-# How to import
-import wandb_workspaces.reports.v2
-```
-
-"""
+"""Python library for programmatically working with W&B Reports API."""
 
 import os
 from inspect import cleandoc

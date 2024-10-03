@@ -1,11 +1,4 @@
-"""Python library for programmatically working with Weights & Biases Workspace API.
-
-```python
-# How to import
-import wandb_workspaces.workspaces
-```
-
-"""
+"""Python library for programmatically working with W&B Workspace API."""
 
 # noqa: F401
 from ..expr import *  # noqa: F403
