@@ -95,7 +95,7 @@ class RunsetGroupKey:
     Specify the metric type and value to group by as key-value pairs.
 
     Attributes:
-        key (str): The metric type to group by.
+        key (Type[str] | Type[Config] | Type[SummaryMetric] | Type[Metric]): The metric type to group by.
         value (str): The value of the metric to group by.
     """
 
@@ -109,7 +109,7 @@ class RunsetGroup:
 
     Attributes:
         runset_name (str): The name of the runset.
-        keys (str): The keys to group by.
+        keys (Tuple[RunsetGroupKey, ...]): The keys to group by.
             Pass in one or more `RunsetGroupKey`
             objects to group by.
 
@@ -185,7 +185,6 @@ class Layout(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Block(Base): ...
-
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="allow", slots=True))
 class UnknownBlock(Block):
@@ -819,8 +818,9 @@ class Runset(Base):
     """A set of runs to display in a panel grid.
 
     Attributes:
-        entity (str): The entity name.
-        project (str): The project name.
+        entity (str): An entity that owns or has the correct
+            permissions to the project where the runs are stored.
+        project (str): The name of the project were the runs are stored.
         name (str): The name of the run set. Set to `Run set` by default.
         query (str): A query string to filter runs.
         filters (Optional[str]): A filter string to filter runs.
@@ -1018,7 +1018,23 @@ class WeaveBlock(Block): ...
 
 @dataclass(config=dataclass_config)
 class WeaveBlockSummaryTable(Block):
-    # TODO: Replace with actual weave blocks when ready
+    """
+    A block that shows a W&B Table, pandas DataFrame,
+    plot, or other value logged to W&B. The query takes the form of
+
+    ```python
+    project('entity', 'project').runs.summary['value']
+    ```
+    
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM. 
+
+    Attributes:
+        entity (str): The entity that owns or has the
+            appropriate permissions to the project where the values are logged.
+        project (str): The project where the value is logged in.
+        table_name (str): The name of the table, DataFrame, plot, or value.
+    """
     entity: str
     project: str
     table_name: str
@@ -1238,6 +1254,24 @@ class WeaveBlockSummaryTable(Block):
 
 @dataclass(config=dataclass_config)
 class WeaveBlockArtifactVersionedFile(Block):
+    """
+    A block that shows a versioned file logged to a W&B artifact. The query takes the form of
+    
+    ```python
+    project('entity', 'project').artifactVersion('name', 'version').file('file-name')
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        entity (str): The entity that owns or has the
+            appropriate permissions to the project where the artifact is stored.
+        project (str): The project where the artifact is stored.
+        artifact (str): The name of the artifact to retrieve.
+        version (str): The version of the artifact to retrieve.
+        file (str): The name of the file stored in the artifact to retrieve. 
+    """
     # TODO: Replace with actual weave blocks when ready
     entity: str
     project: str
@@ -1387,6 +1421,26 @@ class WeaveBlockArtifactVersionedFile(Block):
 
 @dataclass(config=dataclass_config)
 class WeaveBlockArtifact(Block):
+    """
+    A block that shows an artifact logged to W&B. The query takes the form of
+
+    ```python
+    project('entity', 'project').artifact('artifact-name')
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+    
+    Attributes:
+        entity (str): The entity that owns or has the appropriate
+            permissions to the project where the artifact is stored.
+        project (str): The project where the artifact is stored.
+        artifact (str): The name of the artifact to retrieve.
+        tab Literal["overview", "metadata", "usage", "files", "lineage"]: The
+            tab to display in the artifact panel.
+    """
+
+
     # TODO: Replace with actual weave blocks when ready
     entity: str
     project: str
@@ -1839,7 +1893,7 @@ class BarPlot(Panel):
         metrics LList[MetricType]:
         orientation Literal["v", "h"]: The orientation of the bar plot.
             Set to either vertical ("v") or horizontal ("h"). Defaults to horizontal ("h").
-        range_x (Tuple[float | `None`, float | `None`]: Tuple that specifies the range of the x-axis.
+        range_x (Tuple[float | None, float | None]): Tuple that specifies the range of the x-axis.
         title_x (Optional[str]): The label of the x-axis.
         title_y (Optional[str]): The label of the y-axis.
         groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
@@ -2370,6 +2424,12 @@ class UnknownPanel(Base):
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
 class WeavePanel(Panel):
+    """
+    An empty query panel that can be used to display custom content using queries.
+    
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+    """
     config: dict = Field(default_factory=dict)
 
     def _to_model(self):
@@ -2382,6 +2442,21 @@ class WeavePanel(Panel):
 
 @dataclass(config=dataclass_config)
 class WeavePanelSummaryTable(Panel):
+    """
+    A panel that shows a W&B Table, pandas DataFrame,
+    plot, or other value logged to W&B. The query takes the form of
+
+    ```python
+    runs.summary['value']
+    ```
+    
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        table_name (str): The name of the table, DataFrame, plot, or value.
+    
+    """
     # TODO: Replace with actual weave panels when ready
     table_name: str = Field(..., kw_only=True)
 
@@ -2570,6 +2645,21 @@ class WeavePanelSummaryTable(Panel):
 
 @dataclass(config=dataclass_config)
 class WeavePanelArtifactVersionedFile(Panel):
+    """
+    A panel that shows a versioned file logged to a W&B artifact.
+
+    ```python
+    project('entity', 'project').artifactVersion('name', 'version').file('file-name')
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        artifact (str): The name of the artifact to retrieve.
+        version (str): The version of the artifact to retrieve.
+        file (str): The name of the file stored in the artifact to retrieve.
+    """
     # TODO: Replace with actual weave panels when ready
     artifact: str = Field(..., kw_only=True)
     version: str = Field(..., kw_only=True)
@@ -2691,6 +2781,17 @@ class WeavePanelArtifactVersionedFile(Panel):
 
 @dataclass(config=dataclass_config)
 class WeavePanelArtifact(WeavePanel):
+    """
+    A panel that shows an artifact logged to W&B.
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+    
+    Attributes:
+        artifact (str): The name of the artifact to retrieve.
+        tab Literal["overview", "metadata", "usage", "files", "lineage"]: The tab to display in the artifact panel.
+    """
+
     # TODO: Replace with actual weave panels when ready
     artifact: str = Field(...)
     tab: Literal["overview", "metadata", "usage", "files", "lineage"] = "overview"
@@ -2794,12 +2895,17 @@ class Report(Base):
     Report objects do not automatically save. Use the `save()` method to persists changes.
 
     Attributes:
-        project: The name of the W&B project you want to load in. The project specified appears in the report's URL.
-        entity: The W&B entity that owns the report. The entity appears in the report's URL.
-        title: The title of the report. The title appears at the top of the report as an H1 heading.
-        description: A description of the report. The description appears underneath the report's title.
-        blocks: A list of one or more HTML tags, plots, grids, runsets, or more.
-        width: The width of the report. Options include 'readable', 'fixed', 'fluid'.
+        project (str): The name of the W&B project you want to load in.
+            The project specified appears in the report's URL.
+        entity (str): The W&B entity that owns the report.
+            The entity appears in the report's URL.
+        title (str): The title of the report. The title
+            appears at the top of the report as an H1 heading.
+        description (str): A description of the report.
+            The description appears underneath the report's title.
+        blocks (LList[BlockTypes]): A list of one or more HTML tags,
+            plots, grids, runsets, and more.
+        width (Literal['readable', 'fixed', 'fluid']): The width of the report. Options include 'readable', 'fixed', 'fluid'.
     """
 
     project: str
