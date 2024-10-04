@@ -184,10 +184,16 @@ class Layout(Base):
 
 
 @dataclass(config=dataclass_config, repr=False)
-class Block(Base): ...
+class Block(Base): 
+    """
+    INTERNAL: This class is not for public use.
+    """
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="allow", slots=True))
 class UnknownBlock(Block):
+    """
+    INTERNAL: This class is not for public use.
+    """    
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
         attributes = ", ".join(
@@ -376,6 +382,9 @@ class P(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class ListItem(Base):
+    """
+    INTERNAL: This class is not for public use.
+    """
     @classmethod
     def _from_model(cls, model: internal.ListItem):
         text = _internal_children_to_text(model.children)
@@ -447,6 +456,9 @@ class UnorderedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class List(Block):
+    """
+    INTERNAL: This class is not for public use.
+    """
 
     @classmethod
     def _from_model(cls, model: internal.List):
@@ -1013,7 +1025,10 @@ class Twitter(Block):
 
 
 @dataclass(config=dataclass_config, repr=False)
-class WeaveBlock(Block): ...
+class WeaveBlock(Block):
+    """
+    INTERNAL: This class is not for public use.
+    """    
 
 
 @dataclass(config=dataclass_config)
@@ -2404,6 +2419,9 @@ class CustomChart(Panel):
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
 class UnknownPanel(Base):
+    """
+    INTERNAL: This class is not for public use.
+    """    
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
         attributes = ", ".join(
