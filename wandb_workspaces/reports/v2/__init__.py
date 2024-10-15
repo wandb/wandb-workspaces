@@ -1,3 +1,5 @@
+"""Python library for programmatically working with W&B Reports API."""
+
 import os
 from inspect import cleandoc
 

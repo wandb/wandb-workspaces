@@ -97,8 +97,8 @@ def test_idempotency(request, factory_name) -> None:
     cls = factory.__model__
     assert isinstance(instance, cls)
 
-    model = instance.to_model()
-    model2 = cls.from_model(model).to_model()
+    model = instance._to_model()
+    model2 = cls._from_model(model)._to_model()
 
     assert model.dict() == model2.dict()
 

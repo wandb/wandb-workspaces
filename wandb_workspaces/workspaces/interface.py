@@ -1,3 +1,30 @@
+"""Python library for programmatically working with W&B Workspace API.
+
+```python
+# How to import
+import wandb_workspaces.workspaces as ws
+
+# Example of creating a workspace
+ws.Workspace(
+    name="Example W&B Workspace",
+    entity="entity", # entity that owns the workspace
+    project="project", # project that the workspace is associated with
+    sections=[
+        ws.Section(
+            name="Validation Metrics",
+            panels=[
+                wr.LinePlot(x="Step", y=["val_loss"]),
+                wr.BarPlot(metrics=["val_accuracy"]),
+                wr.ScalarChart(metric="f1_score", groupby_aggfunc="mean"),
+            ],
+            is_open=True,
+        ),
+    ],
+)
+workspace.save()
+```
+"""
+
 import os
 from typing import Dict, Iterable, Literal, Optional
 from typing import List as LList
@@ -28,14 +55,14 @@ __all__ = [
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid")
 
 
-def is_internal(k):
+def _is_internal(k):
     return k.startswith("_")
 
 
-def should_show(v):
+def _should_show(v):
     """This is a workaround because BaseMetric.__eq__ returns FilterExpr."""
     if isinstance(v, Iterable) and not isinstance(v, str):
-        return any(should_show(x) for x in v)
+        return any(_should_show(x) for x in v)
     if isinstance(v, expr.BaseMetric):
         return True
     return False
@@ -47,19 +74,19 @@ class Base:
         fields = (
             f"{k}={v!r}"
             for k, v in self.__dict__.items()
-            if (not is_internal(k)) or (should_show(v))
+            if (not _is_internal(k)) or (_should_show(v))
         )
         fields_str = ", ".join(fields)
         return f"{self.__class__.__name__}({fields_str})"
 
     def __rich_repr__(self):
         for k, v in self.__dict__.items():
-            if (not is_internal(k)) or (should_show(v)):
+            if (not _is_internal(k)) or (_should_show(v)):
                 yield k, v
 
     @property
     def _model(self):
-        return self.to_model()
+        return self._to_model()
 
     @property
     def _spec(self):
@@ -68,7 +95,16 @@ class Base:
 
 @dataclass(config=dataclass_config, repr=False)
 class SectionLayoutSettings(Base):
-    """Panel layout settings for a section, typically seen at the top right of the section in the UI."""
+    """Panel layout settings for a section, typically seen at the
+    top right of the section of the W&B App Workspace UI.
+
+    Attributes:
+        layout (Literal["standard", "custom"]): The layout of panels in the section. `standard`
+            follows the default grid layout, `custom` allows per per-panel layouts controlled
+            by the individual panel settings.
+        columns (int): In a standard layout, the number of columns in the layout. Default is 3.
+        rows (int): In a standard layout, the number of rows in the layout. Default is 2.
+    """
 
     layout: Literal["standard", "custom"] = "standard"
     """
@@ -78,20 +114,17 @@ class SectionLayoutSettings(Base):
     """
 
     columns: int = 3
-    "In a standard layout, the number of columns in the layout."
-
     rows: int = 2
-    "In a standard layout, the number of rows in the layout."
 
     @classmethod
-    def from_model(cls, model: internal.FlowConfig):
+    def _from_model(cls, model: internal.FlowConfig):
         return cls(
             layout="standard" if model.snap_to_columns else "custom",
             columns=model.columns_per_page,
             rows=model.rows_per_page,
         )
 
-    def to_model(self):
+    def _to_model(self):
         return internal.FlowConfig(
             snap_to_columns=self.layout == "standard",
             columns_per_page=self.columns,
@@ -101,31 +134,32 @@ class SectionLayoutSettings(Base):
 
 @dataclass
 class SectionPanelSettings(Base):
-    """Panel settings for a section, similar to WorkspaceSettings for a section.
+    """
+    Panel settings for a section, similar to `WorkspaceSettings` for a section.
 
     Settings applied here can be overrided by more granular Panel settings in this priority:
-    Section < Panel
+    Section < Panel.
+
+    Attributes:
+        x_axis (str): X-axis metric name setting. By default, set to "Step".
+        x_min Optional[float]: Minimum value for the x-axis.
+        x_max Optional[float]: Maximum value for the x-axis.
+        smoothing_type (Literal['exponentialTimeWeighted', 'exponential', 'gaussian', 'average', 'none']): Smoothing
+            type applied to all panels.
+        smoothing_weight (int): Smoothing weight applied to all panels.
     """
 
     # Axis settings
     x_axis: str = "Step"
-    "X-axis metric name setting."
-
     x_min: Optional[float] = None
-    "Minimum value for the x-axis."
-
     x_max: Optional[float] = None
-    "Maximum value for the x-axis."
 
     # Smoothing settings
     smoothing_type: internal.SmoothingType = "none"
-    "Smoothing type applied to all panels."
-
     smoothing_weight: Annotated[int, Ge(0)] = 0
-    "Smoothing weight applied to all panels."
 
     @classmethod
-    def from_model(cls, model: internal.LocalPanelSettings):
+    def _from_model(cls, model: internal.LocalPanelSettings):
         x_axis = expr._convert_be_to_fe_metric_name(model.x_axis)
 
         return cls(
@@ -136,7 +170,7 @@ class SectionPanelSettings(Base):
             smoothing_weight=model.smoothing_weight,
         )
 
-    def to_model(self):
+    def _to_model(self):
         x_axis = expr._convert_fe_to_be_metric_name(self.x_axis)
 
         return internal.LocalPanelSettings(
@@ -150,39 +184,39 @@ class SectionPanelSettings(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Section(Base):
-    """Represents a section in a workspace."""
+    """Represents a section in a workspace.
+
+    Attributes:
+        name (str): The name/title of the section.
+        panels (LList[PanelTypes]): An ordered list of panels in the section. By default, first is top-left and last is bottom-right.
+        is_open (bool): Whether the section is open or closed. Default is closed.
+        layout_settings (Literal["standard", "custom"]): Settings for panel layout in the section.
+        panel_settings: Panel-level settings applied to all panels in the section, similar to `WorkspaceSettings` for a `Section`.
+    """
 
     name: str
-    "The name/title of the section."
-
     panels: LList[PanelTypes] = Field(default_factory=list)
-    "An ordered list of panels in the section.  By default, first is top-left and last is bottom-right."
-
     is_open: bool = False
-    "Whether the section is open or closed.  Default is closed."
 
     layout_settings: SectionLayoutSettings = Field(
         default_factory=SectionLayoutSettings
     )
-    "Settings for panel layout in the section."
-
     panel_settings: SectionPanelSettings = Field(default_factory=SectionPanelSettings)
-    "Panel-level settings applied to all panels in the section, similar to WorkspaceSettings for this Section."
 
     @classmethod
-    def from_model(cls, model: internal.PanelBankConfigSectionsItem):
+    def _from_model(cls, model: internal.PanelBankConfigSectionsItem):
         return cls(
             name=model.name,
             panels=[_lookup_panel(p) for p in model.panels],
             is_open=model.is_open,
-            layout_settings=SectionLayoutSettings.from_model(model.flow_config),
-            panel_settings=SectionPanelSettings.from_model(model.local_panel_settings),
+            layout_settings=SectionLayoutSettings._from_model(model.flow_config),
+            panel_settings=SectionPanelSettings._from_model(model.local_panel_settings),
         )
 
-    def to_model(self):
-        panel_models = [p.to_model() for p in self.panels]
-        flow_config = self.layout_settings.to_model()
-        local_panel_settings = self.panel_settings.to_model()
+    def _to_model(self):
+        panel_models = [p._to_model() for p in self.panels]
+        flow_config = self.layout_settings._to_model()
+        local_panel_settings = self.panel_settings._to_model()
 
         # Add warning that panel layout only works if they set section settings layout = "custom"
 
@@ -203,32 +237,42 @@ class WorkspaceSettings(Base):
 
     Settings applied here can be overrided by more granular Section and Panel settings in this priority:
     Workspace < Section < Panel
+
+    Attributes:
+        x_axis (str): X-axis metric name setting.
+        x_min (Optional[float]): Minimum value for the x-axis.
+        x_max (Optional[float]): Maximum value for the x-axis.
+        smoothing_type (Literal['exponentialTimeWeighted', 'exponential', 'gaussian', 'average', 'none']): Smoothing
+            type applied to all panels.
+        smoothing_weight (int): Smoothing weight applied to all panels.
+        ignore_outliers (bool): Ignore outliers in all panels.
+        sort_panels_alphabetically (bool): Sorts panels in all sections alphabetically.
+        group_by_prefix (Literal["first", "last"]): Group panels by the first or up to last
+            prefix (first or last). Default is set to `last`.
+        remove_legends_from_panels (bool): Remove legends from all panels.
+        tooltip_number_of_runs (Literal["default", "all", "none"]): The number of runs to show in the tooltip.
+        tooltip_color_run_names (bool): Whether to color run names in the tooltip to
+            match the runset (True) or not (False). Default is set to `True`.
+        max_runs (int): The maximum number of runs to show per panel (this will be the first 10 runs in the runset).
+        point_visualization_method (Literal["line", "point", "line_point"]): The visualization method for points.
+        panel_search_query (str): The query for the panel search bar (can be a regex expression).
+        auto_expand_panel_search_results (bool): Whether to auto expand the panel search results.
     """
 
     # Axis settings
     x_axis: str = "Step"
-    "X-axis metric name setting."
-
     x_min: Optional[float] = None
-    "Minimum value for the x-axis."
-
     x_max: Optional[float] = None
-    "Maximum value for the x-axis."
 
     # Smoothing settings
     smoothing_type: internal.SmoothingType = "none"
-    "Smoothing type applied to all panels."
-
     smoothing_weight: Annotated[int, Ge(0)] = 0
-    "Smoothing weight applied to all panels."
 
     # Outlier settings
     ignore_outliers: bool = False
-    "Ignore outliers in all panels."
 
     # Section settings
     sort_panels_alphabetically: bool = False
-    "Sorts panels in all sections alphabetically"
 
     group_by_prefix: Literal["first", "last"] = "last"
     """
@@ -240,19 +284,13 @@ class WorkspaceSettings(Base):
 
     # Panel settings
     remove_legends_from_panels: bool = False
-    "Remove legends from all panels."
 
     # Tooltip settings
     tooltip_number_of_runs: TooltipNumberOfRuns = "default"
-    "The number of runs to show when hovering over a point."
-
     tooltip_color_run_names: bool = True
-    "Whether to color run names in the tooltip to match the runset (True) or not (False)."
 
     # Run settings
     max_runs: PositiveInt = 10
-    "The maximum number of runs to show per panel (this will be the first 10 runs in the runset)."
-
     point_visualization_method: Literal["bucketing", "downsampling"] = "bucketing"
     """
     Bucketing buckets all data points along the x-axis, showing the min, max, and avg within each bucket,
@@ -263,10 +301,7 @@ class WorkspaceSettings(Base):
 
     # Panel query bar settings
     panel_search_query: str = ""
-    "The query for the panel search bar (can be a regex expr)."
-
     auto_expand_panel_search_results: bool = False
-    "Whether to auto-expand the panel search results."
 
     # Internal only
     _panel_search_history: Optional[LList[Dict[Literal["query"], str]]] = Field(
@@ -277,31 +312,36 @@ class WorkspaceSettings(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class RunSettings(Base):
-    """Settings for a run in a runset (left hand bar)."""
+    """Settings for a run in a runset (left hand bar).
+
+    Attributes:
+        color (str): The color of the run in the UI.  Can be hex (#ff0000), css color (red), or rgb (rgb(255, 0, 0))
+        disabled (bool): Whether the run is deactivated (eye closed in the UI). Default is set to `False`.
+    """
 
     color: str = ""  # hex, css color, or rgb
-    "The color of the run in the UI.  Can be hex (#ff0000), css color (red), or rgb (rgb(255, 0, 0))"
-
     disabled: bool = False
-    "Whether the run is disabled (eye closed in the UI)."
 
 
 @dataclass(config=dataclass_config, repr=False)
 class RunsetSettings(Base):
-    """Settings for the runset (the left bar containing runs) in a workspace."""
+    """Settings for the runset (the left bar containing runs) in a workspace.
+
+    Attributes:
+        query (str): A query to filter the runset (can be a regex expr, see next param).
+        regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
+        filters (LList[expr.FilterExpr]): A list of filters to apply to the runset.
+            Filters are AND'd together. See FilterExpr for more information on creating filters.
+        groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
+            `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
+        order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
+        run_settings (Dict[str, RunSettings]): A dictionary of run settings, where the key
+            is the run's ID and the value is a RunSettings object.
+    """
 
     query: str = ""
-    "A query to filter the runset (can be a regex expr, see next param)."
-
     regex_query: bool = False
-    "Controls whether the query (above) is a regex expr."
-
     filters: LList[expr.FilterExpr] = Field(default_factory=list)
-    """
-    A list of filters to apply to the runset.  Filters are AND'd together.
-    See FilterExpr for more information on creating filters.
-    """
-
     groupby: LList[expr.MetricType] = Field(default_factory=list)
     "A list of metrics to group by in the runset."
 
@@ -310,8 +350,6 @@ class RunsetSettings(Base):
             expr.Ordering(expr.Metric("CreatedTimestamp"), ascending=False)
         ]
     )
-    "A list of metrics and ordering to apply to the runset."
-
     run_settings: Dict[str, RunSettings] = Field(default_factory=dict)
     """
     A dictionary of run settings, where the key is the run's ID and the value is a RunSettings object.
@@ -328,25 +366,26 @@ class RunsetSettings(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Workspace(Base):
-    """Represents a W&B workspace, including sections, settings, and config for run sets."""
+    """Represents a W&B workspace, including sections, settings, and config for run sets.
+
+    Attributes:
+        entity (str): The entity this workspace will be saved to (usually user or team name).
+        project (str): The project this workspace will be saved to.
+        name: The name of the workspace.
+        sections (LList[Section]): An ordered list of sections in the workspace.
+            The first section is at the top of the workspace.
+        settings (WorkspaceSettings): Settings for the workspace, typically seen at
+            the top of the workspace in the UI.
+        runset_settings (RunsetSettings): Settings for the runset
+            (the left bar containing runs) in a workspace.
+    """
 
     entity: str
-    "The entity this workspace will be saved to (usually user or team name)."
-
     project: str
-    "The project this workspace will be saved to."
-
     name: Annotated[str, AfterValidator(validate_no_emoji)] = "Untitled view"
-    "The name of the workspace."
-
     sections: LList[Section] = Field(default_factory=list)
-    "An ordered list of sections in the workspace.  The first section is at the top of the workspace."
-
     settings: WorkspaceSettings = Field(default_factory=WorkspaceSettings)
-    "Settings for the workspace, typically seen at the top of the workspace in the UI."
-
     runset_settings: RunsetSettings = Field(default_factory=RunsetSettings)
-    "Settings for the runset (the left bar containing runs) in a workspace."
 
     # Internal only
     _internal_name: str = Field("", init=False, repr=False)
@@ -378,7 +417,7 @@ class Workspace(Base):
         return urlunparse((scheme, netloc, path, params, query, fragment))
 
     @classmethod
-    def from_model(cls, model: internal.View):
+    def _from_model(cls, model: internal.View):
         # construct configs from disjoint parts of settings
         run_settings = {}
 
@@ -451,7 +490,7 @@ class Workspace(Base):
             project=model.project,
             name=model.display_name,
             sections=[
-                Section.from_model(s)
+                Section._from_model(s)
                 for s in model.spec.section.panel_bank_config.sections
             ],
             settings=workspace_settings,
@@ -477,16 +516,16 @@ class Workspace(Base):
         obj._internal_runset_id = model.spec.section.run_sets[0].id
         return obj
 
-    def to_model(self) -> internal.View:
+    def _to_model(self) -> internal.View:
         # hack: create sections to hide unnecessary panels
-        base_sections = [s.to_model() for s in self.sections]
+        base_sections = [s._to_model() for s in self.sections]
 
         possible_missing_sections = set(("Hidden Panels", "Charts", "System"))
         base_section_names = set(s.name for s in self.sections)
         missing_section_names = possible_missing_sections - base_section_names
 
         hidden_sections = [
-            Section(name=name, is_open=False).to_model()
+            Section(name=name, is_open=False)._to_model()
             for name in missing_section_names
         ]
 
@@ -588,11 +627,16 @@ class Workspace(Base):
         _, entity, project = parsed_url.path.split("/")
 
         view = internal.View.from_name(entity, project, internal_view_name)
-        return cls.from_model(view)
+        return cls._from_model(view)
 
     def save(self):
-        """Save a workspace to W&B."""
-        view = self.to_model()
+        """
+        Save the current workspace to W&B.
+        
+        Returns:
+            Workspace: The updated workspace with the saved internal name and ID.
+        """
+        view = self._to_model()
 
         # If creating a new view with `ws.Workspace(...)`
         if not view.name:
@@ -606,8 +650,13 @@ class Workspace(Base):
         return self
 
     def save_as_new_view(self):
-        """Save a workspace to W&B."""
-        view = self.to_model()
+        """
+        Save the current workspace as a new view to W&B.
+        
+        Returns:
+            Workspace: The updated workspace with the saved internal name and ID.
+        """
+        view = self._to_model()
 
         # Generate a new view name and ID
         view.name = internal._generate_view_name()

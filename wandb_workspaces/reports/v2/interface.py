@@ -1,4 +1,30 @@
-"""Public interfaces for the Report API."""
+"""
+Python library for programmatically working with W&B Reports API.
+
+```python
+import wandb_workspaces.reports.v2 as wr
+
+report = wr.Report(
+    entity="entity",
+    project="project",
+    title="An amazing title",
+    description="A descriptive description.",
+)
+
+blocks = [
+    wr.PanelGrid(
+        panels=[
+            wr.LinePlot(x="time", y="velocity"),
+            wr.ScatterPlot(x="time", y="acceleration"),
+        ]
+    )
+]
+
+report.blocks = blocks
+report.save()
+```
+
+"""
 
 import os
 from datetime import datetime
@@ -43,7 +69,7 @@ RunId = str
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid", slots=True)
 
 
-def is_not_all_none(v):
+def _is_not_all_none(v):
     if v is None or v == "":
         return False
     if isinstance(v, Iterable) and not isinstance(v, str):
@@ -51,7 +77,7 @@ def is_not_all_none(v):
     return True
 
 
-def is_not_internal(k):
+def _is_not_internal(k):
     return not k.startswith("_")
 
 
@@ -61,19 +87,19 @@ class Base:
         fields = (
             f"{k}={v!r}"
             for k, v in self.__dict__.items()
-            if (is_not_all_none(v) and is_not_internal(k))
+            if (_is_not_all_none(v) and _is_not_internal(k))
         )
         fields_str = ", ".join(fields)
         return f"{self.__class__.__name__}({fields_str})"
 
     def __rich_repr__(self):
         for k, v in self.__dict__.items():
-            if is_not_all_none(v) and is_not_internal(k):
+            if _is_not_all_none(v) and _is_not_internal(k):
                 yield k, v
 
     @property
     def _model(self):
-        return self.to_model()
+        return self.__to_model()
 
     @property
     def _spec(self):
@@ -82,52 +108,110 @@ class Base:
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroupKey:
+    """
+    Groups runsets by a metric type and value. Part of a `RunsetGroup`.
+    Specify the metric type and value to group by as key-value pairs.
+
+    Attributes:
+        key (Type[str] | Type[Config] | Type[SummaryMetric] | Type[Metric]): The metric type to group by.
+        value (str): The value of the metric to group by.
+    """
+
     key: MetricType
     value: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroup:
+    """UI element that shows a group of runsets. 
+
+    Attributes:
+        runset_name (str): The name of the runset.
+        keys (Tuple[RunsetGroupKey, ...]): The keys to group by.
+            Pass in one or more `RunsetGroupKey`
+            objects to group by.
+
+    """
+
     runset_name: str
     keys: Tuple[RunsetGroupKey, ...]
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class Metric:
+    """
+    A metric to display in a report that
+    is logged in your project.
+
+    Attributes:
+        name(str): The name of the metric.
+    """
+
     name: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class Config:
+    """
+    Metrics logged to a run's config object.
+    Config objects are commonly logged using `run.config[name] = ...`
+    or passing a config as a dictionary of key-value pairs,
+    where the key is the name of the metric and the value is
+    the value of that metric. 
+
+    Attributes:
+        name (str): The name of the metric.
+    """
+
     name: str
 
 
 @dataclass(config=dataclass_config, frozen=True)
 class SummaryMetric:
+    """A summary metric to display in a report.
+
+    Attributes:
+        name (str): The name of the metric.
+    """
+
     name: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class Layout(Base):
+    """The layout of a panel in a report. Adjusts the size and position of the panel.
+
+    Attributes:
+        x (int): The x position of the panel.
+        y (int): The y position of the panel.
+        w (int): The width of the panel.
+        h (int): The height of the panel.
+    """
+
     x: int = 0
     y: int = 0
     w: int = 8
     h: int = 6
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Layout(x=self.x, y=self.y, w=self.w, h=self.h)
 
     @classmethod
-    def from_model(cls, model: internal.Layout):
+    def _from_model(cls, model: internal.Layout):
         return cls(x=model.x, y=model.y, w=model.w, h=model.h)
 
 
 @dataclass(config=dataclass_config, repr=False)
-class Block(Base): ...
-
+class Block(Base): 
+    """
+    INTERNAL: This class is not for public use.
+    """
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="allow", slots=True))
 class UnknownBlock(Block):
+    """
+    INTERNAL: This class is not for public use.
+    """    
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
         attributes = ", ".join(
@@ -135,18 +219,24 @@ class UnknownBlock(Block):
         )
         return f"{class_name}({attributes})"
 
-    def to_model(self):
+    def _to_model(self):
         d = self.__dict__
         return internal.UnknownBlock.model_validate(d)
 
     @classmethod
-    def from_model(cls, model: internal.UnknownBlock):
+    def _from_model(cls, model: internal.UnknownBlock):
         d = model.model_dump()
         return cls(**d)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class TextWithInlineComments(Base):
+    """A block of text with inline comments.
+
+    Attributes:
+        text (str): The text of the block.
+    """
+
     text: str
 
     _inline_comments: Optional[LList[internal.InlineComment]] = Field(
@@ -156,8 +246,9 @@ class TextWithInlineComments(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Heading(Block):
+
     @classmethod
-    def from_model(cls, model: internal.Heading):
+    def _from_model(cls, model: internal.Heading):
         text = _internal_children_to_text(model.children)
 
         blocks = None
@@ -174,13 +265,20 @@ class Heading(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class H1(Heading):
+    """An H1 heading with the text specified.
+
+    Attributes:
+        text (str): The text of the heading.
+        collapsed_blocks (Optional[LList["BlockTypes"]]): The blocks to show when the heading is collapsed.
+    """
+
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
-    def to_model(self):
+    def _to_model(self):
         collapsed_children = self.collapsed_blocks
         if collapsed_children is not None:
-            collapsed_children = [b.to_model() for b in collapsed_children]
+            collapsed_children = [b._to_model() for b in collapsed_children]
 
         return internal.Heading(
             level=1,
@@ -191,13 +289,21 @@ class H1(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class H2(Heading):
+    """An H2 heading with the text specified.
+
+    Attributes:
+        text (str): The text of the heading.
+        collapsed_blocks (Optional[LList["BlockTypes"]]): One or more blocks to
+            show when the heading is collapsed.
+    """
+
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
-    def to_model(self):
+    def _to_model(self):
         collapsed_children = self.collapsed_blocks
         if collapsed_children is not None:
-            collapsed_children = [b.to_model() for b in collapsed_children]
+            collapsed_children = [b._to_model() for b in collapsed_children]
 
         return internal.Heading(
             level=2,
@@ -208,13 +314,21 @@ class H2(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class H3(Heading):
+    """An H3 heading with the text specified.
+
+    Attributes:
+        text (str): The text of the heading.
+        collapsed_blocks (Optional[LList["BlockTypes"]]): One or more blocks to
+            show when the heading is collapsed. 
+    """
+
     text: TextLikeField = ""
     collapsed_blocks: Optional[LList["BlockTypes"]] = None
 
-    def to_model(self):
+    def _to_model(self):
         collapsed_children = self.collapsed_blocks
         if collapsed_children is not None:
-            collapsed_children = [b.to_model() for b in collapsed_children]
+            collapsed_children = [b._to_model() for b in collapsed_children]
 
         return internal.Heading(
             level=3,
@@ -225,6 +339,13 @@ class H3(Heading):
 
 @dataclass(config=dataclass_config, repr=False)
 class Link(Base):
+    """A link to a URL.
+
+    Attributes:
+        text (Union[str, TextWithInlineComments]): The text of the link.
+        url (str): The URL the link points to.
+    """
+
     text: Union[str, TextWithInlineComments]
     url: str
 
@@ -235,32 +356,55 @@ class Link(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineLatex(Base):
+    """Inline LaTeX markdown. Does not add newline
+    character after the LaTeX markdown.
+
+    Attributes:
+        text (str): LaTeX markdown you want to appear in the report.
+    """
+
     text: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class InlineCode(Base):
+    """Inline code. Does not add newline
+    character after code.
+
+    Attributes:
+        text (str): The code you want to appear in the report.
+    """
+
     text: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class P(Block):
+    """A paragraph of text.
+
+    Attributes:
+        text (str): The text of the paragraph.
+    """
+
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         children = _text_to_internal_children(self.text)
         return internal.Paragraph(children=children)
 
     @classmethod
-    def from_model(cls, model: internal.Paragraph):
+    def _from_model(cls, model: internal.Paragraph):
         pieces = _internal_children_to_text(model.children)
         return cls(text=pieces)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class ListItem(Base):
+    """
+    INTERNAL: This class is not for public use.
+    """
     @classmethod
-    def from_model(cls, model: internal.ListItem):
+    def _from_model(cls, model: internal.ListItem):
         text = _internal_children_to_text(model.children)
         if model.checked is not None:
             return CheckedListItem(text=text, checked=model.checked)
@@ -272,10 +416,17 @@ class ListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class CheckedListItem(Base):
+    """A list item with a checkbox. Add one or more `CheckedListItem` within `CheckedList`.
+
+    Attributes:
+        text (str): The text of the list item.
+        checked (bool): Whether the checkbox is checked. By default, set to `False`.
+    """
+
     text: TextLikeField = ""
     checked: bool = False
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ListItem(
             children=[
                 internal.Paragraph(children=_text_to_internal_children(self.text))
@@ -286,9 +437,15 @@ class CheckedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class OrderedListItem(Base):
+    """A list item in an ordered list.
+
+    Attributes:
+        text (str): The text of the list item.
+    """
+
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ListItem(
             children=[
                 internal.Paragraph(children=_text_to_internal_children(self.text))
@@ -299,9 +456,15 @@ class OrderedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class UnorderedListItem(Base):
+    """A list item in an unordered list.
+
+    Attributes:
+        text (str): The text of the list item.
+    """
+
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ListItem(
             children=[
                 internal.Paragraph(children=_text_to_internal_children(self.text))
@@ -311,13 +474,17 @@ class UnorderedListItem(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class List(Block):
+    """
+    INTERNAL: This class is not for public use.
+    """
+
     @classmethod
-    def from_model(cls, model: internal.List):
+    def _from_model(cls, model: internal.List):
         if not model.children:
             return UnorderedList()
 
         item = model.children[0]
-        items = [ListItem.from_model(x) for x in model.children]
+        items = [ListItem._from_model(x) for x in model.children]
         if item.checked is not None:
             return CheckedList(items=items)
 
@@ -330,49 +497,82 @@ class List(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class CheckedList(List):
+    """A list of items with checkboxes. Add one or more `CheckedListItem` within `CheckedList`.
+
+    Attributes:
+        items (LList[CheckedListItem]): A list of one or more `CheckedListItem` objects.
+    """
+
     items: LList[CheckedListItem] = Field(default_factory=lambda: [CheckedListItem()])
 
-    def to_model(self):
-        items = [x.to_model() for x in self.items]
+    def _to_model(self):
+        items = [x._to_model() for x in self.items]
         return internal.List(children=items)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class OrderedList(List):
+    """A list of items in a numbered list.
+
+    Attributes:
+        items (LList[str]): A list of one or more `OrderedListItem` objects.
+    """
+
     items: LList[str] = Field(default_factory=lambda: [""])
 
-    def to_model(self):
-        children = [OrderedListItem(li).to_model() for li in self.items]
+    def _to_model(self):
+        children = [OrderedListItem(li)._to_model() for li in self.items]
         return internal.List(children=children, ordered=True)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class UnorderedList(List):
+    """A list of items in a bulleted list.
+
+    Attributes:
+        items (LList[str]): A list of one or more `UnorderedListItem` objects.
+    """
+
     items: LList[str] = Field(default_factory=lambda: [""])
 
-    def to_model(self):
-        children = [UnorderedListItem(li).to_model() for li in self.items]
+    def _to_model(self):
+        children = [UnorderedListItem(li)._to_model() for li in self.items]
         return internal.List(children=children)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class BlockQuote(Block):
+    """A block of quoted text.
+
+    Attributes:
+        text (str): The text of the block quote.
+    """
+
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.BlockQuote(children=_text_to_internal_children(self.text))
 
     @classmethod
-    def from_model(cls, model: internal.BlockQuote):
+    def _from_model(cls, model: internal.BlockQuote):
         return cls(text=_internal_children_to_text(model.children))
 
 
 @dataclass(config=dataclass_config, repr=False)
 class CodeBlock(Block):
+    """A block of code.
+
+    Attributes:
+        code (str): The code in the block.
+        language (Optional[Language]): The language of the code. Language specified
+            is used for syntax highlighting. By default, set to "python". Options include
+            'javascript', 'python', 'css', 'json', 'html', 'markdown', 'yaml'.
+    """
+
     code: TextLikeField = ""
     language: Optional[Language] = "python"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.CodeBlock(
             children=[
                 internal.CodeLine(
@@ -384,41 +584,62 @@ class CodeBlock(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.CodeBlock):
+    def _from_model(cls, model: internal.CodeBlock):
         code = _internal_children_to_text(model.children[0].children)
         return cls(code=code, language=model.language)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class MarkdownBlock(Block):
+    """A block of markdown text. Useful if you want to write text
+    that uses common markdown syntax.
+
+    Attributes:
+        text (str): The markdown text.
+    """
+
     text: str = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.MarkdownBlock(content=self.text)
 
     @classmethod
-    def from_model(cls, model: internal.MarkdownBlock):
+    def _from_model(cls, model: internal.MarkdownBlock):
         return cls(text=model.content)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class LatexBlock(Block):
+    """A block of LaTeX text.
+
+    Attributes:
+        text (str): The LaTeX text.
+    """
+
     text: str = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.LatexBlock(content=self.text)
 
     @classmethod
-    def from_model(cls, model: internal.LatexBlock):
+    def _from_model(cls, model: internal.LatexBlock):
         return cls(text=model.content)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class Image(Block):
+    """A block that renders an image.
+
+    Attributes:
+        url (str): The URL of the image.
+        caption (str): The caption of the image.
+            Caption appears underneath the image.
+    """
+
     url: str = "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
     caption: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         has_caption = False
         children = _text_to_internal_children(self.caption)
         if children:
@@ -427,16 +648,22 @@ class Image(Block):
         return internal.Image(children=children, url=self.url, has_caption=has_caption)
 
     @classmethod
-    def from_model(cls, model: internal.Image):
+    def _from_model(cls, model: internal.Image):
         caption = _internal_children_to_text(model.children)
         return cls(url=model.url, caption=caption)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class CalloutBlock(Block):
+    """A block of callout text.
+
+    Attributes:
+        text (str): The callout text.
+    """
+
     text: TextLikeField = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.CalloutBlock(
             children=[
                 internal.CalloutLine(children=_text_to_internal_children(self.text))
@@ -444,64 +671,97 @@ class CalloutBlock(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.CalloutBlock):
+    def _from_model(cls, model: internal.CalloutBlock):
         text = _internal_children_to_text(model.children[0].children)
         return cls(text=text)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class HorizontalRule(Block):
-    def to_model(self):
+    """HTML horizontal line."""
+
+    def _to_model(self):
         return internal.HorizontalRule()
 
     @classmethod
-    def from_model(cls, model: internal.HorizontalRule):
+    def _from_model(cls, model: internal.HorizontalRule):
         return cls()
 
 
 @dataclass(config=dataclass_config, repr=False)
 class Video(Block):
+    """A block that renders a video.
+
+    Attributes:
+        url (str): The URL of the video.
+    """
+
     url: str = "https://www.youtube.com/watch?v=krWjJcW80_A"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Video(url=self.url)
 
     @classmethod
-    def from_model(cls, model: internal.Video):
+    def _from_model(cls, model: internal.Video):
         return cls(url=model.url)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class Spotify(Block):
+    """A block that renders a Spotify player.
+
+    Attributes:
+        spotify_id (str): The Spotify ID of the track or playlist.
+    """
+
     spotify_id: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Spotify(spotify_id=self.spotify_id)
 
     @classmethod
-    def from_model(cls, model: internal.Spotify):
+    def _from_model(cls, model: internal.Spotify):
         return cls(spotify_id=model.spotify_id)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class SoundCloud(Block):
+    """A block that renders a SoundCloud player.
+
+    Attributes:
+        html (str): The HTML code to embed the SoundCloud player.
+    """
+
     html: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.SoundCloud(html=self.html)
 
     @classmethod
-    def from_model(cls, model: internal.SoundCloud):
+    def _from_model(cls, model: internal.SoundCloud):
         return cls(html=model.html)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class GalleryReport(Base):
+    """A reference to a report in the gallery.
+    
+    Attributes:
+        report_id (str): The ID of the report.
+    """
     report_id: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class GalleryURL(Base):
+    """A URL to an external resource.
+    
+    Attributes:
+        url (str): The URL of the resource.
+        title (Optional[str]): The title of the resource.
+        description (Optional[str]): The description of the resource.
+        image_url (Optional[str]): The URL of an image to display.
+    """
     url: str  # app accepts non-standard URL unfortunately
     title: Optional[str] = None
     description: Optional[str] = None
@@ -510,9 +770,16 @@ class GalleryURL(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Gallery(Block):
+    """
+    A block that renders a gallery of reports and URLs.
+    
+    Attributes:
+        items (List[Union[`GalleryReport`, `GalleryURL`]]): A list of
+            `GalleryReport` and `GalleryURL` objects.
+    """
     items: LList[Union[GalleryReport, GalleryURL]] = Field(default_factory=list)
 
-    def to_model(self):
+    def _to_model(self):
         links = []
         for x in self.items:
             if isinstance(x, GalleryReport):
@@ -529,7 +796,7 @@ class Gallery(Block):
         return internal.Gallery(links=links)
 
     @classmethod
-    def from_model(cls, model: internal.Gallery):
+    def _from_model(cls, model: internal.Gallery):
         items = []
         if model.ids:
             items = [GalleryReport(x) for x in model.ids]
@@ -551,17 +818,25 @@ class Gallery(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class OrderBy(Base):
+    """A metric to order by.
+
+    Attributes:
+        name (str): The name of the metric.
+        ascending (bool): Whether to sort in ascending order.
+            By default set to `False`.
+    """
+
     name: MetricType
     ascending: bool = False
 
-    def to_model(self):
+    def _to_model(self):
         return internal.SortKey(
             key=internal.SortKeyKey(name=_metric_to_backend(self.name)),
             ascending=self.ascending,
         )
 
     @classmethod
-    def from_model(cls, model: internal.SortKey):
+    def _from_model(cls, model: internal.SortKey):
         return cls(
             name=_metric_to_frontend(model.key.name),
             ascending=model.ascending,
@@ -570,6 +845,20 @@ class OrderBy(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Runset(Base):
+    """A set of runs to display in a panel grid.
+
+    Attributes:
+        entity (str): An entity that owns or has the correct
+            permissions to the project where the runs are stored.
+        project (str): The name of the project were the runs are stored.
+        name (str): The name of the run set. Set to `Run set` by default.
+        query (str): A query string to filter runs.
+        filters (Optional[str]): A filter string to filter runs.
+        groupby (LList[str]): A list of metric names to group by.
+        order (LList[OrderBy]): A list of `OrderBy` objects to order by.
+        custom_run_colors (LList[OrderBy]): A dictionary mapping run IDs to colors.
+    """
+
     entity: str = ""
     project: str = ""
     name: str = "Run set"
@@ -587,7 +876,7 @@ class Runset(Base):
 
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
 
-    def to_model(self):
+    def _to_model(self):
         project = None
         if self.entity or self.project:
             project = internal.Project(entity_name=self.entity, name=self.project)
@@ -599,13 +888,13 @@ class Runset(Base):
             grouping=[
                 internal.Key(name=expr_parsing.to_backend_name(g)) for g in self.groupby
             ],
-            sort=internal.Sort(keys=[o.to_model() for o in self.order]),
+            sort=internal.Sort(keys=[o._to_model() for o in self.order]),
         )
         obj.id = self._id
         return obj
 
     @classmethod
-    def from_model(cls, model: internal.Runset):
+    def _from_model(cls, model: internal.Runset):
         entity = ""
         project = ""
 
@@ -622,7 +911,7 @@ class Runset(Base):
             name=model.name,
             filters=expr_parsing.filters_to_expr(model.filters),
             groupby=[expr_parsing.to_frontend_name(k.name) for k in model.grouping],
-            order=[OrderBy.from_model(s) for s in model.sort.keys],
+            order=[OrderBy._from_model(s) for s in model.sort.keys],
         )
         obj._id = model.id
         return obj
@@ -630,6 +919,12 @@ class Runset(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Panel(Base):
+    """A panel that displays a visualization in a panel grid.
+
+    Attributes:
+        layout (Layout): A `Layout` object.
+    """
+
     layout: Layout = Field(default_factory=Layout, kw_only=True)
 
     _id: str = Field(
@@ -639,6 +934,24 @@ class Panel(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class PanelGrid(Block):
+    """
+    A grid that consists of runsets and panels. Add runsets and panels with
+    `Runset` and `Panel` objects, respectively.
+
+    Available panels include:
+    `LinePlot`, `ScatterPlot`, `BarPlot`, `ScalarChart`, `CodeComparer`, `ParallelCoordinatesPlot`,
+    `ParameterImportancePlot`, `RunComparer`, `MediaBrowser`, `MarkdownPanel`, `CustomChart`,
+    `WeavePanel`, `WeavePanelSummaryTable`, `WeavePanelArtifactVersionedFile`.
+
+
+    Attributes:
+        runsets (LList["Runset"]): A list of one or more `Runset` objects.
+        panels (LList["PanelTypes"]): A list of one or more `Panel` objects.
+        active_runset (int): The number of runs you want to display within a runset. By default, it is set to 0.
+        custom_run_colors (dict): Key-value pairs where the key is the name of a
+            run and the value is a color specified by a hexadecimal value.
+    """
+
     runsets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
     panels: LList["PanelTypes"] = Field(default_factory=list)
     active_runset: int = 0
@@ -651,12 +964,12 @@ class PanelGrid(Block):
         default_factory=list, init=False, repr=False
     )
 
-    def to_model(self):
+    def _to_model(self):
         return internal.PanelGrid(
             metadata=internal.PanelGridMetadata(
-                run_sets=[rs.to_model() for rs in self.runsets],
+                run_sets=[rs._to_model() for rs in self.runsets],
                 panel_bank_section_config=internal.PanelBankSectionConfig(
-                    panels=[p.to_model() for p in self.panels],
+                    panels=[p._to_model() for p in self.panels],
                 ),
                 panels=internal.PanelGridMetadataPanels(
                     panel_bank_config=internal.PanelBankConfig(),
@@ -667,8 +980,8 @@ class PanelGrid(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.PanelGrid):
-        runsets = [Runset.from_model(rs) for rs in model.metadata.run_sets]
+    def _from_model(cls, model: internal.PanelGrid):
+        runsets = [Runset._from_model(rs) for rs in model.metadata.run_sets]
         obj = cls(
             runsets=runsets,
             panels=[
@@ -698,38 +1011,68 @@ class PanelGrid(Block):
 
 @dataclass(config=dataclass_config, repr=False)
 class TableOfContents(Block):
-    def to_model(self):
+    """
+    A block that contains a list of sections and subsections using
+    H1, H2, and H3 HTML blocks specified in a report.
+    """
+
+    def _to_model(self):
         return internal.TableOfContents()
 
     @classmethod
-    def from_model(cls, model: internal.TableOfContents):
+    def _from_model(cls, model: internal.TableOfContents):
         return cls()
 
 
 @dataclass(config=dataclass_config, repr=False)
 class Twitter(Block):
+    """A block that displays a Twitter feed.
+
+    Attributes:
+        html (str): The HTML code to display the Twitter feed.
+    """
+
     html: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Twitter(html=self.html)
 
     @classmethod
-    def from_model(cls, model: internal.Twitter):
+    def _from_model(cls, model: internal.Twitter):
         return cls(html=model.html)
 
 
 @dataclass(config=dataclass_config, repr=False)
-class WeaveBlock(Block): ...
+class WeaveBlock(Block):
+    """
+    INTERNAL: This class is not for public use.
+    """    
 
 
 @dataclass(config=dataclass_config)
 class WeaveBlockSummaryTable(Block):
-    # TODO: Replace with actual weave blocks when ready
+    """
+    A block that shows a W&B Table, pandas DataFrame,
+    plot, or other value logged to W&B. The query takes the form of
+
+    ```python
+    project('entity', 'project').runs.summary['value']
+    ```
+    
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM. 
+
+    Attributes:
+        entity (str): The entity that owns or has the
+            appropriate permissions to the project where the values are logged.
+        project (str): The project where the value is logged in.
+        table_name (str): The name of the table, DataFrame, plot, or value.
+    """
     entity: str
     project: str
     table_name: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeaveBlock(
             config={
                 "panelConfig": {
@@ -930,7 +1273,7 @@ class WeaveBlockSummaryTable(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeaveBlock):
+    def _from_model(cls, model: internal.WeaveBlock):
         inputs = internal._get_weave_block_inputs(model.config)
         entity = inputs["obj"]["fromOp"]["inputs"]["run"]["fromOp"]["inputs"][
             "project"
@@ -944,6 +1287,24 @@ class WeaveBlockSummaryTable(Block):
 
 @dataclass(config=dataclass_config)
 class WeaveBlockArtifactVersionedFile(Block):
+    """
+    A block that shows a versioned file logged to a W&B artifact. The query takes the form of
+    
+    ```python
+    project('entity', 'project').artifactVersion('name', 'version').file('file-name')
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        entity (str): The entity that owns or has the
+            appropriate permissions to the project where the artifact is stored.
+        project (str): The project where the artifact is stored.
+        artifact (str): The name of the artifact to retrieve.
+        version (str): The version of the artifact to retrieve.
+        file (str): The name of the file stored in the artifact to retrieve. 
+    """
     # TODO: Replace with actual weave blocks when ready
     entity: str
     project: str
@@ -951,7 +1312,7 @@ class WeaveBlockArtifactVersionedFile(Block):
     version: str
     file: str
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeaveBlock(
             config={
                 "panelConfig": {
@@ -1069,7 +1430,7 @@ class WeaveBlockArtifactVersionedFile(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeaveBlock):
+    def _from_model(cls, model: internal.WeaveBlock):
         inputs = internal._get_weave_block_inputs(model.config)
         entity = inputs["artifactVersion"]["fromOp"]["inputs"]["project"]["fromOp"][
             "inputs"
@@ -1093,13 +1454,33 @@ class WeaveBlockArtifactVersionedFile(Block):
 
 @dataclass(config=dataclass_config)
 class WeaveBlockArtifact(Block):
+    """
+    A block that shows an artifact logged to W&B. The query takes the form of
+
+    ```python
+    project('entity', 'project').artifact('artifact-name')
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+    
+    Attributes:
+        entity (str): The entity that owns or has the appropriate
+            permissions to the project where the artifact is stored.
+        project (str): The project where the artifact is stored.
+        artifact (str): The name of the artifact to retrieve.
+        tab Literal["overview", "metadata", "usage", "files", "lineage"]: The
+            tab to display in the artifact panel.
+    """
+
+
     # TODO: Replace with actual weave blocks when ready
     entity: str
     project: str
     artifact: str
     tab: Literal["overview", "metadata", "usage", "files", "lineage"] = "overview"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeaveBlock(
             config={
                 "panelConfig": {
@@ -1196,7 +1577,7 @@ class WeaveBlockArtifact(Block):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeaveBlock):
+    def _from_model(cls, model: internal.WeaveBlock):
         inputs = internal._get_weave_block_inputs(model.config)
         entity = inputs["project"]["fromOp"]["inputs"]["entityName"]["val"]
         project = inputs["project"]["fromOp"]["inputs"]["projectName"]["val"]
@@ -1269,19 +1650,69 @@ block_mapping = {
 
 @dataclass(config=dataclass_config, repr=False)
 class GradientPoint(Base):
+    """
+    A point in a gradient.
+
+    Attributes:
+        color: The color of the point.
+        offset: The position of the point in the gradient. The value should be between 0 and 100.
+    """
+
     color: Annotated[str, internal.ColorStrConstraints]
     offset: Annotated[float, Ge(0), Le(100)] = 0
 
-    def to_model(self):
+    def _to_model(self):
         return internal.GradientPoint(color=self.color, offset=self.offset)
 
     @classmethod
-    def from_model(cls, model: internal.GradientPoint):
+    def _from_model(cls, model: internal.GradientPoint):
         return cls(color=model.color, offset=model.offset)
 
 
 @dataclass(config=dataclass_config, repr=False)
 class LinePlot(Panel):
+    """
+    A panel object with 2D line plots.
+
+    Attributes:
+        title (Optional[str]): The text that appears at the top of the plot.
+        x (Optional[MetricType]): The name of a metric logged to your W&B project that the
+            report pulls information from. The metric specified is used for the x-axis.
+        y (LList[MetricType]): One or more metrics logged to your W&B project that the report pulls
+            information from. The metric specified is used for the y-axis.
+        range_x (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the x-axis.
+        range_y (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the y-axis.
+        log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
+        log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
+        title_x (Optional[str]): The label of the x-axis.
+        title_y (Optional[str]): The label of the y-axis.
+        ignore_outliers (Optional[bool]): If set to `True`, do not plot outliers.
+        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
+            report pulls information from.
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        smoothing_factor (Optional[float]): The smoothing factor to apply to the
+            smoothing type. Accepted values range between 0 and 1.
+        smoothing_type Optional[SmoothingType]: Apply a filter based on the specified
+            distribution. Options include "exponentialTimeWeighted", "exponential",
+            "gaussian", "average", or "none".
+        smoothing_show_original (Optional[bool]):   If set to `True`, show the original data.
+        max_runs_to_show (Optional[int]): The maximum number of runs to show on the line plot.
+        custom_expressions (Optional[LList[str]]): Custom expressions to apply to the data.
+        plot_type Optional[LinePlotStyle]: The type of line plot to generate.
+            Options include "line", "stacked-area", or "pct-area".
+        font_size Optional[FontSize]: The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        legend_position Optional[LegendPosition]: Where to place the legend.
+            Options include "north", "south", "east", "west", or `None`.
+        legend_template (Optional[str]): The template for the legend.
+        aggregate (Optional[bool]): If set to `True`, aggregate the data.
+        xaxis_expression (Optional[str]): The expression for the x-axis.
+        legend_fields (Optional[LList[str]]): The fields to include in the legend.
+    """
+
     title: Optional[str] = None
     x: Optional[MetricType] = "Step"
     y: LList[MetricType] = Field(default_factory=list)
@@ -1308,7 +1739,7 @@ class LinePlot(Panel):
     xaxis_expression: Optional[str] = None
     legend_fields: Optional[LList[str]] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.LinePlot(
             config=internal.LinePlotConfig(
                 chart_title=self.title,
@@ -1340,11 +1771,11 @@ class LinePlot(Panel):
                 legend_fields=self.legend_fields,
             ),
             id=self._id,
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
         )
 
     @classmethod
-    def from_model(cls, model: internal.LinePlot):
+    def _from_model(cls, model: internal.LinePlot):
         obj = cls(
             title=model.config.chart_title,
             x=_metric_to_frontend(model.config.x_axis),
@@ -1370,7 +1801,7 @@ class LinePlot(Panel):
             legend_template=model.config.legend_template,
             aggregate=model.config.aggregate,
             xaxis_expression=model.config.x_expression,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
             legend_fields=model.config.legend_fields,
         )
         obj._id = model.id
@@ -1379,6 +1810,32 @@ class LinePlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class ScatterPlot(Panel):
+    """
+    A panel object that shows a 2D or 3D scatter plot.
+
+    Arguments:
+        title (Optional[str]): The text that appears at the top of the plot.
+        x Optional[SummaryOrConfigOnlyMetric]: The name of a metric logged to your W&B project that the
+            report pulls information from. The metric specified is used for the x-axis.
+        y Optional[SummaryOrConfigOnlyMetric]:  One or more metrics logged to your W&B project that the report pulls
+            information from. Metrics specified are plotted within the y-axis.
+        z Optional[SummaryOrConfigOnlyMetric]:
+        range_x (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the x-axis.
+        range_y (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the y-axis.
+        range_z (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the z-axis.
+        log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
+        log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
+        log_z (Optional[bool]): Plots the z-coordinates using a base-10 logarithmic scale.
+        running_ymin (Optional[bool]):  Apply a moving average or rolling mean.
+        running_ymax (Optional[bool]): Apply a moving average or rolling mean.
+        running_ymean (Optional[bool]): Apply a moving average or rolling mean.
+        legend_template (Optional[str]):  A string that specifies the format of the legend.
+        gradient (Optional[LList[GradientPoint]]):  A list of gradient points that specify the color gradient of the plot.
+        font_size (Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        regression (Optional[bool]): If `True`, a regression line is plotted on the scatter plot.
+    """
+
     title: Optional[str] = None
     x: Optional[SummaryOrConfigOnlyMetric] = None
     y: Optional[SummaryOrConfigOnlyMetric] = None
@@ -1397,10 +1854,10 @@ class ScatterPlot(Panel):
     font_size: Optional[FontSize] = None
     regression: Optional[bool] = None
 
-    def to_model(self):
+    def _to_model(self):
         custom_gradient = self.gradient
         if custom_gradient is not None:
-            custom_gradient = [cgp.to_model() for cgp in self.gradient]
+            custom_gradient = [cgp._to_model() for cgp in self.gradient]
 
         return internal.ScatterPlot(
             config=internal.ScatterPlotConfig(
@@ -1425,15 +1882,15 @@ class ScatterPlot(Panel):
                 font_size=self.font_size,
                 show_linear_regression=self.regression,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         gradient = model.config.custom_gradient
         if gradient is not None:
-            gradient = [GradientPoint.from_model(cgp) for cgp in gradient]
+            gradient = [GradientPoint._from_model(cgp) for cgp in gradient]
 
         obj = cls(
             title=model.config.chart_title,
@@ -1453,7 +1910,7 @@ class ScatterPlot(Panel):
             gradient=gradient,
             font_size=model.config.font_size,
             regression=model.config.show_linear_regression,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1461,6 +1918,32 @@ class ScatterPlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class BarPlot(Panel):
+    """
+    A panel object that shows a 2D bar plot.
+
+    Attributes:
+        title (Optional[str]): The text that appears at the top of the plot.
+        metrics (LList[MetricType]): orientation Literal["v", "h"]: The orientation of the bar plot.
+            Set to either vertical ("v") or horizontal ("h"). Defaults to horizontal ("h").
+        range_x (Tuple[float | None, float | None]): Tuple that specifies the range of the x-axis.
+        title_x (Optional[str]): The label of the x-axis.
+        title_y (Optional[str]): The label of the y-axis.
+        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
+            report pulls information from.
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        max_runs_to_show (Optional[int]): The maximum number of runs to show on the plot.
+        max_bars_to_show (Optional[int]): The maximum number of bars to show on the bar plot.
+        custom_expressions (Optional[LList[str]]): A list of custom expressions to be used in the bar plot.
+        legend_template (Optional[str]): The template for the legend.
+        font_size( Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        line_titles (Optional[dict]): The titles of the lines. The keys are the line names and the values are the titles.
+        line_colors (Optional[dict]): The colors of the lines. The keys are the line names and the values are the colors.
+    """
+
     title: Optional[str] = None
     metrics: LList[MetricType] = Field(default_factory=list)
     orientation: Literal["v", "h"] = "h"
@@ -1478,7 +1961,7 @@ class BarPlot(Panel):
     line_titles: Optional[dict] = None
     line_colors: Optional[dict] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.BarPlot(
             config=internal.BarPlotConfig(
                 chart_title=self.title,
@@ -1499,12 +1982,12 @@ class BarPlot(Panel):
                 override_series_titles=self.line_titles,
                 override_colors=self.line_colors,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             title=model.config.chart_title,
             metrics=[_metric_to_frontend(name) for name in model.config.metrics],
@@ -1522,7 +2005,7 @@ class BarPlot(Panel):
             font_size=model.config.font_size,
             line_titles=model.config.override_series_titles,
             line_colors=model.config.override_colors,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1530,6 +2013,24 @@ class BarPlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class ScalarChart(Panel):
+    """
+    A panel object that shows a scalar chart.
+
+    Attributes:
+        title (Optional[str]): The text that appears at the top of the plot.
+        metric (MetricType): The name of a metric logged to your W&B project that the
+            report pulls information from.
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        custom_expressions (Optional[LList[str]]): A list of custom expressions to be used in the scalar chart.
+        legend_template (Optional[str]): The template for the legend.
+        font_size Optional[FontSize]: The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+
+    """
+
     title: Optional[str] = None
     metric: MetricType = ""
     groupby_aggfunc: Optional[GroupAgg] = None
@@ -1538,7 +2039,7 @@ class ScalarChart(Panel):
     legend_template: Optional[str] = None
     font_size: Optional[FontSize] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ScalarChart(
             config=internal.ScalarChartConfig(
                 chart_title=self.title,
@@ -1549,12 +2050,12 @@ class ScalarChart(Panel):
                 legend_template=self.legend_template,
                 font_size=self.font_size,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             title=model.config.chart_title,
             metric=_metric_to_frontend(model.config.metrics[0]),
@@ -1563,7 +2064,7 @@ class ScalarChart(Panel):
             custom_expressions=model.config.expressions,
             legend_template=model.config.legend_template,
             font_size=model.config.font_size,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1571,20 +2072,28 @@ class ScalarChart(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class CodeComparer(Panel):
+    """
+    A panel object that compares the code between two different runs.
+
+    Attributes:
+        diff (Literal['split', 'unified']): How to display code differences.
+            Options include "split" and "unified".
+    """
+
     diff: CodeCompareDiff = "split"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.CodeComparer(
             config=internal.CodeComparerConfig(diff=self.diff),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             diff=model.config.diff,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1592,12 +2101,24 @@ class CodeComparer(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class ParallelCoordinatesPlotColumn(Base):
+    """
+    A column within a parallel coordinates plot.  The order of `metric`s specified
+    determine the order of the parallel axis (x-axis) in the parallel coordinates plot.
+
+    Attributes:
+        metric (str | Config | SummaryMetric): The name of the
+            metric logged to your W&B project that the report pulls information from.
+        display_name (Optional[str]): The name of the metric
+        inverted (Optional[bool]): Whether to invert the metric.
+        log (Optional[bool]): Whether to apply a log transformation to the metric.
+    """
+
     metric: SummaryOrConfigOnlyMetric
     display_name: Optional[str] = None
     inverted: Optional[bool] = None
     log: Optional[bool] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.Column(
             accessor=_metric_to_backend_pc(self.metric),
             display_name=self.display_name,
@@ -1606,7 +2127,7 @@ class ParallelCoordinatesPlotColumn(Base):
         )
 
     @classmethod
-    def from_model(cls, model: internal.Column):
+    def _from_model(cls, model: internal.Column):
         obj = cls(
             metric=_metric_to_frontend_pc(model.accessor),
             display_name=model.display_name,
@@ -1618,42 +2139,54 @@ class ParallelCoordinatesPlotColumn(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class ParallelCoordinatesPlot(Panel):
+    """
+    A panel object that shows a parallel coordinates plot.
+
+    Attributes:
+        columns (LList[ParallelCoordinatesPlotColumn]): A list of one
+            or more `ParallelCoordinatesPlotColumn` objects.
+        title (Optional[str]): The text that appears at the top of the plot.
+        gradient (Optional[LList[GradientPoint]]): A list of gradient points.
+        font_size (Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+    """
+
     columns: LList[ParallelCoordinatesPlotColumn] = Field(default_factory=list)
     title: Optional[str] = None
     gradient: Optional[LList[GradientPoint]] = None
     font_size: Optional[FontSize] = None
 
-    def to_model(self):
+    def _to_model(self):
         gradient = self.gradient
         if gradient is not None:
-            gradient = [x.to_model() for x in self.gradient]
+            gradient = [x._to_model() for x in self.gradient]
 
         return internal.ParallelCoordinatesPlot(
             config=internal.ParallelCoordinatesPlotConfig(
                 chart_title=self.title,
-                columns=[c.to_model() for c in self.columns],
+                columns=[c._to_model() for c in self.columns],
                 custom_gradient=gradient,
                 font_size=self.font_size,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         gradient = model.config.custom_gradient
         if gradient is not None:
-            gradient = [GradientPoint.from_model(x) for x in gradient]
+            gradient = [GradientPoint._from_model(x) for x in gradient]
 
         obj = cls(
             columns=[
-                ParallelCoordinatesPlotColumn.from_model(c)
+                ParallelCoordinatesPlotColumn._from_model(c)
                 for c in model.config.columns
             ],
             title=model.config.chart_title,
             gradient=gradient,
             font_size=model.config.font_size,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
         return obj
@@ -1661,22 +2194,33 @@ class ParallelCoordinatesPlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class ParameterImportancePlot(Panel):
+    """
+    A panel that shows how important each hyperparameter
+    is in predicting the chosen metric.
+
+    Attributes:
+        with_respect_to (str): The metric you want to compare the
+            parameter importance against. Common metrics might include the loss, accuracy,
+            and so forth. The metric you specify must be logged within the project
+            that the report pulls information from.
+    """
+
     with_respect_to: str = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.ParameterImportancePlot(
             config=internal.ParameterImportancePlotConfig(
                 target_key=self.with_respect_to
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             with_respect_to=model.config.target_key,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
 
@@ -1685,20 +2229,29 @@ class ParameterImportancePlot(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class RunComparer(Panel):
+    """
+    A panel that compares metrics across different runs from
+    the project the report pulls information from.
+
+    Attributes:
+        diff_only (Optional[Literal["split", `True`]]): Display only the
+            difference across runs in a project. You can toggle this feature on and off in the W&B Report UI.
+    """
+
     diff_only: Optional[Literal["split", True]] = None
 
-    def to_model(self):
+    def _to_model(self):
         return internal.RunComparer(
             config=internal.RunComparerConfig(diff_only=self.diff_only),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             diff_only=model.config.diff_only,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
 
@@ -1707,25 +2260,33 @@ class RunComparer(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class MediaBrowser(Panel):
+    """
+    A panel that displays media files in a grid layout.
+
+    Attributes:
+        num_columns (Optional[int]): The number of columns in the grid.
+        media_keys (LList[str]): A list of media keys that correspond to the media files.
+    """
+
     num_columns: Optional[int] = None
     media_keys: LList[str] = Field(default_factory=list)
 
-    def to_model(self):
+    def _to_model(self):
         return internal.MediaBrowser(
             config=internal.MediaBrowserConfig(
                 column_count=self.num_columns,
                 media_keys=self.media_keys,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.MediaBrowser):
+    def _from_model(cls, model: internal.MediaBrowser):
         obj = cls(
             num_columns=model.config.column_count,
             media_keys=model.config.media_keys,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
 
@@ -1734,20 +2295,27 @@ class MediaBrowser(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class MarkdownPanel(Panel):
+    """
+    A panel that renders markdown.
+
+    Attributes:
+        markdown (str): The text you want to appear in the markdown panel.
+    """
+
     markdown: str = ""
 
-    def to_model(self):
+    def _to_model(self):
         return internal.MarkdownPanel(
             config=internal.MarkdownPanelConfig(value=self.markdown),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.ScatterPlot):
         obj = cls(
             markdown=model.config.value,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
 
@@ -1756,6 +2324,18 @@ class MarkdownPanel(Panel):
 
 @dataclass(config=dataclass_config, repr=False)
 class CustomChart(Panel):
+    """
+    A panel that shows a custom chart. The chart is defined by a weave query.
+
+    Attributes:
+        query (dict): The query that defines the custom chart. The key is the name of the field, and the value is the query.
+        chart_name (str): The title of the custom chart.
+        chart_fields (dict): Key-value pairs that define the axis of the
+            plot. Where the key is the label, and the value is the metric.
+        chart_strings (dict): Key-value pairs that define the strings in the chart.
+
+    """
+
     # Custom chart configs should look exactly like they do in the UI.  Please check the query carefully!
     query: dict = Field(default_factory=dict)
     chart_name: str = Field(default_factory=str)
@@ -1766,13 +2346,21 @@ class CustomChart(Panel):
     def from_table(
         cls, table_name: str, chart_fields: dict = None, chart_strings: dict = None
     ):
+        """
+        Create a custom chart from a table.
+
+        Arguments:
+            table_name (str): The name of the table.
+            chart_fields (dict): The fields to display in the chart. 
+            chart_strings (dict): The strings to display in the chart. 
+        """
         return cls(
             query={"summaryTable": {"tableKey": table_name}},
             chart_fields=chart_fields,
             chart_strings=chart_strings,
         )
 
-    def to_model(self):
+    def _to_model(self):
         def dict_to_fields(d):
             fields = []
             for k, v in d.items():
@@ -1812,11 +2400,11 @@ class CustomChart(Panel):
                 field_settings=self.chart_fields,
                 string_settings=self.chart_strings,
             ),
-            layout=self.layout.to_model(),
+            layout=self.layout._to_model(),
         )
 
     @classmethod
-    def from_model(cls, model: internal.Vega2):
+    def _from_model(cls, model: internal.Vega2):
         def fields_to_dict(fields):
             d = {}
             for field in fields:
@@ -1842,12 +2430,15 @@ class CustomChart(Panel):
             chart_name=model.config.panel_def_id,
             chart_fields=model.config.field_settings,
             chart_strings=model.config.string_settings,
-            layout=Layout.from_model(model.layout),
+            layout=Layout._from_model(model.layout),
         )
 
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
 class UnknownPanel(Base):
+    """
+    INTERNAL: This class is not for public use.
+    """    
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
         attributes = ", ".join(
@@ -1855,35 +2446,56 @@ class UnknownPanel(Base):
         )
         return f"{class_name}({attributes})"
 
-    def to_model(self):
+    def _to_model(self):
         d = self.__dict__
         print(d)
         return internal.UnknownPanel.model_validate(d)
 
     @classmethod
-    def from_model(cls, model: internal.UnknownPanel):
+    def _from_model(cls, model: internal.UnknownPanel):
         d = model.model_dump()
         return cls(**d)
 
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
 class WeavePanel(Panel):
+    """
+    An empty query panel that can be used to display custom content using queries.
+    
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+    """
     config: dict = Field(default_factory=dict)
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeavePanel(config=self.config)
 
     @classmethod
-    def from_model(cls, model: internal.WeavePanel):
+    def _from_model(cls, model: internal.WeavePanel):
         return cls(config=model.config)
 
 
 @dataclass(config=dataclass_config)
 class WeavePanelSummaryTable(Panel):
+    """
+    A panel that shows a W&B Table, pandas DataFrame,
+    plot, or other value logged to W&B. The query takes the form of
+
+    ```python
+    runs.summary['value']
+    ```
+    
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        table_name (str): The name of the table, DataFrame, plot, or value.
+    
+    """
     # TODO: Replace with actual weave panels when ready
     table_name: str = Field(..., kw_only=True)
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeavePanel(
             config={
                 "panel2Config": {
@@ -2060,7 +2672,7 @@ class WeavePanelSummaryTable(Panel):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeavePanel):
+    def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         table_name = inputs["key"]["val"]
         return cls(table_name=table_name)
@@ -2068,12 +2680,27 @@ class WeavePanelSummaryTable(Panel):
 
 @dataclass(config=dataclass_config)
 class WeavePanelArtifactVersionedFile(Panel):
+    """
+    A panel that shows a versioned file logged to a W&B artifact.
+
+    ```python
+    project('entity', 'project').artifactVersion('name', 'version').file('file-name')
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        artifact (str): The name of the artifact to retrieve.
+        version (str): The version of the artifact to retrieve.
+        file (str): The name of the file stored in the artifact to retrieve.
+    """
     # TODO: Replace with actual weave panels when ready
     artifact: str = Field(..., kw_only=True)
     version: str = Field(..., kw_only=True)
     file: str = Field(..., kw_only=True)
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeavePanel(
             config={
                 "panel2Config": {
@@ -2177,7 +2804,7 @@ class WeavePanelArtifactVersionedFile(Panel):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeavePanel):
+    def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         artifact = inputs["artifactVersion"]["fromOp"]["inputs"]["artifactName"]["val"]
         version = inputs["artifactVersion"]["fromOp"]["inputs"]["artifactVersionAlias"][
@@ -2189,11 +2816,22 @@ class WeavePanelArtifactVersionedFile(Panel):
 
 @dataclass(config=dataclass_config)
 class WeavePanelArtifact(WeavePanel):
+    """
+    A panel that shows an artifact logged to W&B.
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+    
+    Attributes:
+        artifact (str): The name of the artifact to retrieve.
+        tab Literal["overview", "metadata", "usage", "files", "lineage"]: The tab to display in the artifact panel.
+    """
+
     # TODO: Replace with actual weave panels when ready
     artifact: str = Field(...)
     tab: Literal["overview", "metadata", "usage", "files", "lineage"] = "overview"
 
-    def to_model(self):
+    def _to_model(self):
         return internal.WeavePanel(
             config={
                 "panel2Config": {
@@ -2276,7 +2914,7 @@ class WeavePanelArtifact(WeavePanel):
         )
 
     @classmethod
-    def from_model(cls, model: internal.WeavePanel):
+    def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         artifact = inputs["artifactName"]["val"]
         tab = model.config["panel2Config"]["panelConfig"]["tabConfigs"]["overview"].get(
@@ -2287,12 +2925,30 @@ class WeavePanelArtifact(WeavePanel):
 
 @dataclass(config=dataclass_config, repr=False)
 class Report(Base):
+    """
+    An object that represents a W&B Report. Use the returned object's `blocks` attribute to customize your report.
+    Report objects do not automatically save. Use the `save()` method to persists changes.
+
+    Attributes:
+        project (str): The name of the W&B project you want to load in.
+            The project specified appears in the report's URL.
+        entity (str): The W&B entity that owns the report.
+            The entity appears in the report's URL.
+        title (str): The title of the report. The title
+            appears at the top of the report as an H1 heading.
+        description (str): A description of the report.
+            The description appears underneath the report's title.
+        blocks (LList[BlockTypes]): A list of one or more HTML tags,
+            plots, grids, runsets, and more.
+        width (Literal['readable', 'fixed', 'fluid']): The width of the report. Options include 'readable', 'fixed', 'fluid'.
+    """
+
     project: str
     entity: str = Field(default_factory=lambda: _get_api().default_entity)
     title: str = Field("Untitled Report", max_length=128)
-    width: ReportWidth = "readable"
     description: str = ""
     blocks: LList[BlockTypes] = Field(default_factory=list)
+    width: ReportWidth = "readable"
 
     id: str = Field(default_factory=lambda: "", init=False, repr=False, kw_only=True)
     _discussion_threads: list = Field(default_factory=list, init=False, repr=False)
@@ -2305,7 +2961,7 @@ class Report(Base):
         default_factory=lambda: None, init=False, repr=False
     )
 
-    def to_model(self):
+    def _to_model(self):
         blocks = self.blocks
         if len(blocks) > 0 and blocks[0] != P():
             blocks = [P()] + blocks
@@ -2325,7 +2981,7 @@ class Report(Base):
             updated_at=self._updated_at,
             spec=internal.Spec(
                 panel_settings=self._panel_settings,
-                blocks=[b.to_model() for b in blocks],
+                blocks=[b._to_model() for b in blocks],
                 width=self.width,
                 authors=self._authors,
                 discussion_threads=self._discussion_threads,
@@ -2333,7 +2989,7 @@ class Report(Base):
         )
 
     @classmethod
-    def from_model(cls, model: internal.ReportViewspec):
+    def _from_model(cls, model: internal.ReportViewspec):
         blocks = model.spec.blocks
 
         if blocks[0] == internal.Paragraph():
@@ -2360,6 +3016,12 @@ class Report(Base):
 
     @property
     def url(self):
+        """
+        The URL where the report is hosted. The report URL consists of
+        `https://wandb.ai/{entity}/{project_name}/reports/`. Where `{entity}`
+        and `{project_name}` consists of the entity that the report belongs
+        to and the name of the project, respectively.
+        """
         if self.id == "":
             raise AttributeError("save report or explicitly pass `id` to get a url")
 
@@ -2377,7 +3039,8 @@ class Report(Base):
         return urlunparse((scheme, netloc, path, params, query, fragment))
 
     def save(self, draft: bool = False, clone: bool = False):
-        model = self.to_model()
+        """Persists changes made to a report object."""
+        model = self._to_model()
 
         # create project if not exists
         projects = _get_api().projects(self.entity)
@@ -2414,15 +3077,30 @@ class Report(Base):
         return self
 
     @classmethod
-    def from_url(cls, url, *, as_model: bool = False):
+    def from_url(cls, url: str, *, as_model: bool = False):
+        """
+        Load in the report into current environment. Pass in the URL where the report is hosted.
+
+        Arguments:
+            url (str): The URL where the report is hosted.
+            as_model (bool): If True, return the model object instead of the Report object.
+                By default, set to `False`.
+        """
         vs = _url_to_viewspec(url)
         model = internal.ReportViewspec.model_validate(vs)
         if as_model:
             return model
-        return cls.from_model(model)
+        return cls._from_model(model)
 
     def to_html(self, height: int = 1024, hidden: bool = False) -> str:
-        """Generate HTML containing an iframe displaying this report."""
+        """
+        Generate HTML containing an iframe displaying this report. Commonly
+        used to within a Python notebook. 
+
+        Arguments:
+            height (int): Height of the iframe.
+            hidden (bool): If True, hide the iframe. Default set to `False`.
+        """
         try:
             url = self.url + "?jupyter=true"
             style = f"border:none;width:100%;height:{height}px;"
@@ -2473,13 +3151,13 @@ def _lookup(block):
     if cls is WeaveBlock:
         for cls in defined_weave_blocks:
             try:
-                cls.from_model(block)
+                cls._from_model(block)
             except Exception:
                 continue
             else:
                 break
 
-    return cls.from_model(block)
+    return cls._from_model(block)
 
 
 def _should_show_attr(k, v):
@@ -2513,13 +3191,13 @@ def _lookup_panel(panel):
         # print('cls is weave panel')
         for cls in defined_weave_panels:
             try:
-                cls.from_model(panel)
+                cls._from_model(panel)
             except Exception:
                 continue
             else:
                 break
 
-    return cls.from_model(panel)
+    return cls._from_model(panel)
 
 
 def _load_spec_from_url(url, as_model=False):
