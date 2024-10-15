@@ -2,9 +2,27 @@
 
 ```python
 # How to import
-import wandb_workspaces.workspaces
-```
+import wandb_workspaces.workspaces as ws
 
+# Example of creating a workspace
+ws.Workspace(
+    name="Example W&B Workspace",
+    entity="entity", # entity that owns the workspace
+    project="project", # project that the workspace is associated with
+    sections=[
+        ws.Section(
+            name="Validation Metrics",
+            panels=[
+                wr.LinePlot(x="Step", y=["val_loss"]),
+                wr.BarPlot(metrics=["val_accuracy"]),
+                wr.ScalarChart(metric="f1_score", groupby_aggfunc="mean"),
+            ],
+            is_open=True,
+        ),
+    ],
+)
+workspace.save()
+```
 """
 
 import os
@@ -81,9 +99,11 @@ class SectionLayoutSettings(Base):
     top right of the section of the W&B App Workspace UI.
 
     Attributes:
-        layout: In a standard layout, the number of columns in the layout.
-        columns: In a standard layout, the number of columns in the layout.
-        rows: In a standard layout, the number of rows in the layout.
+        layout (Literal["standard", "custom"]): The layout of panels in the section. `standard`
+            follows the default grid layout, `custom` allows per per-panel layouts controlled
+            by the individual panel settings.
+        columns (int): In a standard layout, the number of columns in the layout. Default is 3.
+        rows (int): In a standard layout, the number of rows in the layout. Default is 2.
     """
 
     layout: Literal["standard", "custom"] = "standard"
@@ -94,10 +114,7 @@ class SectionLayoutSettings(Base):
     """
 
     columns: int = 3
-    "In a standard layout, the number of columns in the layout."
-
     rows: int = 2
-    "In a standard layout, the number of rows in the layout."
 
     @classmethod
     def _from_model(cls, model: internal.FlowConfig):
@@ -124,29 +141,22 @@ class SectionPanelSettings(Base):
     Section < Panel.
 
     Attributes:
-        x_axis: X-axis metric name setting.
-        x_min: Minimum value for the x-axis.
-        x_max: Maximum value for the x-axis.
-        smoothing_type: Smoothing type applied to all panels.
-        smoothing_weight: Smoothing weight applied to all panels.
+        x_axis (str): X-axis metric name setting. By default, set to "Step".
+        x_min Optional[float]: Minimum value for the x-axis.
+        x_max Optional[float]: Maximum value for the x-axis.
+        smoothing_type (Literal['exponentialTimeWeighted', 'exponential', 'gaussian', 'average', 'none']): Smoothing
+            type applied to all panels.
+        smoothing_weight (int): Smoothing weight applied to all panels.
     """
 
     # Axis settings
     x_axis: str = "Step"
-    "X-axis metric name setting."
-
     x_min: Optional[float] = None
-    "Minimum value for the x-axis."
-
     x_max: Optional[float] = None
-    "Maximum value for the x-axis."
 
     # Smoothing settings
     smoothing_type: internal.SmoothingType = "none"
-    "Smoothing type applied to all panels."
-
     smoothing_weight: Annotated[int, Ge(0)] = 0
-    "Smoothing weight applied to all panels."
 
     @classmethod
     def _from_model(cls, model: internal.LocalPanelSettings):
@@ -177,29 +187,21 @@ class Section(Base):
     """Represents a section in a workspace.
 
     Attributes:
-        name: The name/title of the section.
-        panels: An ordered list of panels in the section.  By default, first is top-left and last is bottom-right.
-        is_open: Whether the section is open or closed.  Default is closed.
-        layout_settings: Settings for panel layout in the section.
-        panel_settings: Panel-level settings applied to all panels in the section, similar to WorkspaceSettings for this Section.
+        name (str): The name/title of the section.
+        panels (LList[PanelTypes]): An ordered list of panels in the section. By default, first is top-left and last is bottom-right.
+        is_open (bool): Whether the section is open or closed. Default is closed.
+        layout_settings (Literal["standard", "custom"]): Settings for panel layout in the section.
+        panel_settings: Panel-level settings applied to all panels in the section, similar to `WorkspaceSettings` for a `Section`.
     """
 
     name: str
-    "The name/title of the section."
-
     panels: LList[PanelTypes] = Field(default_factory=list)
-    "An ordered list of panels in the section.  By default, first is top-left and last is bottom-right."
-
     is_open: bool = False
-    "Whether the section is open or closed.  Default is closed."
 
     layout_settings: SectionLayoutSettings = Field(
         default_factory=SectionLayoutSettings
     )
-    "Settings for panel layout in the section."
-
     panel_settings: SectionPanelSettings = Field(default_factory=SectionPanelSettings)
-    "Panel-level settings applied to all panels in the section, similar to WorkspaceSettings for this Section."
 
     @classmethod
     def _from_model(cls, model: internal.PanelBankConfigSectionsItem):
@@ -237,40 +239,40 @@ class WorkspaceSettings(Base):
     Workspace < Section < Panel
 
     Attributes:
-        x_axis: X-axis metric name setting.
-        x_min: Minimum value for the x-axis.
-        x_max: Maximum value for the x-axis.
-        smoothing_type: Smoothing type applied to all panels.
-        smoothing_weight: Smoothing weight applied to all panels.
-        ignore_outliers: Ignore outliers in all panels.
-        sort_panels_alphabetically: Sorts panels in all sections alphabetically.
-        group_by_prefix: Group panels by the first or up to last prefix (first or last).
+        x_axis (str): X-axis metric name setting.
+        x_min (Optional[float]): Minimum value for the x-axis.
+        x_max (Optional[float]): Maximum value for the x-axis.
+        smoothing_type (Literal['exponentialTimeWeighted', 'exponential', 'gaussian', 'average', 'none']): Smoothing
+            type applied to all panels.
+        smoothing_weight (int): Smoothing weight applied to all panels.
+        ignore_outliers (bool): Ignore outliers in all panels.
+        sort_panels_alphabetically (bool): Sorts panels in all sections alphabetically.
+        group_by_prefix (Literal["first", "last"]): Group panels by the first or up to last
+            prefix (first or last). Default is set to `last`.
+        remove_legends_from_panels (bool): Remove legends from all panels.
+        tooltip_number_of_runs (Literal["default", "all", "none"]): The number of runs to show in the tooltip.
+        tooltip_color_run_names (bool): Whether to color run names in the tooltip to
+            match the runset (True) or not (False). Default is set to `True`.
+        max_runs (int): The maximum number of runs to show per panel (this will be the first 10 runs in the runset).
+        point_visualization_method (Literal["line", "point", "line_point"]): The visualization method for points.
+        panel_search_query (str): The query for the panel search bar (can be a regex expression).
+        auto_expand_panel_search_results (bool): Whether to auto expand the panel search results.
     """
 
     # Axis settings
     x_axis: str = "Step"
-    "X-axis metric name setting."
-
     x_min: Optional[float] = None
-    "Minimum value for the x-axis."
-
     x_max: Optional[float] = None
-    "Maximum value for the x-axis."
 
     # Smoothing settings
     smoothing_type: internal.SmoothingType = "none"
-    "Smoothing type applied to all panels."
-
     smoothing_weight: Annotated[int, Ge(0)] = 0
-    "Smoothing weight applied to all panels."
 
     # Outlier settings
     ignore_outliers: bool = False
-    "Ignore outliers in all panels."
 
     # Section settings
     sort_panels_alphabetically: bool = False
-    "Sorts panels in all sections alphabetically"
 
     group_by_prefix: Literal["first", "last"] = "last"
     """
@@ -282,19 +284,13 @@ class WorkspaceSettings(Base):
 
     # Panel settings
     remove_legends_from_panels: bool = False
-    "Remove legends from all panels."
 
     # Tooltip settings
     tooltip_number_of_runs: TooltipNumberOfRuns = "default"
-    "The number of runs to show when hovering over a point."
-
     tooltip_color_run_names: bool = True
-    "Whether to color run names in the tooltip to match the runset (True) or not (False)."
 
     # Run settings
     max_runs: PositiveInt = 10
-    "The maximum number of runs to show per panel (this will be the first 10 runs in the runset)."
-
     point_visualization_method: Literal["bucketing", "downsampling"] = "bucketing"
     """
     Bucketing buckets all data points along the x-axis, showing the min, max, and avg within each bucket,
@@ -305,10 +301,7 @@ class WorkspaceSettings(Base):
 
     # Panel query bar settings
     panel_search_query: str = ""
-    "The query for the panel search bar (can be a regex expr)."
-
     auto_expand_panel_search_results: bool = False
-    "Whether to auto-expand the panel search results."
 
     # Internal only
     _panel_search_history: Optional[LList[Dict[Literal["query"], str]]] = Field(
@@ -322,15 +315,12 @@ class RunSettings(Base):
     """Settings for a run in a runset (left hand bar).
 
     Attributes:
-        color: The color of the run in the UI.  Can be hex (#ff0000), css color (red), or rgb (rgb(255, 0, 0))
-        disabled: Whether the run is disabled (eye closed in the UI).
+        color (str): The color of the run in the UI.  Can be hex (#ff0000), css color (red), or rgb (rgb(255, 0, 0))
+        disabled (bool): Whether the run is deactivated (eye closed in the UI). Default is set to `False`.
     """
 
     color: str = ""  # hex, css color, or rgb
-    "The color of the run in the UI.  Can be hex (#ff0000), css color (red), or rgb (rgb(255, 0, 0))"
-
     disabled: bool = False
-    "Whether the run is disabled (eye closed in the UI)."
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -338,27 +328,20 @@ class RunsetSettings(Base):
     """Settings for the runset (the left bar containing runs) in a workspace.
 
     Attributes:
-        query: A query to filter the runset (can be a regex expr, see next param).
-        regex_query: Controls whether the query (above) is a regex expr.
-        filters: A list of filters to apply to the runset.  Filters are AND'd together. See FilterExpr for more information on creating filters.
-        groupby: A list of metrics to group by in the runset.
-        order: A list of metrics and ordering to apply to the runset.
-        run_settings: A dictionary of run settings, where the key is the run's ID and the value is a RunSettings object.
-
+        query (str): A query to filter the runset (can be a regex expr, see next param).
+        regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
+        filters (LList[expr.FilterExpr]): A list of filters to apply to the runset.
+            Filters are AND'd together. See FilterExpr for more information on creating filters.
+        groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
+            `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
+        order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
+        run_settings (Dict[str, RunSettings]): A dictionary of run settings, where the key
+            is the run's ID and the value is a RunSettings object.
     """
 
     query: str = ""
-    "A query to filter the runset (can be a regex expr, see next param)."
-
     regex_query: bool = False
-    "Controls whether the query (above) is a regex expr."
-
     filters: LList[expr.FilterExpr] = Field(default_factory=list)
-    """
-    A list of filters to apply to the runset.  Filters are AND'd together.
-    See FilterExpr for more information on creating filters.
-    """
-
     groupby: LList[expr.MetricType] = Field(default_factory=list)
     "A list of metrics to group by in the runset."
 
@@ -367,8 +350,6 @@ class RunsetSettings(Base):
             expr.Ordering(expr.Metric("CreatedTimestamp"), ascending=False)
         ]
     )
-    "A list of metrics and ordering to apply to the runset."
-
     run_settings: Dict[str, RunSettings] = Field(default_factory=dict)
     """
     A dictionary of run settings, where the key is the run's ID and the value is a RunSettings object.
@@ -388,12 +369,15 @@ class Workspace(Base):
     """Represents a W&B workspace, including sections, settings, and config for run sets.
 
     Attributes:
-        entity: The entity this workspace will be saved to (usually user or team name).
-        project: The project this workspace will be saved to.
+        entity (str): The entity this workspace will be saved to (usually user or team name).
+        project (str): The project this workspace will be saved to.
         name: The name of the workspace.
-        sections: An ordered list of sections in the workspace.  The first section is at the top of the workspace.
-        settings: Settings for the workspace, typically seen at the top of the workspace in the UI.
-        runset_settings: Settings for the runset (the left bar containing runs) in a workspace.
+        sections (LList[Section]): An ordered list of sections in the workspace.
+            The first section is at the top of the workspace.
+        settings (WorkspaceSettings): Settings for the workspace, typically seen at
+            the top of the workspace in the UI.
+        runset_settings (RunsetSettings): Settings for the runset
+            (the left bar containing runs) in a workspace.
     """
 
     entity: str

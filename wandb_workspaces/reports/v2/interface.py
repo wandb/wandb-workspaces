@@ -2,8 +2,26 @@
 Python library for programmatically working with W&B Reports API.
 
 ```python
-# How to import
-import wandb_workspaces.reports.v2
+import wandb_workspaces.reports.v2 as wr
+
+report = wr.Report(
+    entity="entity",
+    project="project",
+    title="An amazing title",
+    description="A descriptive description.",
+)
+
+blocks = [
+    wr.PanelGrid(
+        panels=[
+            wr.LinePlot(x="time", y="velocity"),
+            wr.ScatterPlot(x="time", y="acceleration"),
+        ]
+    )
+]
+
+report.blocks = blocks
+report.save()
 ```
 
 """
@@ -1905,8 +1923,7 @@ class BarPlot(Panel):
 
     Attributes:
         title (Optional[str]): The text that appears at the top of the plot.
-        metrics LList[MetricType]:
-        orientation Literal["v", "h"]: The orientation of the bar plot.
+        metrics (LList[MetricType]): orientation Literal["v", "h"]: The orientation of the bar plot.
             Set to either vertical ("v") or horizontal ("h"). Defaults to horizontal ("h").
         range_x (Tuple[float | None, float | None]): Tuple that specifies the range of the x-axis.
         title_x (Optional[str]): The label of the x-axis.
