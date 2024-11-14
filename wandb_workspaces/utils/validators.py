@@ -15,20 +15,23 @@ def validate_no_emoji(s: str) -> str:
 def validate_spec_version(
     spec: Dict[str, Any], *, expected_version: int
 ) -> Dict[str, Any]:
-    actual_version = spec.get("version", -1)
+    spec_section = spec.get("section", dict())
+    actual_version = spec_section.get("version", -1)
+    print(spec)
+    print(spec_section)
+    print(actual_version)
 
     if actual_version < expected_version:
         raise SpecVersionError(
-            f"Workspace {actual_version=} < {expected_version=}, please visit the workspace in the web app to upgrade the workspace spec."
+            "Please visit the workspace in the web app to upgrade the workspace spec."
         )
 
     if actual_version > expected_version:
         raise SpecVersionError(
-            f"Workspace {actual_version=} > {expected_version=}, please upgrade the `wandb-workspace` package to the latest version."
+            "Please upgrade the `wandb-workspace` package to the latest version."
         )
 
     return spec
-
 
 def validate_url(url: str) -> str:
     parsed_url = urlparse(url)

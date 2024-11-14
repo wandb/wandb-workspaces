@@ -7,7 +7,7 @@ entity = os.getenv("WANDB_ENTITY")
 project = os.getenv("WANDB_PROJECT")
 
 # 1. Load a workspace from URL
-url = "https://wandb.ai/megatruong/workspace-api-demo2?nw=vnizqj6vq3"
+url = "https://wandb.ai/wandb/workspace-api-demo?nw=kbrek2ozu3"
 workspace = ws.Workspace.from_url(url)
 
 # 2a. Edit the workspace and save to the same view
