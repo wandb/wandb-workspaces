@@ -32,6 +32,7 @@ from typing import Dict, Iterable, Optional, Tuple, Union
 from typing import List as LList
 
 from annotated_types import Annotated, Ge, Le
+import requests
 
 try:
     from typing import Literal
@@ -3087,7 +3088,12 @@ class Report(Base):
                 By default, set to `False`.
         """
         vs = _url_to_viewspec(url)
-        model = internal.ReportViewspec.model_validate(vs)
+        
+        try:
+            model = internal.ReportViewspec.model_validate(vs)
+        except Exception as e:
+            raise ReportParsingError(f"Unable to parse report (invalid JSON) at {url}") from e
+        
         if as_model:
             return model
         return cls._from_model(model)
@@ -3125,9 +3131,12 @@ def _get_api():
 
 def _url_to_viewspec(url):
     report_id = _url_to_report_id(url)
-    r = _get_api().client.execute(
-        gql.view_report, variable_values={"reportId": report_id}
-    )
+    try:
+        r = _get_api().client.execute(
+            gql.view_report, variable_values={"reportId": report_id}
+        )
+    except Exception as e:
+        raise requests.HTTPError(f"Error getting report data from server for {url}") from e
     viewspec = r["view"]
     return viewspec
 
@@ -3503,3 +3512,6 @@ def _from_color_dict(d, runsets):
             new_key = k
         d2[new_key] = v
     return d2
+
+
+class ReportParsingError(Exception): ...
