@@ -257,6 +257,7 @@ class WorkspaceSettings(Base):
         point_visualization_method (Literal["line", "point", "line_point"]): The visualization method for points.
         panel_search_query (str): The query for the panel search bar (can be a regex expression).
         auto_expand_panel_search_results (bool): Whether to auto expand the panel search results.
+        should_auto_generate_panels (bool): Whether to auto-generate panels for all logged keys.
     """
 
     # Axis settings
@@ -281,6 +282,9 @@ class WorkspaceSettings(Base):
     first: "a/b/c/d" -> section a
     last: "a/b/c/d" -> section a/b/c
     """
+
+    # Workspace mode (auto or manual)
+    should_auto_generate_panels: bool = False
 
     # Panel settings
     remove_legends_from_panels: bool = False
