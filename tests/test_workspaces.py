@@ -4,10 +4,11 @@ from typing import Any, Dict, Generic, Type, TypeVar
 import pytest
 from polyfactory.factories import DataclassFactory
 from polyfactory.pytest_plugin import register_fixture
-
+import wandb_workspaces.reports.v2.internal as _wr
 import wandb_workspaces.expr
 import wandb_workspaces.reports.v2 as wr
 import wandb_workspaces.workspaces as ws
+from tests.weave_panel_factory import WeavePanelFactory
 from wandb_workspaces.utils.validators import (
     validate_no_emoji,
     validate_spec_version,
@@ -243,3 +244,24 @@ def test_validate_url(example, should_pass):
     else:
         with pytest.raises(UnsupportedViewError):
             validate_url(example)
+
+
+@pytest.mark.parametrize(
+    "panel_config, should_return_instance",
+    [
+        (
+            WeavePanelFactory.build_summary_table_panel(),
+            wr.interface.WeavePanelSummaryTable,
+        ),
+        (WeavePanelFactory.build_artifact_panel(), wr.interface.WeavePanelArtifact),
+        (
+            WeavePanelFactory.build_artifact_version_panel(),
+            wr.interface.WeavePanelArtifactVersionedFile,
+        ),
+        (WeavePanelFactory.build_run_var_panel(), wr.interface.WeavePanel),
+        (_wr.UnknownPanel(), wr.interface.UnknownPanel),
+    ],
+)
+def test_panel_lookup(panel_config, should_return_instance):
+    panel = wr.interface._lookup_panel(panel_config)
+    assert isinstance(panel, should_return_instance)
