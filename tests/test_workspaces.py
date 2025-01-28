@@ -139,8 +139,9 @@ def test_filter_expr(expr, spec):
     assert expr.to_model().model_dump(by_alias=True, exclude_none=True) == spec
 
 
+@pytest.mark.xfail(reason="We using prod data for spec version checks which is unstable")
 def test_load_workspace_from_url():
-    url = "https://wandb.ai/megatruong/workspace-api-demo?nw=vs71wsgdvrz"
+    url = "https://wandb.ai/wandb/workspace-api-demo?nw=kbrek2ozu3"
     workspace = ws.Workspace.from_url(url)  # noqa: F841
 
 
@@ -198,9 +199,9 @@ def test_validate_no_emoji(example, should_pass):
     "example, should_pass",
     [
         ({}, False),  # No version
-        ({"version": 4}, False),  # Lower version
-        ({"version": 5}, True),  # Expected version
-        ({"version": 6}, False),  # Higher version
+        ({"section":{"version": 4}}, False),  # Lower version
+        ({"section":{"version": 5}}, True),  # Expected version
+        ({"section":{"version": 6}}, False),  # Higher version
     ],
 )
 def test_validate_spec_version(example, should_pass):
