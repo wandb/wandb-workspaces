@@ -3188,14 +3188,17 @@ def _lookup_panel(panel):
         wandb.termwarn(f"Unknown panel type: {panel.__class__}")
 
     if cls is WeavePanel:
-        # print('cls is weave panel')
-        for cls in defined_weave_panels:
+        # TODO the more panels that get defined, the more of a need there is to either
+        # sort the `defined_weave_panels` list by specificity or add additional logic
+        # to select the proper panel.
+        #
+        # Currently, WeaveSummaryTablePanel, WeavePanelArtifactVersionedFile, and
+        # WeavePanelArtifact have unique keys from inputs, so this logic still works.
+        for weave_cls in defined_weave_panels:
             try:
-                cls._from_model(panel)
+                return weave_cls._from_model(panel)
             except Exception:
                 continue
-            else:
-                break
 
     return cls._from_model(panel)
 

@@ -1,19 +1,23 @@
+import os
 import sys
 from typing import Any, Dict, Generic, Type, TypeVar
 
 import pytest
 from polyfactory.factories import DataclassFactory
 from polyfactory.pytest_plugin import register_fixture
-
+import wandb_workspaces.reports.v2.internal as _wr
 import wandb_workspaces.expr
 import wandb_workspaces.reports.v2 as wr
 import wandb_workspaces.workspaces as ws
+from tests.weave_panel_factory import WeavePanelFactory
 from wandb_workspaces.utils.validators import (
     validate_no_emoji,
     validate_spec_version,
     validate_url,
 )
 from wandb_workspaces.workspaces.errors import SpecVersionError, UnsupportedViewError
+
+ENTITY = os.getenv("WANDB_ENTITY")
 
 T = TypeVar("T")
 
@@ -140,13 +144,13 @@ def test_filter_expr(expr, spec):
 
 
 def test_load_workspace_from_url():
-    url = "https://wandb.ai/megatruong/workspace-api-demo?nw=vs71wsgdvrz"
+    url = f"https://wandb.ai/{ENTITY}/workspace-api-demo?nw=tkdujz254ke"
     workspace = ws.Workspace.from_url(url)  # noqa: F841
 
 
 @pytest.mark.xfail(reason="Saving to the same workspace is currently bugged")
 def test_save_workspace():
-    workspace = ws.Workspace(entity="megatruong", project="workspace-api-demo")
+    workspace = ws.Workspace(entity=ENTITY, project="workspace-api-demo")
     workspace.save()
     workspace_name = workspace._internal_name
 
@@ -159,7 +163,7 @@ def test_save_workspace():
 
 
 def test_save_workspace_as_new_view():
-    workspace = ws.Workspace(entity="megatruong", project="workspace-api-demo")
+    workspace = ws.Workspace(entity=ENTITY, project="workspace-api-demo")
     workspace.save_as_new_view()
     workspace_name = workspace._internal_name
 
@@ -243,3 +247,24 @@ def test_validate_url(example, should_pass):
     else:
         with pytest.raises(UnsupportedViewError):
             validate_url(example)
+
+
+@pytest.mark.parametrize(
+    "panel_config, should_return_instance",
+    [
+        (
+            WeavePanelFactory.build_summary_table_panel(),
+            wr.interface.WeavePanelSummaryTable,
+        ),
+        (WeavePanelFactory.build_artifact_panel(), wr.interface.WeavePanelArtifact),
+        (
+            WeavePanelFactory.build_artifact_version_panel(),
+            wr.interface.WeavePanelArtifactVersionedFile,
+        ),
+        (WeavePanelFactory.build_run_var_panel(), wr.interface.WeavePanel),
+        (_wr.UnknownPanel(), wr.interface.UnknownPanel),
+    ],
+)
+def test_panel_lookup(panel_config, should_return_instance):
+    panel = wr.interface._lookup_panel(panel_config)
+    assert isinstance(panel, should_return_instance)
