@@ -2,12 +2,13 @@ import os
 
 import wandb_workspaces.workspaces as ws
 
-# !! edit to your entity and project !!
+# !! edit to your entity, project, and saved view !!
 entity = os.getenv("WANDB_ENTITY")
-project = os.getenv("WANDB_PROJECT")
+project = "workspace-api-demo2"
+saved_view = "oydw4wx21l"
 
 # 1. Load a workspace from URL
-url = "https://wandb.ai/megatruong/workspace-api-demo2?nw=vnizqj6vq3"
+url = f"https://wandb.ai/{entity}/{project}?nw={saved_view}"
 workspace = ws.Workspace.from_url(url)
 
 # 2a. Edit the workspace and save to the same view
