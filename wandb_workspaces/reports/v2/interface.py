@@ -2468,7 +2468,7 @@ class WeavePanel(Panel):
     config: dict = Field(default_factory=dict)
 
     def _to_model(self):
-        return internal.WeavePanel(config=self.config)
+        return internal.WeavePanel(config=self.config, layout=self.layout._to_model())
 
     @classmethod
     def _from_model(cls, model: internal.WeavePanel):
@@ -2668,7 +2668,8 @@ class WeavePanelSummaryTable(Panel):
                         "__userInput": True,
                     }
                 }
-            }
+            },
+            layout=self.layout._to_model()
         )
 
     @classmethod
@@ -2800,7 +2801,8 @@ class WeavePanelArtifactVersionedFile(Panel):
                         "__userInput": True,
                     }
                 }
-            }
+            },
+            layout=self.layout._to_model()
         )
 
     @classmethod
@@ -2910,7 +2912,8 @@ class WeavePanelArtifact(WeavePanel):
                         "tabConfigs": {"overview": {"selectedTab": self.tab}}
                     },
                 }
-            }
+            },
+            layout=self.layout._to_model()
         )
 
     @classmethod
