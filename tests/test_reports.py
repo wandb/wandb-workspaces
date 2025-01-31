@@ -382,3 +382,33 @@ def test_expression_parsing(expr, expected_filters):
     assert expr_to_filters(expr) == Filters(
         op="OR", filters=[Filters(op="AND", filters=expected_filters)]
     )
+
+
+def test_layout_config():
+    DEFAULT_LAYOUT = {
+        "x": wr.Layout.x,
+        "y": wr.Layout.y,
+        "w": wr.Layout.w,
+        "h": wr.Layout.h,
+    }
+    CUSTOM_USER_DEFINED_LAYOUT = {"x": 0, "y": 0, "w": 24, "h": 24}
+
+    p0 = wr.interface.WeavePanelSummaryTable(table_name="test")
+    p1 = wr.interface.WeavePanelSummaryTable(
+        table_name="test", layout=CUSTOM_USER_DEFINED_LAYOUT
+    )
+    p2 = wr.interface.WeavePanelArtifact(
+        artifact="test", layout=CUSTOM_USER_DEFINED_LAYOUT
+    )
+    p3 = wr.interface.WeavePanelArtifactVersionedFile(
+        artifact="test",
+        version="vtest",
+        file="test.txt",
+        layout=CUSTOM_USER_DEFINED_LAYOUT,
+    )
+    p4 = wr.interface.WeavePanel(layout=CUSTOM_USER_DEFINED_LAYOUT)
+
+    assert p0._to_model().layout.model_dump() == DEFAULT_LAYOUT
+
+    for panel in [p1, p2, p3, p4]:
+        assert panel._to_model().layout.model_dump() == CUSTOM_USER_DEFINED_LAYOUT
