@@ -393,20 +393,20 @@ def test_layout_config():
     }
     CUSTOM_USER_DEFINED_LAYOUT = {"x": 0, "y": 0, "w": 24, "h": 24}
 
-    p0 = wr.interface.WeavePanelSummaryTable(table_name="test")
-    p1 = wr.interface.WeavePanelSummaryTable(
+    p0 = wr.WeavePanelSummaryTable(table_name="test")
+    p1 = wr.WeavePanelSummaryTable(
         table_name="test", layout=CUSTOM_USER_DEFINED_LAYOUT
     )
-    p2 = wr.interface.WeavePanelArtifact(
+    p2 = wr.WeavePanelArtifact(
         artifact="test", layout=CUSTOM_USER_DEFINED_LAYOUT
     )
-    p3 = wr.interface.WeavePanelArtifactVersionedFile(
+    p3 = wr.WeavePanelArtifactVersionedFile(
         artifact="test",
         version="vtest",
         file="test.txt",
         layout=CUSTOM_USER_DEFINED_LAYOUT,
     )
-    p4 = wr.interface.WeavePanel(layout=CUSTOM_USER_DEFINED_LAYOUT)
+    p4 = wr.WeavePanel(layout=CUSTOM_USER_DEFINED_LAYOUT)
 
     assert p0._to_model().layout.model_dump() == DEFAULT_LAYOUT
 
