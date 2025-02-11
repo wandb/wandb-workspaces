@@ -255,3 +255,33 @@ def to_frontend_name(name):
 
 def to_backend_name(name):
     return fe_name_map.get(name, name)
+
+
+def groupby_str_to_key(group_str: str) -> Key:
+    """
+    Converts a groupby string into an internal Key object.
+
+    If the input string is in the form "section.metric", it splits it into section and metric.
+    Otherwise, it defaults the section to "run".
+
+    To simplify usage, if the section is "config", this function ensures that the backend key
+    ends with ".value" (unless already provided).
+
+    Examples:
+        "group"              -> Key(section="run", name=to_backend_name("group"))
+        "run.group"          -> Key(section="run", name=to_backend_name("group"))
+        "config.param"       -> Key(section="config", name=to_backend_name("param") + ".value")
+        "config.param.value" -> Key(section="config", name=to_backend_name("param.value"))
+        "summary.metric"     -> Key(section="summary", name=to_backend_name("metric"))
+    """
+    parts = group_str.split(".", 1)
+    if len(parts) == 2:
+        section, key_name = parts
+    else:
+        section, key_name = "run", parts[0]
+    # Convert to backend name (this handles other renamings)
+    key_name = to_backend_name(key_name)
+    # If we're dealing with a config metric and ".value" is not already present, append it.
+    if section == "config" and not key_name.endswith(".value"):
+        key_name = f"{key_name}.value"
+    return Key(section=section, name=key_name)
