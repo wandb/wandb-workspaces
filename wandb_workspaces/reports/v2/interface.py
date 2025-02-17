@@ -854,7 +854,10 @@ class Runset(Base):
         name (str): The name of the run set. Set to `Run set` by default.
         query (str): A query string to filter runs.
         filters (Optional[str]): A filter string to filter runs.
-        groupby (LList[str]): A list of metric names to group by.
+        groupby (LList[str]): A list of metric names to group by. Supported formats are:
+            - "group" or "run.group" to group by a run attribute
+            - "config.param" to group by a config parameter
+            - "summary.metric" to group by a summary metric
         order (LList[OrderBy]): A list of `OrderBy` objects to order by.
         custom_run_colors (LList[OrderBy]): A dictionary mapping run IDs to colors.
     """
@@ -885,9 +888,7 @@ class Runset(Base):
             project=project,
             name=self.name,
             filters=expr_parsing.expr_to_filters(self.filters),
-            grouping=[
-                internal.Key(name=expr_parsing.to_backend_name(g)) for g in self.groupby
-            ],
+            grouping=[expr_parsing.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
         )
         obj.id = self._id
