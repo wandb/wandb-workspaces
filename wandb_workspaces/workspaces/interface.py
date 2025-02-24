@@ -520,7 +520,7 @@ class Workspace(Base):
         # hack: create sections to hide unnecessary panels
         base_sections = [s._to_model() for s in self.sections]
 
-        possible_missing_sections = set(("Hidden Panels", "Charts", "System"))
+        possible_missing_sections = set(("Charts", "System"))
         base_section_names = set(s.name for s in self.sections)
         missing_section_names = possible_missing_sections - base_section_names
 
