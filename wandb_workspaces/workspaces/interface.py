@@ -526,18 +526,8 @@ class Workspace(Base):
 
     def _to_model(self) -> internal.View:
         # hack: create sections to hide unnecessary panels
-        base_sections = [s._to_model() for s in self.sections]
+        sections = [s._to_model() for s in self.sections]
 
-        possible_missing_sections = set(("Charts", "System"))
-        base_section_names = set(s.name for s in self.sections)
-        missing_section_names = possible_missing_sections - base_section_names
-
-        hidden_sections = [
-            Section(name=name, is_open=False)._to_model()
-            for name in missing_section_names
-        ]
-
-        sections = base_sections + hidden_sections
         is_regex = True if self.runset_settings.regex_query else None
         auto_organize_prefix = 2 if self.settings.group_by_prefix == "last" else 1
 
