@@ -378,6 +378,9 @@ class Workspace(Base):
             the top of the workspace in the UI.
         runset_settings (RunsetSettings): Settings for the runset
             (the left bar containing runs) in a workspace.
+        auto_generate_panels (bool): Whether to automatically generate panels for all keys logged in this project. 
+            Recommended if you would like all available data to be visualized by default.
+            This can only be set during workspace creation and cannot be modified afterward.
     """
 
     entity: str
@@ -386,6 +389,7 @@ class Workspace(Base):
     sections: LList[Section] = Field(default_factory=list)
     settings: WorkspaceSettings = Field(default_factory=WorkspaceSettings)
     runset_settings: RunsetSettings = Field(default_factory=RunsetSettings)
+    _auto_generate_panels: bool = Field(default=False, repr=True, alias="auto_generate_panels")
 
     # Internal only
     _internal_name: str = Field("", init=False, repr=False)
@@ -397,6 +401,10 @@ class Workspace(Base):
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
 
+    @property
+    def auto_generate_panels(self) -> bool:
+        return self._auto_generate_panels
+    
     @property
     def url(self):
         "The URL to the workspace in the W&B app."
@@ -560,6 +568,7 @@ class Workspace(Base):
             color_run_names=color_run_names,
             max_runs=self.settings.max_runs,
             point_visualization_method=point_viz_method,
+            should_auto_generate_panels=self.auto_generate_panels,
         )
 
         return internal.View(

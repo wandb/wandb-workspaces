@@ -48,6 +48,7 @@ class ViewspecSectionSettings(WorkspaceAPIBaseModel):
     point_visualization_method: Optional[PointVizMethod] = None
     suppress_legends: Optional[bool] = None
     tooltip_number_of_runs: Optional[TooltipNumberOfRuns] = None
+    should_auto_generate_panels: bool = False
 
     @computed_field  # type: ignore[misc]
     @property
