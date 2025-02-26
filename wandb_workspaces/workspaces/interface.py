@@ -525,7 +525,6 @@ class Workspace(Base):
         return obj
 
     def _to_model(self) -> internal.View:
-        # hack: create sections to hide unnecessary panels
         sections = [s._to_model() for s in self.sections]
 
         is_regex = True if self.runset_settings.regex_query else None
