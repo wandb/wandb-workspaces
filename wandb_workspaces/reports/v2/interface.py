@@ -3143,6 +3143,10 @@ def _url_to_report_id(url):
     _, entity, project, _, name = path.split("/")
     title, report_id = name.split("--")
 
+    missing_padding = len(report_id) % 4
+    if missing_padding:
+         report_id += "=" * (4 - missing_padding)
+
     return report_id
 
 
