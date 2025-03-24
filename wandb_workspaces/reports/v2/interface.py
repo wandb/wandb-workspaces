@@ -954,6 +954,7 @@ class PanelGrid(Block):
     """
 
     runsets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
+    hide_run_sets: bool = False
     panels: LList["PanelTypes"] = Field(default_factory=list)
     active_runset: int = 0
     custom_run_colors: Dict[Union[RunId, RunsetGroup], Union[str, dict]] = Field(
@@ -969,6 +970,7 @@ class PanelGrid(Block):
         return internal.PanelGrid(
             metadata=internal.PanelGridMetadata(
                 run_sets=[rs._to_model() for rs in self.runsets],
+                hide_run_sets=self.hide_run_sets,
                 panel_bank_section_config=internal.PanelBankSectionConfig(
                     panels=[p._to_model() for p in self.panels],
                 ),
@@ -985,6 +987,7 @@ class PanelGrid(Block):
         runsets = [Runset._from_model(rs) for rs in model.metadata.run_sets]
         obj = cls(
             runsets=runsets,
+            hide_run_sets=model.metadata.hide_run_sets,
             panels=[
                 _lookup_panel(p)
                 for p in model.metadata.panel_bank_section_config.panels
