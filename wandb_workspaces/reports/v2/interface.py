@@ -26,6 +26,7 @@ report.save()
 
 """
 
+import base64
 import os
 from datetime import datetime
 from typing import Dict, Iterable, Optional, Tuple, Union
@@ -3143,9 +3144,9 @@ def _url_to_report_id(url):
     _, entity, project, _, name = path.split("/")
     title, report_id = name.split("--")
 
-    missing_padding = len(report_id) % 4
-    if missing_padding:
-         report_id += "=" * (4 - missing_padding)
+    report_id = base64.b64encode(base64.b64decode(report_id + "==")).decode(
+        "utf-8"
+    )
 
     return report_id
 
