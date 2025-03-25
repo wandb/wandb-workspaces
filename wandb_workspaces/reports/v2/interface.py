@@ -3154,8 +3154,8 @@ def _url_to_report_id(url):
         raise ValueError("Attempted to parse invalid View ID") from e
 
     # Re-encode to standard base64 string (which will include proper padding)
-    final_report_id = base64.b64encode(decoded).decode("utf-8")
-    return final_report_id
+    report_id = base64.b64encode(decoded).decode("utf-8")
+    return report_id
 
 
 def _lookup(block):
