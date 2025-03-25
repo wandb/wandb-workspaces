@@ -947,6 +947,7 @@ class PanelGrid(Block):
 
     Attributes:
         runsets (LList["Runset"]): A list of one or more `Runset` objects.
+        hide_run_sets (bool): Whether to hide the run sets of the panel grid for report viewers.
         panels (LList["PanelTypes"]): A list of one or more `Panel` objects.
         active_runset (int): The number of runs you want to display within a runset. By default, it is set to 0.
         custom_run_colors (dict): Key-value pairs where the key is the name of a
