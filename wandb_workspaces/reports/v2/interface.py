@@ -3144,11 +3144,18 @@ def _url_to_report_id(url):
     _, entity, project, _, name = path.split("/")
     title, report_id = name.split("--")
 
-    report_id = base64.b64encode(base64.b64decode(report_id + "==")).decode(
-        "utf-8"
-    )
+    # Add correct base64 padding: calculate the number of '=' needed
+    pad = (4 - (len(report_id) % 4)) % 4
+    padded_report_id = report_id + ("=" * pad)
+    try:
+        # Validate the padded report ID by attempting to decode it
+        decoded = base64.b64decode(padded_report_id)
+    except Exception as e:
+        raise ValueError("Attempted to parse invalid View ID") from e
 
-    return report_id
+    # Re-encode to standard base64 string (which will include proper padding)
+    final_report_id = base64.b64encode(decoded).decode("utf-8")
+    return final_report_id
 
 
 def _lookup(block):
