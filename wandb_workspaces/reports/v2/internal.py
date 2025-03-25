@@ -283,6 +283,7 @@ class PanelGridMetadata(ReportAPIBaseModel):
     open_run_set: Optional[int] = 0  # none is closed
     name: Literal["unused-name"] = "unused-name"
     run_sets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
+    hide_run_sets: bool = False
     panels: PanelGridMetadataPanels = Field(default_factory=PanelGridMetadataPanels)
     panel_bank_config: PanelBankConfig = Field(default_factory=PanelBankConfig)
     panel_bank_section_config: PanelBankSectionConfig = Field(
