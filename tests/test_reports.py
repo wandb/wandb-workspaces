@@ -412,3 +412,22 @@ def test_layout_config():
 
     for panel in [p1, p2, p3, p4]:
         assert panel._to_model().layout.model_dump() == CUSTOM_USER_DEFINED_LAYOUT
+
+
+def test_url_to_report_id_padding():
+    import base64
+    import wandb_workspaces.reports.v2 as wr
+
+    # "test" -> base64 encoded becomes "dGVzdA=="
+    original = b"test"
+    encoded = base64.b64encode(original).decode("utf-8")  # "dGVzdA=="
+    # Remove the '=' padding to simulate a URL-embedded report id.
+    stripped = encoded.replace("=", "")
+    
+    # Construct a fake URL in the expected format:
+    #   http://wandb.ai/{entity}/{project}/reports/{title}--{report_id}
+    url = f"http://wandb.ai/my_entity/my_project/reports/my-report--{stripped}"
+    
+    # Call the function and verify that the returned id matches the properly padded version.
+    result = wr.interface._url_to_report_id(url)
+    assert result == encoded, f"Expected {encoded} but got {result}"

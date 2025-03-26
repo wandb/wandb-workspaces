@@ -26,6 +26,7 @@ report.save()
 
 """
 
+import base64
 import os
 from datetime import datetime
 from typing import Dict, Iterable, Optional, Tuple, Union
@@ -3147,6 +3148,17 @@ def _url_to_report_id(url):
     _, entity, project, _, name = path.split("/")
     title, report_id = name.split("--")
 
+    # Add correct base64 padding: calculate the number of '=' needed
+    pad = (4 - (len(report_id) % 4)) % 4
+    padded_report_id = report_id + ("=" * pad)
+    try:
+        # Validate the padded report ID by attempting to decode it
+        decoded = base64.b64decode(padded_report_id)
+    except Exception as e:
+        raise ValueError("Attempted to parse invalid View ID") from e
+
+    # Re-encode to standard base64 string (which will include proper padding)
+    report_id = base64.b64encode(decoded).decode("utf-8")
     return report_id
 
 
