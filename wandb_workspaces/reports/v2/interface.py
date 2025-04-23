@@ -586,7 +586,17 @@ class CodeBlock(Block):
 
     @classmethod
     def _from_model(cls, model: internal.CodeBlock):
-        code = _internal_children_to_text(model.children[0].children)
+        # Aggregate all lines of code into a single multiline string
+        lines = []
+        for code_line in model.children:
+            # code_line.children contains internal.Text nodes for each line
+            line_text = _internal_children_to_text(code_line.children)
+            if not isinstance(line_text, str):
+                # If the line_text is a list of segments, join them into a string
+                line_text = ''.join(str(x) for x in line_text)
+            lines.append(line_text)
+        # Join lines preserving line breaks
+        code = "\n".join(lines)
         return cls(code=code, language=model.language)
 
 
