@@ -431,3 +431,20 @@ def test_url_to_report_id_padding():
     # Call the function and verify that the returned id matches the properly padded version.
     result = wr.interface._url_to_report_id(url)
     assert result == encoded, f"Expected {encoded} but got {result}"
+
+
+def test_codeblock_multiline_round_trip():
+    """
+    Ensure that CodeBlock._to_model and _from_model correctly round-trip
+    multi-line code strings without losing blank lines.
+    """
+    lines = ["import wandb", "", "wandb.init()"]
+    code_str = "\n".join(lines)
+    # Create an interface CodeBlock with multilines
+    block = wr.CodeBlock(code=code_str)
+    # Convert to internal model and back
+    model = block._to_model()
+    restored = wr.CodeBlock._from_model(model)
+    # The code and language should be identical after round-trip
+    assert restored.code == code_str
+    assert restored.language == block.language
