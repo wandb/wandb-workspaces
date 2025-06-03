@@ -1,5 +1,6 @@
 import sys
 from typing import Any, Dict, Generic, Type, TypeVar
+from unittest.mock import Mock
 
 import pytest
 from polyfactory.factories import DataclassFactory
@@ -448,3 +449,29 @@ def test_codeblock_multiline_round_trip():
     # The code and language should be identical after round-trip
     assert restored.code == code_str
     assert restored.language == block.language
+
+
+def test_runset_project_lookup(monkeypatch):
+    """Test that Runset._to_model() correctly handles project ID lookup"""
+    # Mock the wandb API client
+    mock_client = Mock()
+    def mock_get_api():
+        return type('MockApi', (), {'client': mock_client})()
+    monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", mock_get_api)
+    
+    # Test successful case - project exists and ID is added
+    mock_client.execute.return_value = {
+        "project": {"internalId": "UHJvamVjdEludGVybmFsSWQ6MTIzNDU="}
+    }
+    runset = wr.Runset(entity="test-entity", project="test-project")
+    model = runset._to_model()
+    assert model.project.entity_name == "test-entity"
+    assert model.project.name == "test-project"
+    assert model.project.id == "UHJvamVjdEludGVybmFsSWQ6MTIzNDU="
+
+    # Test error case - project not found
+    mock_client.execute.return_value = {"project": None}
+    with pytest.raises(ValueError) as exc_info:
+        wr.Runset(entity="bad-entity", project="bad-project")._to_model()
+    assert "project 'bad-entity/bad-project' not found" in str(exc_info.value)
+

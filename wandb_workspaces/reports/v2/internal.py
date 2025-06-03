@@ -182,6 +182,7 @@ class Project(ReportAPIBaseModel):
     name: Optional[str] = None
     # name: str = ""
     entity_name: str = ""
+    id: Optional[str] = None
 
 
 class PanelBankConfigSettings(ReportAPIBaseModel):
