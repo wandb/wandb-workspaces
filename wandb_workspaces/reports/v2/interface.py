@@ -892,8 +892,27 @@ class Runset(Base):
 
     def _to_model(self):
         project = None
-        if self.entity or self.project:
-            project = internal.Project(entity_name=self.entity, name=self.project)
+
+        if self.entity and self.project:
+            # Look up project internal ID
+            r = _get_api().client.execute(
+                gql.projectInternalId,
+                variable_values={
+                    "entityName": self.entity,
+                    "projectName": self.project,
+                }
+            )
+            if r.get("project"):
+                project = internal.Project(
+                    entity_name=self.entity,
+                    name=self.project,
+                    id=r["project"]["internalId"],
+                )
+            else:
+                raise ValueError(
+                    f"Run set '{self.name}' project '{self.entity}/{self.project}' not found. "
+                    "Please verify that the entity and project names are correct and that you have access to this project."
+                )
 
         obj = internal.Runset(
             project=project,

@@ -66,3 +66,13 @@ upsert_view = gql(
     }
 """
 )
+projectInternalId = gql(
+    """
+    query ProjectInternalId($projectName: String!, $entityName: String!) {
+        project(name: $projectName, entityName: $entityName) {
+            id
+            internalId
+        }
+    }
+    """
+)
