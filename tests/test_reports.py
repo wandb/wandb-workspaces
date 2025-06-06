@@ -330,6 +330,25 @@ def test_fix_panel_collisions():
             ],
         ],
         [
+            "b == 1 and c == 2",
+            [
+                Filters(
+                    op="==",
+                    key=Key(section="run", name="b"),
+                    filters=None,
+                    value=1,
+                    disabled=False,
+                ),
+                Filters(
+                    op="==",
+                    key=Key(section="run", name="c"),
+                    filters=None,
+                    value=2,
+                    disabled=False,
+                ),
+            ],
+        ],
+        [
             "(a >= 1)",
             [
                 Filters(

@@ -41,7 +41,13 @@ def expr_to_filters(expr: str) -> Filters:
         filters = []
     else:
         parsed_expr = ast.parse(expr, mode="eval")
-        filters = [_parse_node(parsed_expr.body)]
+        root_filter = _parse_node(parsed_expr.body)
+
+        # If the root operation is an AND, unpack its child filters
+        if root_filter.op == "AND" and root_filter.filters:
+            filters = root_filter.filters
+        else:
+            filters = [root_filter]
 
     return Filters(op="OR", filters=[Filters(op="AND", filters=filters)])
 
