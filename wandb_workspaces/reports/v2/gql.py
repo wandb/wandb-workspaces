@@ -67,11 +67,9 @@ upsert_view = gql(
 """
 )
 
-# BEGIN DELETE VIEW MUTATION ADDITION
 # Mutation to delete a report (view) given its ID.
 # Accepts a flag to also delete any associated draft views.
 # Mirrors the save/upsert structure above.
-
 delete_view = gql(
     """
     mutation deleteView($id: ID!, $deleteDrafts: Boolean) {
@@ -83,4 +81,14 @@ delete_view = gql(
     }
     """
 )
-# END DELETE VIEW MUTATION ADDITION
+
+projectInternalId = gql(
+    """
+    query ProjectInternalId($projectName: String!, $entityName: String!) {
+        project(name: $projectName, entityName: $entityName) {
+            id
+            internalId
+        }
+    }
+    """
+)
