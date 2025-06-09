@@ -3114,7 +3114,6 @@ class Report(Base):
         wandb.termlog(f"Saved report to: {self.url}")
         return self
 
-    # BEGIN DELETE METHOD ADDITION
     def delete(self, *, delete_drafts: bool = False) -> bool:
         """Delete this report from W&B.
 
@@ -3146,7 +3145,6 @@ class Report(Base):
             wandb.termwarn("Failed to delete report – backend returned unsuccessful status.")
 
         return success
-    # END DELETE METHOD ADDITION
 
     @classmethod
     def from_url(cls, url: str, *, as_model: bool = False):
