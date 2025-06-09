@@ -63,7 +63,7 @@ TextLike = Union[str, "TextWithInlineComments", "Link", "InlineLatex", "InlineCo
 TextLikeField = Union[TextLike, LList[TextLike]]
 SpecialMetricType = Union["Config", "SummaryMetric", "Metric"]
 MetricType = Union[str, SpecialMetricType]
-SummaryOrConfigOnlyMetric = Union[str, "Config", "SummaryMetric"]
+SummaryOrConfigOnlyMetric = Union[str, "Config", "SummaryMetric", "Metric"]
 RunId = str
 
 
@@ -3460,9 +3460,22 @@ def _metric_to_frontend(x: str):
 def _metric_to_backend_pc(x: Optional[SummaryOrConfigOnlyMetric]):
     if x is None:
         return x
-    if isinstance(x, str):  # Same as SummaryMetric
+    # Accept explicit run section prefix ("run.") or treat Metric instances as run metrics.
+    if isinstance(x, str):
+        # If the user explicitly specified a run attribute, e.g. "run.createdAt",
+        # strip the prefix and map the name to its backend representation.
+        if x.startswith("run."):
+            name = x.split("run.", 1)[1]
+            backend_name = expr_parsing.to_backend_name(name)
+            return f"run:{backend_name}"
+        # Otherwise, assume summary metric (legacy behaviour)
         name = x
         return f"summary:{name}"
+    if isinstance(x, Metric):
+        # Run-level metric – convert to backend name (handles FE ⇄ BE mapping, e.g. "CreatedTimestamp" → "createdAt")
+        name = x.name
+        backend_name = expr_parsing.to_backend_name(name)
+        return f"run:{backend_name}"
     if isinstance(x, Config):
         name = x.name
         return f"c::{name}"
