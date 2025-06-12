@@ -588,17 +588,54 @@ class CodeBlock(Block):
 
     @classmethod
     def _from_model(cls, model: internal.CodeBlock):
-        # Aggregate all lines of code into a single multiline string
+        # Aggregate all lines of code into a single multiline string or TextLikeField
         lines = []
         for code_line in model.children:
             # code_line.children contains internal.Text nodes for each line
             line_text = _internal_children_to_text(code_line.children)
-            if not isinstance(line_text, str):
-                # If the line_text is a list of segments, join them into a string
-                line_text = "".join(str(x) for x in line_text)
             lines.append(line_text)
-        # Join lines preserving line breaks
-        code = "\n".join(lines)
+        
+        # If we have multiple lines, join them with newlines
+        if len(lines) == 1:
+            code = lines[0]
+        else:
+            # For multiple lines, we need to join them properly
+            # If all lines are strings, join with newlines
+            if all(isinstance(line, str) for line in lines):
+                code = "\n".join(lines)
+            else:
+                # If we have mixed content, we need to preserve the structure
+                # This is a complex case - for now, convert to string representation
+                text_parts = []
+                for i, line in enumerate(lines):
+                    if isinstance(line, str):
+                        text_parts.append(line)
+                    elif isinstance(line, list):
+                        # Handle list of mixed content
+                        line_parts = []
+                        for item in line:
+                            if isinstance(item, str):
+                                line_parts.append(item)
+                            else:
+                                # Preserve the original object (InlineCode, etc.)
+                                line_parts.append(item)
+                        if len(line_parts) == 1:
+                            text_parts.append(line_parts[0])
+                        else:
+                            text_parts.extend(line_parts)
+                    else:
+                        text_parts.append(line)
+                    
+                    # Add newline between lines (except for the last line)
+                    if i < len(lines) - 1:
+                        text_parts.append("\n")
+                
+                # If we have a single item, return it directly
+                if len(text_parts) == 1:
+                    code = text_parts[0]
+                else:
+                    code = text_parts
+        
         return cls(code=code, language=model.language)
 
 
@@ -3504,6 +3541,10 @@ def _metric_to_frontend_pc(x: str):
     if x.startswith("summary:"):
         name = x.replace("summary:", "")
         return SummaryMetric(name)
+    if x.startswith("run:"):
+        name = x.replace("run:", "")
+        backend_name = expr_parsing.to_frontend_name(name)
+        return Metric(backend_name)
 
     name = expr_parsing.to_frontend_name(x)
     return Metric(name)
