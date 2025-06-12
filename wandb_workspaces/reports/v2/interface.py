@@ -594,7 +594,7 @@ class CodeBlock(Block):
             # code_line.children contains internal.Text nodes for each line
             line_text = _internal_children_to_text(code_line.children)
             lines.append(line_text)
-        
+
         # If we have multiple lines, join them with newlines
         if len(lines) == 1:
             code = lines[0]
@@ -625,17 +625,17 @@ class CodeBlock(Block):
                             text_parts.extend(line_parts)
                     else:
                         text_parts.append(line)
-                    
+
                     # Add newline between lines (except for the last line)
                     if i < len(lines) - 1:
                         text_parts.append("\n")
-                
+
                 # If we have a single item, return it directly
                 if len(text_parts) == 1:
                     code = text_parts[0]
                 else:
                     code = text_parts
-        
+
         return cls(code=code, language=model.language)
 
 
