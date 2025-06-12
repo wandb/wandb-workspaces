@@ -272,16 +272,30 @@ def groupby_str_to_key(group_str: str) -> Key:
         "run.group"          -> Key(section="run", name=to_backend_name("group"))
         "config.param"       -> Key(section="config", name=to_backend_name("param") + ".value")
         "config.param.value" -> Key(section="config", name=to_backend_name("param.value"))
+        "config.nested.x"    -> Key(section="config", name=to_backend_name("nested.value.x"))
         "summary.metric"     -> Key(section="summary", name=to_backend_name("metric"))
     """
+    # Split once to separate the leading section (e.g. "config") from the rest of the path
     parts = group_str.split(".", 1)
+
     if len(parts) == 2:
         section, key_name = parts
     else:
         section, key_name = "run", parts[0]
-    # Convert to backend name (this handles other renamings)
+
+    # Convert to backend name first in case the user passed a frontend alias
     key_name = to_backend_name(key_name)
-    # If we're dealing with a config metric and ".value" is not already present, append it.
-    if section == "config" and not key_name.endswith(".value"):
-        key_name = f"{key_name}.value"
+
+    # Special-case: config parameters require the token ".value" **after the first segment**
+    # so that, e.g.  "config.nested.x" -> "config.nested.value.x"
+    # The existing logic incorrectly appended the suffix resulting in "nested.x.value".
+    # We replicate the behaviour used elsewhere in the codebase (see _metric_to_backend).
+    if section == "config":
+        segments = key_name.split(".")
+
+        # If the path already contains "value" as the second segment, keep as-is.
+        if not (len(segments) >= 2 and segments[1] == "value"):
+            first, *rest = segments
+            key_name = first + ".value" + ("." + ".".join(rest) if rest else "")
+
     return Key(section=section, name=key_name)
