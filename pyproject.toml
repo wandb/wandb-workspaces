@@ -92,4 +92,4 @@ ignore_missing_imports = true
 
 [tool.ruff]
 [tool.ruff.lint]
-ignore = ["F401", "F841"]
+ignore = ["F401"]
