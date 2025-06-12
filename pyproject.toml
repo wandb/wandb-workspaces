@@ -82,7 +82,7 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = [
     "wandb_workspaces.reports.*",
-    "wandb_workspaces.utils.data_generation.py",
+    "wandb_workspaces.utils.data_generation",
 ]
 ignore_errors = true
 
@@ -92,4 +92,4 @@ ignore_missing_imports = true
 
 [tool.ruff]
 [tool.ruff.lint]
-ignore = ["F401"]
+ignore = ["F401", "F841"]
