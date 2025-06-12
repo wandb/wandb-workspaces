@@ -91,4 +91,5 @@ module = ["wandb_gql", "wandb_gql.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
+[tool.ruff.lint]
 ignore = ["F401"]

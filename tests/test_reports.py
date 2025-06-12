@@ -395,12 +395,8 @@ def test_layout_config():
     CUSTOM_USER_DEFINED_LAYOUT = {"x": 0, "y": 0, "w": 24, "h": 24}
 
     p0 = wr.WeavePanelSummaryTable(table_name="test")
-    p1 = wr.WeavePanelSummaryTable(
-        table_name="test", layout=CUSTOM_USER_DEFINED_LAYOUT
-    )
-    p2 = wr.WeavePanelArtifact(
-        artifact="test", layout=CUSTOM_USER_DEFINED_LAYOUT
-    )
+    p1 = wr.WeavePanelSummaryTable(table_name="test", layout=CUSTOM_USER_DEFINED_LAYOUT)
+    p2 = wr.WeavePanelArtifact(artifact="test", layout=CUSTOM_USER_DEFINED_LAYOUT)
     p3 = wr.WeavePanelArtifactVersionedFile(
         artifact="test",
         version="vtest",
@@ -424,11 +420,11 @@ def test_url_to_report_id_padding():
     encoded = base64.b64encode(original).decode("utf-8")  # "dGVzdA=="
     # Remove the '=' padding to simulate a URL-embedded report id.
     stripped = encoded.replace("=", "")
-    
+
     # Construct a fake URL in the expected format:
     #   http://wandb.ai/{entity}/{project}/reports/{title}--{report_id}
     url = f"http://wandb.ai/my_entity/my_project/reports/my-report--{stripped}"
-    
+
     # Call the function and verify that the returned id matches the properly padded version.
     result = wr.interface._url_to_report_id(url)
     assert result == encoded, f"Expected {encoded} but got {result}"
@@ -455,10 +451,12 @@ def test_runset_project_lookup(monkeypatch):
     """Test that Runset._to_model() correctly handles project ID lookup"""
     # Mock the wandb API client
     mock_client = Mock()
+
     def mock_get_api():
-        return type('MockApi', (), {'client': mock_client})()
+        return type("MockApi", (), {"client": mock_client})()
+
     monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", mock_get_api)
-    
+
     # Test successful case - project exists and ID is added
     mock_client.execute.return_value = {
         "project": {"internalId": "UHJvamVjdEludGVybmFsSWQ6MTIzNDU="}
@@ -474,4 +472,3 @@ def test_runset_project_lookup(monkeypatch):
     with pytest.raises(ValueError) as exc_info:
         wr.Runset(entity="bad-entity", project="bad-project")._to_model()
     assert "project 'bad-entity/bad-project' not found" in str(exc_info.value)
-
