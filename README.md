@@ -10,7 +10,7 @@
 <a href="https://codecov.io/gh/wandb/wandb-workspaces/graph/badge.svg?token=XGL5D4023X"><img src="https://img.shields.io/codecov/c/gh/wandb/wandb-workspaces" /></a>
 </p>
 
-`wandb-workspaces` is a Python library for programatically working with [Weights & Biases](https://wandb.ai) workspaces and reports.
+`wandb-workspaces` is a Python library for programatically working with [Weights & Biases](https://wandb.ai) workspaces and reports. This feature is in **Public Preview**.
 
 ## Quickstart
 <p align='center'>
