@@ -3114,6 +3114,36 @@ class Report(Base):
         wandb.termlog(f"Saved report to: {self.url}")
         return self
 
+    def delete(self) -> bool:
+        """Delete this report from W&B.
+
+        This will also delete any draft views that reference this report.
+
+        Returns:
+            bool: ``True`` if the delete operation was acknowledged as
+            successful by the backend, ``False`` otherwise.
+        """
+        if self.id == "":
+            raise AttributeError("Cannot delete a report that has not been saved or does not have an id.")
+
+        response = _get_api().client.execute(
+            gql.delete_view,
+            variable_values={
+                "id": self.id,
+                "deleteDrafts": True,
+            },
+        )
+
+        result = response.get("deleteView", {})
+        success = result.get("success", False)
+
+        if success:
+            wandb.termlog(f"Deleted report: {self.id}")
+        else:
+            wandb.termwarn("Failed to delete report – backend returned unsuccessful status.")
+
+        return success
+
     @classmethod
     def from_url(cls, url: str, *, as_model: bool = False):
         """

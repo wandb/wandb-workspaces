@@ -451,6 +451,41 @@ def test_codeblock_multiline_round_trip():
     assert restored.language == block.language
 
 
+def test_report_delete(monkeypatch):
+    """Create a dummy report, monkey-patch the internal _get_api call, and verify
+    that the Report.delete method sends the expected GraphQL mutation and
+    returns True when the backend acknowledges success."""
+
+    # Track the arguments that the mocked `execute` receives for later assertions
+    captured: Dict[str, Any] = {}
+
+    class _DummyClient:
+        def execute(self, query, *, variable_values):  # type: ignore
+            # Save inputs so the test can inspect them later
+            captured["query"] = query
+            captured["variables"] = variable_values
+            # Simulate a successful deleteView response from the backend
+            return {"deleteView": {"success": True}}
+
+    class _DummyApi:
+        def __init__(self):
+            self.client = _DummyClient()
+
+    # Monkey-patch the private helper used by Report.delete so that no real
+    # network calls are made.
+    monkeypatch.setattr(wr.interface, "_get_api", lambda: _DummyApi())
+
+    # Create a Report instance and manually assign an id so that .delete() works
+    report = wr.Report(project="proj", entity="ent")
+    report.id = "dummy-id"
+
+    # Call delete and assert it returns True (success)
+    assert report.delete() is True
+
+    # Ensure the GraphQL mutation received the correct variables (deleteDrafts always True)
+    assert captured["variables"] == {"id": "dummy-id", "deleteDrafts": True}
+
+
 def test_runset_project_lookup(monkeypatch):
     """Test that Runset._to_model() correctly handles project ID lookup"""
     # Mock the wandb API client
