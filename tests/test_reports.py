@@ -480,10 +480,10 @@ def test_report_delete(monkeypatch):
     report.id = "dummy-id"
 
     # Call delete and assert it returns True (success)
-    assert report.delete(delete_drafts=False) is True
+    assert report.delete() is True
 
-    # Ensure the GraphQL mutation received the correct variables
-    assert captured["variables"] == {"id": "dummy-id", "deleteDrafts": False}
+    # Ensure the GraphQL mutation received the correct variables (deleteDrafts always True)
+    assert captured["variables"] == {"id": "dummy-id", "deleteDrafts": True}
 
 
 def test_runset_project_lookup(monkeypatch):

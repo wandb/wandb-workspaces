@@ -3114,12 +3114,10 @@ class Report(Base):
         wandb.termlog(f"Saved report to: {self.url}")
         return self
 
-    def delete(self, *, delete_drafts: bool = False) -> bool:
+    def delete(self) -> bool:
         """Delete this report from W&B.
 
-        Args:
-            delete_drafts (bool): If ``True``, also delete any draft views that
-                reference this report. Defaults to ``False``.
+        This will also delete any draft views that reference this report.
 
         Returns:
             bool: ``True`` if the delete operation was acknowledged as
@@ -3132,7 +3130,7 @@ class Report(Base):
             gql.delete_view,
             variable_values={
                 "id": self.id,
-                "deleteDrafts": delete_drafts,
+                "deleteDrafts": True,
             },
         )
 
