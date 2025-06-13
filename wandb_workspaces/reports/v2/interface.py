@@ -3175,7 +3175,15 @@ def _url_to_report_id(url):
     path = parse_result.path
 
     _, entity, project, _, name = path.split("/")
-    title, report_id = name.split("--")
+    
+    # Use rfind to find the last occurrence of '--'
+    separator_position = name.rfind("--")
+    if separator_position == -1:
+        raise ValueError("Attempted to parse invalid View ID: no separator found")
+    
+    # Split at the last '--'
+    title = name[:separator_position]
+    report_id = name[separator_position + 2:] # +2 to skip the '--'
 
     # Add correct base64 padding: calculate the number of '=' needed
     pad = (4 - (len(report_id) % 4)) % 4
