@@ -5,7 +5,7 @@ repos:
         name: Poetry Lock
         entry: poetry lock
         language: system
-        always_run: true
+        files: pyproject.toml
         pass_filenames: false
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.4.7

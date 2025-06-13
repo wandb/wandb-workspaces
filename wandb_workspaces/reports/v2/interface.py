@@ -124,7 +124,7 @@ class RunsetGroupKey:
 
 @dataclass(config=dataclass_config, frozen=True)
 class RunsetGroup:
-    """UI element that shows a group of runsets. 
+    """UI element that shows a group of runsets.
 
     Attributes:
         runset_name (str): The name of the runset.
@@ -158,7 +158,7 @@ class Config:
     Config objects are commonly logged using `run.config[name] = ...`
     or passing a config as a dictionary of key-value pairs,
     where the key is the name of the metric and the value is
-    the value of that metric. 
+    the value of that metric.
 
     Attributes:
         name (str): The name of the metric.
@@ -203,16 +203,18 @@ class Layout(Base):
 
 
 @dataclass(config=dataclass_config, repr=False)
-class Block(Base): 
+class Block(Base):
     """
     INTERNAL: This class is not for public use.
     """
+
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="allow", slots=True))
 class UnknownBlock(Block):
     """
     INTERNAL: This class is not for public use.
-    """    
+    """
+
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
         attributes = ", ".join(
@@ -247,7 +249,6 @@ class TextWithInlineComments(Base):
 
 @dataclass(config=dataclass_config, repr=False)
 class Heading(Block):
-
     @classmethod
     def _from_model(cls, model: internal.Heading):
         text = _internal_children_to_text(model.children)
@@ -320,7 +321,7 @@ class H3(Heading):
     Attributes:
         text (str): The text of the heading.
         collapsed_blocks (Optional[LList["BlockTypes"]]): One or more blocks to
-            show when the heading is collapsed. 
+            show when the heading is collapsed.
     """
 
     text: TextLikeField = ""
@@ -404,6 +405,7 @@ class ListItem(Base):
     """
     INTERNAL: This class is not for public use.
     """
+
     @classmethod
     def _from_model(cls, model: internal.ListItem):
         text = _internal_children_to_text(model.children)
@@ -586,17 +588,54 @@ class CodeBlock(Block):
 
     @classmethod
     def _from_model(cls, model: internal.CodeBlock):
-        # Aggregate all lines of code into a single multiline string
+        # Aggregate all lines of code into a single multiline string or TextLikeField
         lines = []
         for code_line in model.children:
             # code_line.children contains internal.Text nodes for each line
             line_text = _internal_children_to_text(code_line.children)
-            if not isinstance(line_text, str):
-                # If the line_text is a list of segments, join them into a string
-                line_text = ''.join(str(x) for x in line_text)
             lines.append(line_text)
-        # Join lines preserving line breaks
-        code = "\n".join(lines)
+
+        # If we have multiple lines, join them with newlines
+        if len(lines) == 1:
+            code = lines[0]
+        else:
+            # For multiple lines, we need to join them properly
+            # If all lines are strings, join with newlines
+            if all(isinstance(line, str) for line in lines):
+                code = "\n".join(lines)
+            else:
+                # If we have mixed content, we need to preserve the structure
+                # This is a complex case - for now, convert to string representation
+                text_parts = []
+                for i, line in enumerate(lines):
+                    if isinstance(line, str):
+                        text_parts.append(line)
+                    elif isinstance(line, list):
+                        # Handle list of mixed content
+                        line_parts = []
+                        for item in line:
+                            if isinstance(item, str):
+                                line_parts.append(item)
+                            else:
+                                # Preserve the original object (InlineCode, etc.)
+                                line_parts.append(item)
+                        if len(line_parts) == 1:
+                            text_parts.append(line_parts[0])
+                        else:
+                            text_parts.extend(line_parts)
+                    else:
+                        text_parts.append(line)
+
+                    # Add newline between lines (except for the last line)
+                    if i < len(lines) - 1:
+                        text_parts.append("\n")
+
+                # If we have a single item, return it directly
+                if len(text_parts) == 1:
+                    code = text_parts[0]
+                else:
+                    code = text_parts
+
         return cls(code=code, language=model.language)
 
 
@@ -756,23 +795,25 @@ class SoundCloud(Block):
 @dataclass(config=dataclass_config, repr=False)
 class GalleryReport(Base):
     """A reference to a report in the gallery.
-    
+
     Attributes:
         report_id (str): The ID of the report.
     """
+
     report_id: str
 
 
 @dataclass(config=dataclass_config, repr=False)
 class GalleryURL(Base):
     """A URL to an external resource.
-    
+
     Attributes:
         url (str): The URL of the resource.
         title (Optional[str]): The title of the resource.
         description (Optional[str]): The description of the resource.
         image_url (Optional[str]): The URL of an image to display.
     """
+
     url: str  # app accepts non-standard URL unfortunately
     title: Optional[str] = None
     description: Optional[str] = None
@@ -783,11 +824,12 @@ class GalleryURL(Base):
 class Gallery(Block):
     """
     A block that renders a gallery of reports and URLs.
-    
+
     Attributes:
         items (List[Union[`GalleryReport`, `GalleryURL`]]): A list of
             `GalleryReport` and `GalleryURL` objects.
     """
+
     items: LList[Union[GalleryReport, GalleryURL]] = Field(default_factory=list)
 
     def _to_model(self):
@@ -900,7 +942,7 @@ class Runset(Base):
                 variable_values={
                     "entityName": self.entity,
                     "projectName": self.project,
-                }
+                },
             )
             if r.get("project"):
                 project = internal.Project(
@@ -1081,7 +1123,7 @@ class Twitter(Block):
 class WeaveBlock(Block):
     """
     INTERNAL: This class is not for public use.
-    """    
+    """
 
 
 @dataclass(config=dataclass_config)
@@ -1093,9 +1135,9 @@ class WeaveBlockSummaryTable(Block):
     ```python
     project('entity', 'project').runs.summary['value']
     ```
-    
+
     The term "Weave" in the API name does not refer to
-    the W&B Weave toolkit used for tracking and evaluating LLM. 
+    the W&B Weave toolkit used for tracking and evaluating LLM.
 
     Attributes:
         entity (str): The entity that owns or has the
@@ -1103,6 +1145,7 @@ class WeaveBlockSummaryTable(Block):
         project (str): The project where the value is logged in.
         table_name (str): The name of the table, DataFrame, plot, or value.
     """
+
     entity: str
     project: str
     table_name: str
@@ -1324,7 +1367,7 @@ class WeaveBlockSummaryTable(Block):
 class WeaveBlockArtifactVersionedFile(Block):
     """
     A block that shows a versioned file logged to a W&B artifact. The query takes the form of
-    
+
     ```python
     project('entity', 'project').artifactVersion('name', 'version').file('file-name')
     ```
@@ -1338,8 +1381,9 @@ class WeaveBlockArtifactVersionedFile(Block):
         project (str): The project where the artifact is stored.
         artifact (str): The name of the artifact to retrieve.
         version (str): The version of the artifact to retrieve.
-        file (str): The name of the file stored in the artifact to retrieve. 
+        file (str): The name of the file stored in the artifact to retrieve.
     """
+
     # TODO: Replace with actual weave blocks when ready
     entity: str
     project: str
@@ -1498,7 +1542,7 @@ class WeaveBlockArtifact(Block):
 
     The term "Weave" in the API name does not refer to
     the W&B Weave toolkit used for tracking and evaluating LLM.
-    
+
     Attributes:
         entity (str): The entity that owns or has the appropriate
             permissions to the project where the artifact is stored.
@@ -1507,7 +1551,6 @@ class WeaveBlockArtifact(Block):
         tab Literal["overview", "metadata", "usage", "files", "lineage"]: The
             tab to display in the artifact panel.
     """
-
 
     # TODO: Replace with actual weave blocks when ready
     entity: str
@@ -2386,8 +2429,8 @@ class CustomChart(Panel):
 
         Arguments:
             table_name (str): The name of the table.
-            chart_fields (dict): The fields to display in the chart. 
-            chart_strings (dict): The strings to display in the chart. 
+            chart_fields (dict): The fields to display in the chart.
+            chart_strings (dict): The strings to display in the chart.
         """
         return cls(
             query={"summaryTable": {"tableKey": table_name}},
@@ -2473,7 +2516,8 @@ class CustomChart(Panel):
 class UnknownPanel(Base):
     """
     INTERNAL: This class is not for public use.
-    """    
+    """
+
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
         attributes = ", ".join(
@@ -2496,10 +2540,11 @@ class UnknownPanel(Base):
 class WeavePanel(Panel):
     """
     An empty query panel that can be used to display custom content using queries.
-    
+
     The term "Weave" in the API name does not refer to
     the W&B Weave toolkit used for tracking and evaluating LLM.
     """
+
     config: dict = Field(default_factory=dict)
 
     def _to_model(self):
@@ -2519,14 +2564,15 @@ class WeavePanelSummaryTable(Panel):
     ```python
     runs.summary['value']
     ```
-    
+
     The term "Weave" in the API name does not refer to
     the W&B Weave toolkit used for tracking and evaluating LLM.
 
     Attributes:
         table_name (str): The name of the table, DataFrame, plot, or value.
-    
+
     """
+
     # TODO: Replace with actual weave panels when ready
     table_name: str = Field(..., kw_only=True)
 
@@ -2704,7 +2750,7 @@ class WeavePanelSummaryTable(Panel):
                     }
                 }
             },
-            layout=self.layout._to_model()
+            layout=self.layout._to_model(),
         )
 
     @classmethod
@@ -2731,6 +2777,7 @@ class WeavePanelArtifactVersionedFile(Panel):
         version (str): The version of the artifact to retrieve.
         file (str): The name of the file stored in the artifact to retrieve.
     """
+
     # TODO: Replace with actual weave panels when ready
     artifact: str = Field(..., kw_only=True)
     version: str = Field(..., kw_only=True)
@@ -2837,7 +2884,7 @@ class WeavePanelArtifactVersionedFile(Panel):
                     }
                 }
             },
-            layout=self.layout._to_model()
+            layout=self.layout._to_model(),
         )
 
     @classmethod
@@ -2858,7 +2905,7 @@ class WeavePanelArtifact(WeavePanel):
 
     The term "Weave" in the API name does not refer to
     the W&B Weave toolkit used for tracking and evaluating LLM.
-    
+
     Attributes:
         artifact (str): The name of the artifact to retrieve.
         tab Literal["overview", "metadata", "usage", "files", "lineage"]: The tab to display in the artifact panel.
@@ -2948,7 +2995,7 @@ class WeavePanelArtifact(WeavePanel):
                     },
                 }
             },
-            layout=self.layout._to_model()
+            layout=self.layout._to_model(),
         )
 
     @classmethod
@@ -3163,7 +3210,7 @@ class Report(Base):
     def to_html(self, height: int = 1024, hidden: bool = False) -> str:
         """
         Generate HTML containing an iframe displaying this report. Commonly
-        used to within a Python notebook. 
+        used to within a Python notebook.
 
         Arguments:
             height (int): Height of the iframe.
@@ -3524,6 +3571,10 @@ def _metric_to_frontend_pc(x: str):
     if x.startswith("summary:"):
         name = x.replace("summary:", "")
         return SummaryMetric(name)
+    if x.startswith("run:"):
+        name = x.replace("run:", "")
+        backend_name = expr_parsing.to_frontend_name(name)
+        return Metric(backend_name)
 
     name = expr_parsing.to_frontend_name(x)
     return Metric(name)
