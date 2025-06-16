@@ -378,7 +378,7 @@ class Workspace(Base):
             the top of the workspace in the UI.
         runset_settings (RunsetSettings): Settings for the runset
             (the left bar containing runs) in a workspace.
-        auto_generate_panels (bool): Whether to automatically generate panels for all keys logged in this project. 
+        auto_generate_panels (bool): Whether to automatically generate panels for all keys logged in this project.
             Recommended if you would like all available data to be visualized by default.
             This can only be set during workspace creation and cannot be modified afterward.
     """
@@ -389,7 +389,9 @@ class Workspace(Base):
     sections: LList[Section] = Field(default_factory=list)
     settings: WorkspaceSettings = Field(default_factory=WorkspaceSettings)
     runset_settings: RunsetSettings = Field(default_factory=RunsetSettings)
-    _auto_generate_panels: bool = Field(default=False, repr=True, alias="auto_generate_panels")
+    _auto_generate_panels: bool = Field(
+        default=False, repr=True, alias="auto_generate_panels"
+    )
 
     # Internal only
     _internal_name: str = Field("", init=False, repr=False)
@@ -404,7 +406,7 @@ class Workspace(Base):
     @property
     def auto_generate_panels(self) -> bool:
         return self._auto_generate_panels
-    
+
     @property
     def url(self):
         "The URL to the workspace in the W&B app."
@@ -472,7 +474,7 @@ class Workspace(Base):
         max_runs = (
             10 if section_settings.max_runs is None else section_settings.max_runs
         )
-        group_by_prefix = (
+        group_by_prefix: Literal["first", "last"] = (
             "last" if panel_bank_settings.auto_organize_prefix == 2 else "first"
         )
 
@@ -630,7 +632,7 @@ class Workspace(Base):
     def save(self):
         """
         Save the current workspace to W&B.
-        
+
         Returns:
             Workspace: The updated workspace with the saved internal name and ID.
         """
@@ -650,7 +652,7 @@ class Workspace(Base):
     def save_as_new_view(self):
         """
         Save the current workspace as a new view to W&B.
-        
+
         Returns:
             Workspace: The updated workspace with the saved internal name and ID.
         """

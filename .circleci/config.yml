@@ -10,11 +10,9 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Install Poetry
-          command: curl -sSL https://install.python-poetry.org | python3 -
-      - run:
-          name: Set up Poetry environment
+          name: Verify Poetry installation
           command: |
+            poetry --version
             echo 'export PATH="$HOME/.local/bin:$PATH"' >> $BASH_ENV
             source $BASH_ENV
       - run:
@@ -55,4 +53,4 @@ workflows:
       - tests:
           matrix:
             parameters:
-              python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+              python-version: ["3.9", "3.10", "3.11", "3.12"]
