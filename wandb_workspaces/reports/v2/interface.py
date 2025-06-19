@@ -3619,8 +3619,6 @@ def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[
 
     Anything that is already in the correct format
     ("epochs.value", "a.value.b", …) is returned unchanged.
-    Non-string inputs (run-level metrics, SummaryMetric, etc.) are passed
-    through untouched so existing behaviour stays the same.
     """
     if val is None:
         return None
