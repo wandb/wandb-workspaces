@@ -1786,6 +1786,7 @@ class LinePlot(Panel):
         legend_position Optional[LegendPosition]: Where to place the legend.
             Options include "north", "south", "east", "west", or `None`.
         legend_template (Optional[str]): The template for the legend.
+        aggregate (Optional[bool]): If set to `True`, aggregate the data.
         xaxis_expression (Optional[str]): The expression for the x-axis.
         legend_fields (Optional[LList[str]]): The fields to include in the legend.
     """
@@ -1812,6 +1813,7 @@ class LinePlot(Panel):
     font_size: Optional[FontSize] = None
     legend_position: Optional[LegendPosition] = None
     legend_template: Optional[str] = None
+    aggregate: Optional[bool] = None
     xaxis_expression: Optional[str] = None
     legend_fields: Optional[LList[str]] = None
 
@@ -1842,7 +1844,7 @@ class LinePlot(Panel):
                 font_size=self.font_size,
                 legend_position=self.legend_position,
                 legend_template=self.legend_template,
-                aggregate=True if self.groupby else False,
+                aggregate=True if self.groupby else self.aggregate,
                 x_expression=self.xaxis_expression,
                 legend_fields=self.legend_fields,
             ),
@@ -2018,6 +2020,7 @@ class BarPlot(Panel):
             Options include "small", "medium", "large", "auto", or `None`.
         line_titles (Optional[dict]): The titles of the lines. The keys are the line names and the values are the titles.
         line_colors (Optional[dict]): The colors of the lines. The keys are the line names and the values are the colors.
+        aggregate (Optional[bool]): If set to `True`, aggregate the data.
     """
 
     title: Optional[str] = None
@@ -2036,6 +2039,7 @@ class BarPlot(Panel):
     font_size: Optional[FontSize] = None
     line_titles: Optional[dict] = None
     line_colors: Optional[dict] = None
+    aggregate: Optional[bool] = None
 
     def _to_model(self):
         return internal.BarPlot(
@@ -2057,7 +2061,7 @@ class BarPlot(Panel):
                 font_size=self.font_size,
                 override_series_titles=self.line_titles,
                 override_colors=self.line_colors,
-                aggregate=True if self.groupby else False,
+                aggregate=True if self.groupby else self.aggregate,
             ),
             layout=self.layout._to_model(),
             id=self._id,
