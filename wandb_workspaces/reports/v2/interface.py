@@ -1786,7 +1786,6 @@ class LinePlot(Panel):
         legend_position Optional[LegendPosition]: Where to place the legend.
             Options include "north", "south", "east", "west", or `None`.
         legend_template (Optional[str]): The template for the legend.
-        aggregate (Optional[bool]): If set to `True`, aggregate the data.
         xaxis_expression (Optional[str]): The expression for the x-axis.
         legend_fields (Optional[LList[str]]): The fields to include in the legend.
     """
@@ -1813,7 +1812,6 @@ class LinePlot(Panel):
     font_size: Optional[FontSize] = None
     legend_position: Optional[LegendPosition] = None
     legend_template: Optional[str] = None
-    aggregate: Optional[bool] = None
     xaxis_expression: Optional[str] = None
     legend_fields: Optional[LList[str]] = None
 
@@ -1844,7 +1842,7 @@ class LinePlot(Panel):
                 font_size=self.font_size,
                 legend_position=self.legend_position,
                 legend_template=self.legend_template,
-                aggregate=self.aggregate,
+                aggregate=True if self.groupby else False,
                 x_expression=self.xaxis_expression,
                 legend_fields=self.legend_fields,
             ),
