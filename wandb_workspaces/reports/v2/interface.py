@@ -2057,6 +2057,7 @@ class BarPlot(Panel):
                 font_size=self.font_size,
                 override_series_titles=self.line_titles,
                 override_colors=self.line_colors,
+                aggregate=True if self.groupby else False,
             ),
             layout=self.layout._to_model(),
             id=self._id,
@@ -2081,6 +2082,7 @@ class BarPlot(Panel):
             font_size=model.config.font_size,
             line_titles=model.config.override_series_titles,
             line_colors=model.config.override_colors,
+            aggregate=model.config.aggregate,
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
