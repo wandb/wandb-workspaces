@@ -526,3 +526,68 @@ def test_runset_project_lookup(monkeypatch):
     with pytest.raises(ValueError) as exc_info:
         wr.Runset(entity="bad-entity", project="bad-project")._to_model()
     assert "project 'bad-entity/bad-project' not found" in str(exc_info.value)
+
+
+def test_metric_to_backend_groupby():
+    """Test the _metric_to_backend_groupby function with various input formats"""
+    
+    # Test cases: (input, expected_output)
+    test_cases = [
+        # Core functionality - what users will actually use
+        (wr.Config("epochs"), "epochs.value"),
+        (wr.Config("keys.key1"), "keys.value.key1"),
+        ("config.epochs", "epochs.value"),
+        ("epochs", "epochs.value"),
+        ("keys.key1", "keys.value.key1"),
+        
+        # Edge cases
+        (None, None),
+        ("", ".value"),
+    ]
+    
+    for input_val, expected in test_cases:
+        result = wr.interface._metric_to_backend_groupby(input_val)
+        assert result == expected, f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+
+
+def test_metric_to_frontend_groupby():
+    """Test the _metric_to_frontend_groupby function"""
+    
+    test_cases = [
+        ("epochs.value", wr.Config("epochs")),
+        ("keys.value.key1", wr.Config("keys.key1")),
+        ("non_config_path", "non_config_path"),  # Should pass through unchanged
+        (None, None),
+    ]
+    
+    for input_val, expected in test_cases:
+        result = wr.interface._metric_to_frontend_groupby(input_val)
+        assert result == expected, f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+
+
+def test_groupby_aggregate_behavior():
+    """Test that panels automatically set aggregate=True when groupby is specified"""
+    
+    # Test that any panel with groupby automatically sets aggregate=True
+    panels_with_groupby = [
+        wr.LinePlot(groupby=wr.Config("epochs")),
+        wr.LinePlot(groupby="epochs"),
+        wr.BarPlot(groupby=wr.Config("epochs")),
+        wr.BarPlot(groupby="epochs"),
+    ]
+    
+    for panel in panels_with_groupby:
+        model = panel._to_model()
+        assert model.config.group_by == "epochs.value"
+        assert model.config.aggregate is True
+    
+    # Test that panels without groupby can control aggregate manually
+    panels_without_groupby = [
+        wr.LinePlot(groupby=None, aggregate=False),
+        wr.BarPlot(groupby=None, aggregate=False),
+    ]
+    
+    for panel in panels_without_groupby:
+        model = panel._to_model()
+        assert model.config.group_by is None
+        assert model.config.aggregate is False

@@ -693,6 +693,7 @@ class BarPlotConfig(ReportAPIBaseModel):
     font_size: Optional[FontSize] = None
     override_series_titles: Optional[dict] = None
     override_colors: Optional[dict] = None
+    aggregate: Optional[bool] = None
 
 
 class BarPlot(Panel):
