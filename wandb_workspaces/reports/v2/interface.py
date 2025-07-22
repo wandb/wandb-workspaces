@@ -3255,24 +3255,28 @@ def _url_to_viewspec(url):
 
 def _strip_refs(obj):
     """
-    Recursively remove ref objects from the viewspec.
+    Recursively remove ref objects from the viewspec in place.
+    
     These are temporary values from the frontend that should not be persisted.
+    This function modifies the input object in place.
+    
+    Args:
+        obj: The object to process (dict, list, or any other type)
     """
     if isinstance(obj, dict):
-        # List of keys to remove
-        keys_to_remove = []
+        # Collect keys to remove (can't modify dict while iterating)
+        keys_to_remove = [
+            key for key in obj.keys()
+            if key == 'ref' or key.endswith(('Ref', 'Refs'))
+        ]
         
-        for key in list(obj.keys()):
-            # Remove any key that ends with 'Ref', 'Refs', or is exactly 'ref'
-            if key == 'ref' or key.endswith('Ref') or key.endswith('Refs'):
-                keys_to_remove.append(key)
-            else:
-                # Recursively process nested objects
-                _strip_refs(obj[key])
-        
-        # Remove the identified keys
+        # Remove the collected keys
         for key in keys_to_remove:
             del obj[key]
+        
+        # Recursively process remaining values
+        for value in obj.values():
+            _strip_refs(value)
             
     elif isinstance(obj, list):
         # Process each item in the list
@@ -3280,7 +3284,6 @@ def _strip_refs(obj):
             _strip_refs(item)
     
     # For other types (strings, numbers, etc.), no action needed
-    return obj
 
 
 def _url_to_report_id(url):
