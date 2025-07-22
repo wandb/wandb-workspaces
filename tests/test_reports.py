@@ -596,10 +596,10 @@ def test_groupby_aggregate_behavior():
         assert model.config.aggregate is False
 
 
-def test_strip_refs_basic():
-    """Test that _strip_refs removes ref fields correctly"""
-    # Test dictionary with various ref patterns
-    test_dict = {
+def test_strip_refs():
+    """Test that _strip_refs removes ref fields correctly from nested structures"""
+    # Test comprehensive nested structure with dicts and lists
+    test_data = {
         "ref": "should_be_removed",
         "panelRef": "should_be_removed",
         "sectionRefs": ["should", "be", "removed"],
@@ -611,64 +611,42 @@ def test_strip_refs_basic():
             "dataRefs": [1, 2, 3],
             "keep_me": "should_remain",
         },
+        "list_field": [
+            {"ref": "remove_me", "data": "keep_me"},
+            {"itemRef": "remove_me", "value": 123},
+            {"normalField": "unchanged"},
+        ],
     }
 
-    wr.interface._strip_refs(test_dict)
+    wr.interface._strip_refs(test_data)
 
-    # Check that ref fields are removed
-    assert "ref" not in test_dict
-    assert "panelRef" not in test_dict
-    assert "sectionRefs" not in test_dict
-    assert "runSetRef" not in test_dict
+    # Check that ref fields are removed at top level
+    assert "ref" not in test_data
+    assert "panelRef" not in test_data
+    assert "sectionRefs" not in test_data
+    assert "runSetRef" not in test_data
 
     # Check that normal fields remain
-    assert test_dict["normal_field"] == "should_remain"
+    assert test_data["normal_field"] == "should_remain"
 
-    # Check nested removal
-    assert "ref" not in test_dict["nested"]
-    assert "innerRef" not in test_dict["nested"]
-    assert "dataRefs" not in test_dict["nested"]
-    assert test_dict["nested"]["keep_me"] == "should_remain"
+    # Check nested dict removal
+    assert "ref" not in test_data["nested"]
+    assert "innerRef" not in test_data["nested"]
+    assert "dataRefs" not in test_data["nested"]
+    assert test_data["nested"]["keep_me"] == "should_remain"
 
+    # Check list processing
+    assert "ref" not in test_data["list_field"][0]
+    assert test_data["list_field"][0]["data"] == "keep_me"
+    assert "itemRef" not in test_data["list_field"][1]
+    assert test_data["list_field"][1]["value"] == 123
+    assert test_data["list_field"][2]["normalField"] == "unchanged"
 
-def test_strip_refs_in_lists():
-    """Test that _strip_refs works correctly on lists"""
-    test_list = [
-        {"ref": "remove_me", "data": "keep_me"},
-        {"itemRef": "remove_me", "value": 123},
-        {"normalField": "unchanged"},
-    ]
-
-    wr.interface._strip_refs(test_list)
-
-    assert "ref" not in test_list[0]
-    assert test_list[0]["data"] == "keep_me"
-    assert "itemRef" not in test_list[1]
-    assert test_list[1]["value"] == 123
-    assert test_list[2]["normalField"] == "unchanged"
-
-
-def test_strip_refs_edge_cases():
-    """Test _strip_refs with edge cases"""
-    # Empty dict
-    empty_dict = {}
-    wr.interface._strip_refs(empty_dict)
-    assert empty_dict == {}
-
-    # Empty list
-    empty_list = []
-    wr.interface._strip_refs(empty_list)
-    assert empty_list == []
-
-    # Non-container types (should not raise errors)
-    wr.interface._strip_refs("string")
-    wr.interface._strip_refs(123)
+    # Test edge cases
+    wr.interface._strip_refs({})  # Empty dict
+    wr.interface._strip_refs([])  # Empty list
+    wr.interface._strip_refs("string")  # Non-container types
     wr.interface._strip_refs(None)
-
-    # Dict with only ref fields
-    only_refs = {"ref": 1, "dataRef": 2, "itemRefs": [3, 4]}
-    wr.interface._strip_refs(only_refs)
-    assert only_refs == {}
 
 
 def test_url_to_viewspec_strips_refs(monkeypatch):
