@@ -1290,19 +1290,49 @@ class WeaveBlockSummaryTable(Block):
                                                         "value": {
                                                             "type": "typedDict",
                                                             "propertyTypes": {
-                                                                "project": "project",
-                                                                "filter": "string",
-                                                                "order": "string",
+                                                                "project": "project"
                                                             },
                                                         },
                                                     },
                                                     "value": {
                                                         "type": "list",
                                                         "objectType": "run",
-                                                        "maxLength": 50,
                                                     },
                                                 },
-                                                "varName": "runs",
+                                                "fromOp": {
+                                                    "name": "project-runs",
+                                                    "inputs": {
+                                                        "project": {
+                                                            "nodeType": "output",
+                                                            "type": {
+                                                                "type": "tagged",
+                                                                "tag": {
+                                                                    "type": "typedDict",
+                                                                    "propertyTypes": {
+                                                                        "entityName": "string",
+                                                                        "projectName": "string",
+                                                                    },
+                                                                },
+                                                                "value": "project",
+                                                            },
+                                                            "fromOp": {
+                                                                "name": "root-project",
+                                                                "inputs": {
+                                                                    "entityName": {
+                                                                        "nodeType": "const",
+                                                                        "type": "string",
+                                                                        "val": self.entity,
+                                                                    },
+                                                                    "projectName": {
+                                                                        "nodeType": "const",
+                                                                        "type": "string",
+                                                                        "val": self.project,
+                                                                    },
+                                                                },
+                                                            },
+                                                        }
+                                                    },
+                                                },
                                             }
                                         },
                                     },
@@ -1502,7 +1532,1378 @@ class WeaveBlockArtifactVersionedFile(Block):
 
 
 @dataclass(config=dataclass_config)
-class WeaveBlockArtifact(WeavePanel):
+class WeaveBlockArtifact(Block):
+    """
+    A block that shows an artifact logged to W&B. The query takes the form of
+
+    ```python
+    project('entity', 'project').artifact('artifact-name')
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        entity (str): The entity that owns or has the appropriate
+            permissions to the project where the artifact is stored.
+        project (str): The project where the artifact is stored.
+        artifact (str): The name of the artifact to retrieve.
+        tab Literal["overview", "metadata", "usage", "files", "lineage"]: The
+            tab to display in the artifact panel.
+    """
+
+    # TODO: Replace with actual weave blocks when ready
+    entity: str
+    project: str
+    artifact: str
+    tab: Literal["overview", "metadata", "usage", "files", "lineage"] = "overview"
+
+    def _to_model(self):
+        return internal.WeaveBlock(
+            config={
+                "panelConfig": {
+                    "exp": {
+                        "nodeType": "output",
+                        "type": {
+                            "type": "tagged",
+                            "tag": {
+                                "type": "tagged",
+                                "tag": {
+                                    "type": "typedDict",
+                                    "propertyTypes": {
+                                        "entityName": "string",
+                                        "projectName": "string",
+                                    },
+                                },
+                                "value": {
+                                    "type": "typedDict",
+                                    "propertyTypes": {
+                                        "project": "project",
+                                        "artifactName": "string",
+                                    },
+                                },
+                            },
+                            "value": "artifact",
+                        },
+                        "fromOp": {
+                            "name": "project-artifact",
+                            "inputs": {
+                                "project": {
+                                    "nodeType": "output",
+                                    "type": {
+                                        "type": "tagged",
+                                        "tag": {
+                                            "type": "typedDict",
+                                            "propertyTypes": {
+                                                "entityName": "string",
+                                                "projectName": "string",
+                                            },
+                                        },
+                                        "value": "project",
+                                    },
+                                    "fromOp": {
+                                        "name": "root-project",
+                                        "inputs": {
+                                            "entityName": {
+                                                "nodeType": "const",
+                                                "type": "string",
+                                                "val": self.entity,
+                                            },
+                                            "projectName": {
+                                                "nodeType": "const",
+                                                "type": "string",
+                                                "val": self.project,
+                                            },
+                                        },
+                                    },
+                                },
+                                "artifactName": {
+                                    "nodeType": "const",
+                                    "type": "string",
+                                    "val": self.artifact,
+                                },
+                            },
+                        },
+                        "__userInput": True,
+                    },
+                    "panelInputType": {
+                        "type": "tagged",
+                        "tag": {
+                            "type": "tagged",
+                            "tag": {
+                                "type": "typedDict",
+                                "propertyTypes": {
+                                    "entityName": "string",
+                                    "projectName": "string",
+                                },
+                            },
+                            "value": {
+                                "type": "typedDict",
+                                "propertyTypes": {
+                                    "project": "project",
+                                    "artifactName": "string",
+                                },
+                            },
+                        },
+                        "value": "artifact",
+                    },
+                    "panelConfig": {
+                        "tabConfigs": {"overview": {"selectedTab": self.tab}}
+                    },
+                }
+            }
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.WeaveBlock):
+        inputs = internal._get_weave_block_inputs(model.config)
+        entity = inputs["project"]["fromOp"]["inputs"]["entityName"]["val"]
+        project = inputs["project"]["fromOp"]["inputs"]["projectName"]["val"]
+        artifact = inputs["artifactName"]["val"]
+        tab = model.config["panelConfig"]["panelConfig"]["tabConfigs"]["overview"].get(
+            "selectedTab", "overview"
+        )
+        return cls(entity=entity, project=project, artifact=artifact, tab=tab)
+
+
+defined_weave_blocks = [
+    WeaveBlockSummaryTable,
+    WeaveBlockArtifactVersionedFile,
+    WeaveBlockArtifact,
+]
+
+
+BlockTypes = Union[
+    H1,
+    H2,
+    H3,
+    P,
+    CodeBlock,
+    MarkdownBlock,
+    LatexBlock,
+    Image,
+    UnorderedList,
+    OrderedList,
+    CheckedList,
+    CalloutBlock,
+    Video,
+    HorizontalRule,
+    Spotify,
+    SoundCloud,
+    Gallery,
+    PanelGrid,
+    TableOfContents,
+    BlockQuote,
+    Twitter,
+    WeaveBlock,
+    WeaveBlockSummaryTable,
+    WeaveBlockArtifactVersionedFile,
+    WeaveBlockArtifact,
+    UnknownBlock,
+]
+
+
+block_mapping = {
+    internal.Paragraph: P,
+    internal.CalloutBlock: CalloutBlock,
+    internal.CodeBlock: CodeBlock,
+    internal.Gallery: Gallery,
+    internal.Heading: Heading,
+    internal.HorizontalRule: HorizontalRule,
+    internal.Image: Image,
+    internal.LatexBlock: LatexBlock,
+    internal.List: List,
+    internal.MarkdownBlock: MarkdownBlock,
+    internal.PanelGrid: PanelGrid,
+    internal.TableOfContents: TableOfContents,
+    internal.Video: Video,
+    internal.BlockQuote: BlockQuote,
+    internal.Spotify: Spotify,
+    internal.Twitter: Twitter,
+    internal.SoundCloud: SoundCloud,
+    internal.WeaveBlock: WeaveBlock,
+    internal.UnknownBlock: UnknownBlock,
+}
+
+
+@dataclass(config=dataclass_config, repr=False)
+class GradientPoint(Base):
+    """
+    A point in a gradient.
+
+    Attributes:
+        color: The color of the point.
+        offset: The position of the point in the gradient. The value should be between 0 and 100.
+    """
+
+    color: Annotated[str, internal.ColorStrConstraints]
+    offset: Annotated[float, Ge(0), Le(100)] = 0
+
+    def _to_model(self):
+        return internal.GradientPoint(color=self.color, offset=self.offset)
+
+    @classmethod
+    def _from_model(cls, model: internal.GradientPoint):
+        return cls(color=model.color, offset=model.offset)
+
+
+@dataclass(config=dataclass_config, repr=False)
+class LinePlot(Panel):
+    """
+    A panel object with 2D line plots.
+
+    Attributes:
+        title (Optional[str]): The text that appears at the top of the plot.
+        x (Optional[MetricType]): The name of a metric logged to your W&B project that the
+            report pulls information from. The metric specified is used for the x-axis.
+        y (LList[MetricType]): One or more metrics logged to your W&B project that the report pulls
+            information from. The metric specified is used for the y-axis.
+        range_x (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the x-axis.
+        range_y (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the y-axis.
+        log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
+        log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
+        title_x (Optional[str]): The label of the x-axis.
+        title_y (Optional[str]): The label of the y-axis.
+        ignore_outliers (Optional[bool]): If set to `True`, do not plot outliers.
+        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
+            report pulls information from.
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        smoothing_factor (Optional[float]): The smoothing factor to apply to the
+            smoothing type. Accepted values range between 0 and 1.
+        smoothing_type Optional[SmoothingType]: Apply a filter based on the specified
+            distribution. Options include "exponentialTimeWeighted", "exponential",
+            "gaussian", "average", or "none".
+        smoothing_show_original (Optional[bool]):   If set to `True`, show the original data.
+        max_runs_to_show (Optional[int]): The maximum number of runs to show on the line plot.
+        custom_expressions (Optional[LList[str]]): Custom expressions to apply to the data.
+        plot_type Optional[LinePlotStyle]: The type of line plot to generate.
+            Options include "line", "stacked-area", or "pct-area".
+        font_size Optional[FontSize]: The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        legend_position Optional[LegendPosition]: Where to place the legend.
+            Options include "north", "south", "east", "west", or `None`.
+        legend_template (Optional[str]): The template for the legend.
+        aggregate (Optional[bool]): If set to `True`, aggregate the data.
+        xaxis_expression (Optional[str]): The expression for the x-axis.
+        legend_fields (Optional[LList[str]]): The fields to include in the legend.
+    """
+
+    title: Optional[str] = None
+    x: Optional[MetricType] = "Step"
+    y: LList[MetricType] = Field(default_factory=list)
+    range_x: Range = Field(default_factory=lambda: (None, None))
+    range_y: Range = Field(default_factory=lambda: (None, None))
+    log_x: Optional[bool] = None
+    log_y: Optional[bool] = None
+    title_x: Optional[str] = None
+    title_y: Optional[str] = None
+    ignore_outliers: Optional[bool] = None
+    groupby: Optional[Union[str, Config]] = None
+    groupby_aggfunc: Optional[GroupAgg] = None
+    groupby_rangefunc: Optional[GroupArea] = None
+    smoothing_factor: Optional[float] = None
+    smoothing_type: Optional[SmoothingType] = None
+    smoothing_show_original: Optional[bool] = None
+    max_runs_to_show: Optional[int] = None
+    custom_expressions: Optional[LList[str]] = None
+    plot_type: Optional[LinePlotStyle] = None
+    font_size: Optional[FontSize] = None
+    legend_position: Optional[LegendPosition] = None
+    legend_template: Optional[str] = None
+    aggregate: Optional[bool] = None
+    xaxis_expression: Optional[str] = None
+    legend_fields: Optional[LList[str]] = None
+
+    def _to_model(self):
+        return internal.LinePlot(
+            config=internal.LinePlotConfig(
+                chart_title=self.title,
+                x_axis=_metric_to_backend(self.x),
+                metrics=[_metric_to_backend(name) for name in _listify(self.y)],
+                x_axis_min=self.range_x[0],
+                x_axis_max=self.range_x[1],
+                y_axis_min=self.range_y[0],
+                y_axis_max=self.range_y[1],
+                x_log_scale=self.log_x,
+                y_log_scale=self.log_y,
+                x_axis_title=self.title_x,
+                y_axis_title=self.title_y,
+                ignore_outliers=self.ignore_outliers,
+                group_by=_metric_to_backend_groupby(self.groupby),
+                group_agg=self.groupby_aggfunc,
+                group_area=self.groupby_rangefunc,
+                smoothing_weight=self.smoothing_factor,
+                smoothing_type=self.smoothing_type,
+                show_original_after_smoothing=self.smoothing_show_original,
+                limit=self.max_runs_to_show,
+                expressions=self.custom_expressions,
+                plot_type=self.plot_type,
+                font_size=self.font_size,
+                legend_position=self.legend_position,
+                legend_template=self.legend_template,
+                aggregate=True if self.groupby else self.aggregate,
+                x_expression=self.xaxis_expression,
+                legend_fields=self.legend_fields,
+            ),
+            id=self._id,
+            layout=self.layout._to_model(),
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.LinePlot):
+        obj = cls(
+            title=model.config.chart_title,
+            x=_metric_to_frontend(model.config.x_axis),
+            y=[_metric_to_frontend(name) for name in model.config.metrics],
+            range_x=(model.config.x_axis_min, model.config.x_axis_max),
+            range_y=(model.config.y_axis_min, model.config.y_axis_max),
+            log_x=model.config.x_log_scale,
+            log_y=model.config.y_log_scale,
+            title_x=model.config.x_axis_title,
+            title_y=model.config.y_axis_title,
+            ignore_outliers=model.config.ignore_outliers,
+            groupby=_metric_to_frontend_groupby(model.config.group_by),
+            groupby_aggfunc=model.config.group_agg,
+            groupby_rangefunc=model.config.group_area,
+            smoothing_factor=model.config.smoothing_weight,
+            smoothing_type=model.config.smoothing_type,
+            smoothing_show_original=model.config.show_original_after_smoothing,
+            max_runs_to_show=model.config.limit,
+            custom_expressions=model.config.expressions,
+            plot_type=model.config.plot_type,
+            font_size=model.config.font_size,
+            legend_position=model.config.legend_position,
+            legend_template=model.config.legend_template,
+            aggregate=model.config.aggregate,
+            xaxis_expression=model.config.x_expression,
+            layout=Layout._from_model(model.layout),
+            legend_fields=model.config.legend_fields,
+        )
+        obj._id = model.id
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class ScatterPlot(Panel):
+    """
+    A panel object that shows a 2D or 3D scatter plot.
+
+    Arguments:
+        title (Optional[str]): The text that appears at the top of the plot.
+        x Optional[SummaryOrConfigOnlyMetric]: The name of a metric logged to your W&B project that the
+            report pulls information from. The metric specified is used for the x-axis.
+        y Optional[SummaryOrConfigOnlyMetric]:  One or more metrics logged to your W&B project that the report pulls
+            information from. Metrics specified are plotted within the y-axis.
+        z Optional[SummaryOrConfigOnlyMetric]:
+        range_x (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the x-axis.
+        range_y (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the y-axis.
+        range_z (Tuple[float | `None`, float | `None`]): Tuple that specifies the range of the z-axis.
+        log_x (Optional[bool]): Plots the x-coordinates using a base-10 logarithmic scale.
+        log_y (Optional[bool]): Plots the y-coordinates using a base-10 logarithmic scale.
+        log_z (Optional[bool]): Plots the z-coordinates using a base-10 logarithmic scale.
+        running_ymin (Optional[bool]):  Apply a moving average or rolling mean.
+        running_ymax (Optional[bool]): Apply a moving average or rolling mean.
+        running_ymean (Optional[bool]): Apply a moving average or rolling mean.
+        legend_template (Optional[str]):  A string that specifies the format of the legend.
+        gradient (Optional[LList[GradientPoint]]):  A list of gradient points that specify the color gradient of the plot.
+        font_size (Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        regression (Optional[bool]): If `True`, a regression line is plotted on the scatter plot.
+    """
+
+    title: Optional[str] = None
+    x: Optional[SummaryOrConfigOnlyMetric] = None
+    y: Optional[SummaryOrConfigOnlyMetric] = None
+    z: Optional[SummaryOrConfigOnlyMetric] = None
+    range_x: Range = Field(default_factory=lambda: (None, None))
+    range_y: Range = Field(default_factory=lambda: (None, None))
+    range_z: Range = Field(default_factory=lambda: (None, None))
+    log_x: Optional[bool] = None
+    log_y: Optional[bool] = None
+    log_z: Optional[bool] = None
+    running_ymin: Optional[bool] = None
+    running_ymax: Optional[bool] = None
+    running_ymean: Optional[bool] = None
+    legend_template: Optional[str] = None
+    gradient: Optional[LList[GradientPoint]] = None
+    font_size: Optional[FontSize] = None
+    regression: Optional[bool] = None
+
+    def _to_model(self):
+        custom_gradient = self.gradient
+        if custom_gradient is not None:
+            custom_gradient = [cgp._to_model() for cgp in self.gradient]
+
+        return internal.ScatterPlot(
+            config=internal.ScatterPlotConfig(
+                chart_title=self.title,
+                x_axis=_metric_to_backend_pc(self.x),
+                y_axis=_metric_to_backend_pc(self.y),
+                z_axis=_metric_to_backend_pc(self.z),
+                x_axis_min=self.range_x[0],
+                x_axis_max=self.range_x[1],
+                y_axis_min=self.range_y[0],
+                y_axis_max=self.range_y[1],
+                z_axis_min=self.range_z[0],
+                z_axis_max=self.range_z[1],
+                x_axis_log_scale=self.log_x,
+                y_axis_log_scale=self.log_y,
+                z_axis_log_scale=self.log_z,
+                show_min_y_axis_line=self.running_ymin,
+                show_max_y_axis_line=self.running_ymax,
+                show_avg_y_axis_line=self.running_ymean,
+                legend_template=self.legend_template,
+                custom_gradient=custom_gradient,
+                font_size=self.font_size,
+                show_linear_regression=self.regression,
+            ),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.ScatterPlot):
+        gradient = model.config.custom_gradient
+        if gradient is not None:
+            gradient = [GradientPoint._from_model(cgp) for cgp in gradient]
+
+        obj = cls(
+            title=model.config.chart_title,
+            x=_metric_to_frontend_pc(model.config.x_axis),
+            y=_metric_to_frontend_pc(model.config.y_axis),
+            z=_metric_to_frontend_pc(model.config.z_axis),
+            range_x=(model.config.x_axis_min, model.config.x_axis_max),
+            range_y=(model.config.y_axis_min, model.config.y_axis_max),
+            range_z=(model.config.z_axis_min, model.config.z_axis_max),
+            log_x=model.config.x_axis_log_scale,
+            log_y=model.config.y_axis_log_scale,
+            log_z=model.config.z_axis_log_scale,
+            running_ymin=model.config.show_min_y_axis_line,
+            running_ymax=model.config.show_max_y_axis_line,
+            running_ymean=model.config.show_avg_y_axis_line,
+            legend_template=model.config.legend_template,
+            gradient=gradient,
+            font_size=model.config.font_size,
+            regression=model.config.show_linear_regression,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class BarPlot(Panel):
+    """
+    A panel object that shows a 2D bar plot.
+
+    Attributes:
+        title (Optional[str]): The text that appears at the top of the plot.
+        metrics (LList[MetricType]): orientation Literal["v", "h"]: The orientation of the bar plot.
+            Set to either vertical ("v") or horizontal ("h"). Defaults to horizontal ("h").
+        range_x (Tuple[float | None, float | None]): Tuple that specifies the range of the x-axis.
+        title_x (Optional[str]): The label of the x-axis.
+        title_y (Optional[str]): The label of the y-axis.
+        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
+            report pulls information from.
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        max_runs_to_show (Optional[int]): The maximum number of runs to show on the plot.
+        max_bars_to_show (Optional[int]): The maximum number of bars to show on the bar plot.
+        custom_expressions (Optional[LList[str]]): A list of custom expressions to be used in the bar plot.
+        legend_template (Optional[str]): The template for the legend.
+        font_size( Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+        line_titles (Optional[dict]): The titles of the lines. The keys are the line names and the values are the titles.
+        line_colors (Optional[dict]): The colors of the lines. The keys are the line names and the values are the colors.
+        aggregate (Optional[bool]): If set to `True`, aggregate the data.
+    """
+
+    title: Optional[str] = None
+    metrics: LList[MetricType] = Field(default_factory=list)
+    orientation: Literal["v", "h"] = "h"
+    range_x: Range = Field(default_factory=lambda: (None, None))
+    title_x: Optional[str] = None
+    title_y: Optional[str] = None
+    groupby: Optional[Union[str, Config]] = None
+    groupby_aggfunc: Optional[GroupAgg] = None
+    groupby_rangefunc: Optional[GroupArea] = None
+    max_runs_to_show: Optional[int] = None
+    max_bars_to_show: Optional[int] = None
+    custom_expressions: Optional[LList[str]] = None
+    legend_template: Optional[str] = None
+    font_size: Optional[FontSize] = None
+    line_titles: Optional[dict] = None
+    line_colors: Optional[dict] = None
+    aggregate: Optional[bool] = None
+
+    def _to_model(self):
+        return internal.BarPlot(
+            config=internal.BarPlotConfig(
+                chart_title=self.title,
+                metrics=[_metric_to_backend(name) for name in _listify(self.metrics)],
+                vertical=self.orientation == "v",
+                x_axis_min=self.range_x[0],
+                x_axis_max=self.range_x[1],
+                x_axis_title=self.title_x,
+                y_axis_title=self.title_y,
+                group_by=_metric_to_backend_groupby(self.groupby),
+                group_agg=self.groupby_aggfunc,
+                group_area=self.groupby_rangefunc,
+                limit=self.max_runs_to_show,
+                bar_limit=self.max_bars_to_show,
+                expressions=self.custom_expressions,
+                legend_template=self.legend_template,
+                font_size=self.font_size,
+                override_series_titles=self.line_titles,
+                override_colors=self.line_colors,
+                aggregate=True if self.groupby else self.aggregate,
+            ),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.ScatterPlot):
+        obj = cls(
+            title=model.config.chart_title,
+            metrics=[_metric_to_frontend(name) for name in model.config.metrics],
+            orientation="v" if model.config.vertical else "h",
+            range_x=(model.config.x_axis_min, model.config.x_axis_max),
+            title_x=model.config.x_axis_title,
+            title_y=model.config.y_axis_title,
+            groupby=_metric_to_frontend_groupby(model.config.group_by),
+            groupby_aggfunc=model.config.group_agg,
+            groupby_rangefunc=model.config.group_area,
+            max_runs_to_show=model.config.limit,
+            max_bars_to_show=model.config.bar_limit,
+            custom_expressions=model.config.expressions,
+            legend_template=model.config.legend_template,
+            font_size=model.config.font_size,
+            line_titles=model.config.override_series_titles,
+            line_colors=model.config.override_colors,
+            aggregate=model.config.aggregate,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class ScalarChart(Panel):
+    """
+    A panel object that shows a scalar chart.
+
+    Attributes:
+        title (Optional[str]): The text that appears at the top of the plot.
+        metric (MetricType): The name of a metric logged to your W&B project that the
+            report pulls information from.
+        groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
+            function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
+        groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
+            include "minmax", "stddev", "stderr", "none", "samples", or `None`.
+        custom_expressions (Optional[LList[str]]): A list of custom expressions to be used in the scalar chart.
+        legend_template (Optional[str]): The template for the legend.
+        font_size Optional[FontSize]: The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+
+    """
+
+    title: Optional[str] = None
+    metric: MetricType = ""
+    groupby_aggfunc: Optional[GroupAgg] = None
+    groupby_rangefunc: Optional[GroupArea] = None
+    custom_expressions: Optional[LList[str]] = None
+    legend_template: Optional[str] = None
+    font_size: Optional[FontSize] = None
+
+    def _to_model(self):
+        return internal.ScalarChart(
+            config=internal.ScalarChartConfig(
+                chart_title=self.title,
+                metrics=[_metric_to_backend(self.metric)],
+                group_agg=self.groupby_aggfunc,
+                group_area=self.groupby_rangefunc,
+                expressions=self.custom_expressions,
+                legend_template=self.legend_template,
+                font_size=self.font_size,
+            ),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.ScatterPlot):
+        obj = cls(
+            title=model.config.chart_title,
+            metric=_metric_to_frontend(model.config.metrics[0]),
+            groupby_aggfunc=model.config.group_agg,
+            groupby_rangefunc=model.config.group_area,
+            custom_expressions=model.config.expressions,
+            legend_template=model.config.legend_template,
+            font_size=model.config.font_size,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class CodeComparer(Panel):
+    """
+    A panel object that compares the code between two different runs.
+
+    Attributes:
+        diff (Literal['split', 'unified']): How to display code differences.
+            Options include "split" and "unified".
+    """
+
+    diff: CodeCompareDiff = "split"
+
+    def _to_model(self):
+        return internal.CodeComparer(
+            config=internal.CodeComparerConfig(diff=self.diff),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.ScatterPlot):
+        obj = cls(
+            diff=model.config.diff,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class ParallelCoordinatesPlotColumn(Base):
+    """
+    A column within a parallel coordinates plot.  The order of `metric`s specified
+    determine the order of the parallel axis (x-axis) in the parallel coordinates plot.
+
+    Attributes:
+        metric (str | Config | SummaryMetric): The name of the
+            metric logged to your W&B project that the report pulls information from.
+        display_name (Optional[str]): The name of the metric
+        inverted (Optional[bool]): Whether to invert the metric.
+        log (Optional[bool]): Whether to apply a log transformation to the metric.
+    """
+
+    metric: SummaryOrConfigOnlyMetric
+    display_name: Optional[str] = None
+    inverted: Optional[bool] = None
+    log: Optional[bool] = None
+
+    def _to_model(self):
+        return internal.Column(
+            accessor=_metric_to_backend_pc(self.metric),
+            display_name=self.display_name,
+            inverted=self.inverted,
+            log=self.log,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.Column):
+        obj = cls(
+            metric=_metric_to_frontend_pc(model.accessor),
+            display_name=model.display_name,
+            inverted=model.inverted,
+            log=model.log,
+        )
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class ParallelCoordinatesPlot(Panel):
+    """
+    A panel object that shows a parallel coordinates plot.
+
+    Attributes:
+        columns (LList[ParallelCoordinatesPlotColumn]): A list of one
+            or more `ParallelCoordinatesPlotColumn` objects.
+        title (Optional[str]): The text that appears at the top of the plot.
+        gradient (Optional[LList[GradientPoint]]): A list of gradient points.
+        font_size (Optional[FontSize]): The size of the line plot's font.
+            Options include "small", "medium", "large", "auto", or `None`.
+    """
+
+    columns: LList[ParallelCoordinatesPlotColumn] = Field(default_factory=list)
+    title: Optional[str] = None
+    gradient: Optional[LList[GradientPoint]] = None
+    font_size: Optional[FontSize] = None
+
+    def _to_model(self):
+        gradient = self.gradient
+        if gradient is not None:
+            gradient = [x._to_model() for x in self.gradient]
+
+        return internal.ParallelCoordinatesPlot(
+            config=internal.ParallelCoordinatesPlotConfig(
+                chart_title=self.title,
+                columns=[c._to_model() for c in self.columns],
+                custom_gradient=gradient,
+                font_size=self.font_size,
+            ),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.ScatterPlot):
+        gradient = model.config.custom_gradient
+        if gradient is not None:
+            gradient = [GradientPoint._from_model(x) for x in gradient]
+
+        obj = cls(
+            columns=[
+                ParallelCoordinatesPlotColumn._from_model(c)
+                for c in model.config.columns
+            ],
+            title=model.config.chart_title,
+            gradient=gradient,
+            font_size=model.config.font_size,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class ParameterImportancePlot(Panel):
+    """
+    A panel that shows how important each hyperparameter
+    is in predicting the chosen metric.
+
+    Attributes:
+        with_respect_to (str): The metric you want to compare the
+            parameter importance against. Common metrics might include the loss, accuracy,
+            and so forth. The metric you specify must be logged within the project
+            that the report pulls information from.
+    """
+
+    with_respect_to: str = ""
+
+    def _to_model(self):
+        return internal.ParameterImportancePlot(
+            config=internal.ParameterImportancePlotConfig(
+                target_key=self.with_respect_to
+            ),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.ScatterPlot):
+        obj = cls(
+            with_respect_to=model.config.target_key,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class RunComparer(Panel):
+    """
+    A panel that compares metrics across different runs from
+    the project the report pulls information from.
+
+    Attributes:
+        diff_only (Optional[Literal["split", `True`]]): Display only the
+            difference across runs in a project. You can toggle this feature on and off in the W&B Report UI.
+    """
+
+    diff_only: Optional[Literal["split", True]] = None
+
+    def _to_model(self):
+        return internal.RunComparer(
+            config=internal.RunComparerConfig(diff_only=self.diff_only),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.ScatterPlot):
+        obj = cls(
+            diff_only=model.config.diff_only,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class MediaBrowser(Panel):
+    """
+    A panel that displays media files in a grid layout.
+
+    Attributes:
+        num_columns (Optional[int]): The number of columns in the grid.
+        media_keys (LList[str]): A list of media keys that correspond to the media files.
+    """
+
+    num_columns: Optional[int] = None
+    media_keys: LList[str] = Field(default_factory=list)
+
+    def _to_model(self):
+        return internal.MediaBrowser(
+            config=internal.MediaBrowserConfig(
+                column_count=self.num_columns,
+                media_keys=self.media_keys,
+            ),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.MediaBrowser):
+        obj = cls(
+            num_columns=model.config.column_count,
+            media_keys=model.config.media_keys,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class MarkdownPanel(Panel):
+    """
+    A panel that renders markdown.
+
+    Attributes:
+        markdown (str): The text you want to appear in the markdown panel.
+    """
+
+    markdown: str = ""
+
+    def _to_model(self):
+        return internal.MarkdownPanel(
+            config=internal.MarkdownPanelConfig(value=self.markdown),
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.ScatterPlot):
+        obj = cls(
+            markdown=model.config.value,
+            layout=Layout._from_model(model.layout),
+        )
+        obj._id = model.id
+
+        return obj
+
+
+@dataclass(config=dataclass_config, repr=False)
+class CustomChart(Panel):
+    """
+    A panel that shows a custom chart. The chart is defined by a weave query.
+
+    Attributes:
+        query (dict): The query that defines the custom chart. The key is the name of the field, and the value is the query.
+        chart_name (str): The title of the custom chart.
+        chart_fields (dict): Key-value pairs that define the axis of the
+            plot. Where the key is the label, and the value is the metric.
+        chart_strings (dict): Key-value pairs that define the strings in the chart.
+
+    """
+
+    # Custom chart configs should look exactly like they do in the UI.  Please check the query carefully!
+    query: dict = Field(default_factory=dict)
+    chart_name: str = Field(default_factory=str)
+    chart_fields: dict = Field(default_factory=dict)
+    chart_strings: dict = Field(default_factory=dict)
+
+    @classmethod
+    def from_table(
+        cls, table_name: str, chart_fields: dict = None, chart_strings: dict = None
+    ):
+        """
+        Create a custom chart from a table.
+
+        Arguments:
+            table_name (str): The name of the table.
+            chart_fields (dict): The fields to display in the chart.
+            chart_strings (dict): The strings to display in the chart.
+        """
+        return cls(
+            query={"summaryTable": {"tableKey": table_name}},
+            chart_fields=chart_fields,
+            chart_strings=chart_strings,
+        )
+
+    def _to_model(self):
+        def dict_to_fields(d):
+            fields = []
+            for k, v in d.items():
+                if k in ("runSets", "limit"):
+                    continue
+                if isinstance(v, dict) and len(v) > 0:
+                    field = internal.QueryField(
+                        name=k, args=dict_to_fields(v), fields=[]
+                    )
+                elif isinstance(v, dict) and len(v) == 0 or v is None:
+                    field = internal.QueryField(name=k, fields=[])
+                else:
+                    field = internal.QueryField(name=k, value=v)
+                fields.append(field)
+            return fields
+
+        d = self.query
+        d.setdefault("id", None)
+        d.setdefault("name", None)
+
+        _query = [
+            internal.QueryField(
+                name="runSets",
+                args=[
+                    internal.QueryField(name="runSets", value=r"${runSets}"),
+                    internal.QueryField(name="limit", value=500),
+                ],
+                fields=dict_to_fields(d),
+            )
+        ]
+        user_query = internal.UserQuery(query_fields=_query)
+
+        return internal.Vega2(
+            config=internal.Vega2Config(
+                user_query=user_query,
+                panel_def_id=self.chart_name,
+                field_settings=self.chart_fields,
+                string_settings=self.chart_strings,
+            ),
+            layout=self.layout._to_model(),
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.Vega2):
+        def fields_to_dict(fields):
+            d = {}
+            for field in fields:
+                if field.args:
+                    for arg in field.args:
+                        d[arg.name] = arg.value
+
+                if field.fields:
+                    for subfield in field.fields:
+                        if subfield.args is not None:
+                            d[subfield.name] = fields_to_dict(subfield.args)
+                        else:
+                            d[subfield.name] = subfield.value
+
+                d[field.name] = field.value
+
+            return d
+
+        query = fields_to_dict(model.config.user_query.query_fields)
+
+        return cls(
+            query=query,
+            chart_name=model.config.panel_def_id,
+            chart_fields=model.config.field_settings,
+            chart_strings=model.config.string_settings,
+            layout=Layout._from_model(model.layout),
+        )
+
+
+@dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
+class UnknownPanel(Base):
+    """
+    INTERNAL: This class is not for public use.
+    """
+
+    def __repr__(self) -> str:
+        class_name = self.__class__.__name__
+        attributes = ", ".join(
+            f"{key}={value!r}" for key, value in self.__dict__.items()
+        )
+        return f"{class_name}({attributes})"
+
+    def _to_model(self):
+        d = self.__dict__
+        print(d)
+        return internal.UnknownPanel.model_validate(d)
+
+    @classmethod
+    def _from_model(cls, model: internal.UnknownPanel):
+        d = model.model_dump()
+        return cls(**d)
+
+
+@dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
+class WeavePanel(Panel):
+    """
+    An empty query panel that can be used to display custom content using queries.
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+    """
+
+    config: dict = Field(default_factory=dict)
+
+    def _to_model(self):
+        return internal.WeavePanel(config=self.config, layout=self.layout._to_model())
+
+    @classmethod
+    def _from_model(cls, model: internal.WeavePanel):
+        return cls(config=model.config)
+
+
+@dataclass(config=dataclass_config)
+class WeavePanelSummaryTable(Panel):
+    """
+    A panel that shows a W&B Table, pandas DataFrame,
+    plot, or other value logged to W&B. The query takes the form of
+
+    ```python
+    runs.summary['value']
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        table_name (str): The name of the table, DataFrame, plot, or value.
+
+    """
+
+    # TODO: Replace with actual weave panels when ready
+    table_name: str = Field(..., kw_only=True)
+
+    def _to_model(self):
+        return internal.WeavePanel(
+            config={
+                "panel2Config": {
+                    "exp": {
+                        "nodeType": "output",
+                        "type": {
+                            "type": "tagged",
+                            "tag": {
+                                "type": "tagged",
+                                "tag": {
+                                    "type": "typedDict",
+                                    "propertyTypes": {
+                                        "entityName": "string",
+                                        "projectName": "string",
+                                    },
+                                },
+                                "value": {
+                                    "type": "typedDict",
+                                    "propertyTypes": {
+                                        "project": "project",
+                                        "filter": "string",
+                                        "order": "string",
+                                    },
+                                },
+                            },
+                            "value": {
+                                "type": "list",
+                                "objectType": {
+                                    "type": "tagged",
+                                    "tag": {
+                                        "type": "typedDict",
+                                        "propertyTypes": {"run": "run"},
+                                    },
+                                    "value": {
+                                        "type": "union",
+                                        "members": [
+                                            {
+                                                "type": "file",
+                                                "extension": "json",
+                                                "wbObjectType": {
+                                                    "type": "table",
+                                                    "columnTypes": {},
+                                                },
+                                            },
+                                            "none",
+                                        ],
+                                    },
+                                },
+                                "maxLength": 50,
+                            },
+                        },
+                        "fromOp": {
+                            "name": "pick",
+                            "inputs": {
+                                "obj": {
+                                    "nodeType": "output",
+                                    "type": {
+                                        "type": "tagged",
+                                        "tag": {
+                                            "type": "tagged",
+                                            "tag": {
+                                                "type": "typedDict",
+                                                "propertyTypes": {
+                                                    "entityName": "string",
+                                                    "projectName": "string",
+                                                },
+                                            },
+                                            "value": {
+                                                "type": "typedDict",
+                                                "propertyTypes": {
+                                                    "project": "project",
+                                                    "filter": "string",
+                                                    "order": "string",
+                                                },
+                                            },
+                                        },
+                                        "value": {
+                                            "type": "list",
+                                            "objectType": {
+                                                "type": "tagged",
+                                                "tag": {
+                                                    "type": "typedDict",
+                                                    "propertyTypes": {"run": "run"},
+                                                },
+                                                "value": {
+                                                    "type": "union",
+                                                    "members": [
+                                                        {
+                                                            "type": "typedDict",
+                                                            "propertyTypes": {
+                                                                "_wandb": {
+                                                                    "type": "typedDict",
+                                                                    "propertyTypes": {
+                                                                        "runtime": "number"
+                                                                    },
+                                                                }
+                                                            },
+                                                        },
+                                                        {
+                                                            "type": "typedDict",
+                                                            "propertyTypes": {
+                                                                "_step": "number",
+                                                                "table": {
+                                                                    "type": "file",
+                                                                    "extension": "json",
+                                                                    "wbObjectType": {
+                                                                        "type": "table",
+                                                                        "columnTypes": {},
+                                                                    },
+                                                                },
+                                                                "_wandb": {
+                                                                    "type": "typedDict",
+                                                                    "propertyTypes": {
+                                                                        "runtime": "number"
+                                                                    },
+                                                                },
+                                                                "_runtime": "number",
+                                                                "_timestamp": "number",
+                                                            },
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                            "maxLength": 50,
+                                        },
+                                    },
+                                    "fromOp": {
+                                        "name": "run-summary",
+                                        "inputs": {
+                                            "run": {
+                                                "nodeType": "var",
+                                                "type": {
+                                                    "type": "tagged",
+                                                    "tag": {
+                                                        "type": "tagged",
+                                                        "tag": {
+                                                            "type": "typedDict",
+                                                            "propertyTypes": {
+                                                                "entityName": "string",
+                                                                "projectName": "string",
+                                                            },
+                                                        },
+                                                        "value": {
+                                                            "type": "typedDict",
+                                                            "propertyTypes": {
+                                                                "project": "project",
+                                                                "filter": "string",
+                                                                "order": "string",
+                                                            },
+                                                        },
+                                                    },
+                                                    "value": {
+                                                        "type": "list",
+                                                        "objectType": "run",
+                                                        "maxLength": 50,
+                                                    },
+                                                },
+                                                "varName": "runs",
+                                            }
+                                        },
+                                    },
+                                },
+                                "key": {
+                                    "nodeType": "const",
+                                    "type": "string",
+                                    "val": self.table_name,
+                                },
+                            },
+                        },
+                        "__userInput": True,
+                    }
+                }
+            },
+            layout=self.layout._to_model(),
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.WeavePanel):
+        inputs = internal._get_weave_panel_inputs(model.config)
+        table_name = inputs["key"]["val"]
+        return cls(table_name=table_name)
+
+
+@dataclass(config=dataclass_config)
+class WeavePanelArtifactVersionedFile(Panel):
+    """
+    A panel that shows a versioned file logged to a W&B artifact.
+
+    ```python
+    project('entity', 'project').artifactVersion('name', 'version').file('file-name')
+    ```
+
+    The term "Weave" in the API name does not refer to
+    the W&B Weave toolkit used for tracking and evaluating LLM.
+
+    Attributes:
+        artifact (str): The name of the artifact to retrieve.
+        version (str): The version of the artifact to retrieve.
+        file (str): The name of the file stored in the artifact to retrieve.
+    """
+
+    # TODO: Replace with actual weave panels when ready
+    artifact: str = Field(..., kw_only=True)
+    version: str = Field(..., kw_only=True)
+    file: str = Field(..., kw_only=True)
+
+    def _to_model(self):
+        return internal.WeavePanel(
+            config={
+                "panel2Config": {
+                    "exp": {
+                        "nodeType": "output",
+                        "type": {
+                            "type": "tagged",
+                            "tag": {
+                                "type": "tagged",
+                                "tag": {
+                                    "type": "typedDict",
+                                    "propertyTypes": {
+                                        "entityName": "string",
+                                        "projectName": "string",
+                                    },
+                                },
+                                "value": {
+                                    "type": "typedDict",
+                                    "propertyTypes": {
+                                        "project": "project",
+                                        "artifactName": "string",
+                                        "artifactVersionAlias": "string",
+                                    },
+                                },
+                            },
+                            "value": {
+                                "type": "file",
+                                "extension": "json",
+                                "wbObjectType": {"type": "table", "columnTypes": {}},
+                            },
+                        },
+                        "fromOp": {
+                            "name": "artifactVersion-file",
+                            "inputs": {
+                                "artifactVersion": {
+                                    "nodeType": "output",
+                                    "type": {
+                                        "type": "tagged",
+                                        "tag": {
+                                            "type": "tagged",
+                                            "tag": {
+                                                "type": "typedDict",
+                                                "propertyTypes": {
+                                                    "entityName": "string",
+                                                    "projectName": "string",
+                                                },
+                                            },
+                                            "value": {
+                                                "type": "typedDict",
+                                                "propertyTypes": {
+                                                    "project": "project",
+                                                    "artifactName": "string",
+                                                    "artifactVersionAlias": "string",
+                                                },
+                                            },
+                                        },
+                                        "value": "artifactVersion",
+                                    },
+                                    "fromOp": {
+                                        "name": "project-artifactVersion",
+                                        "inputs": {
+                                            "project": {
+                                                "nodeType": "var",
+                                                "type": {
+                                                    "type": "tagged",
+                                                    "tag": {
+                                                        "type": "typedDict",
+                                                        "propertyTypes": {
+                                                            "entityName": "string",
+                                                            "projectName": "string",
+                                                        },
+                                                    },
+                                                    "value": "project",
+                                                },
+                                                "varName": "project",
+                                            },
+                                            "artifactName": {
+                                                "nodeType": "const",
+                                                "type": "string",
+                                                "val": self.artifact,
+                                            },
+                                            "artifactVersionAlias": {
+                                                "nodeType": "const",
+                                                "type": "string",
+                                                "val": self.version,
+                                            },
+                                        },
+                                    },
+                                },
+                                "path": {
+                                    "nodeType": "const",
+                                    "type": "string",
+                                    "val": self.file,
+                                },
+                            },
+                        },
+                        "__userInput": True,
+                    }
+                }
+            },
+            layout=self.layout._to_model(),
+        )
+
+    @classmethod
+    def _from_model(cls, model: internal.WeavePanel):
+        inputs = internal._get_weave_panel_inputs(model.config)
+        artifact = inputs["artifactVersion"]["fromOp"]["inputs"]["artifactName"]["val"]
+        version = inputs["artifactVersion"]["fromOp"]["inputs"]["artifactVersionAlias"][
+            "val"
+        ]
+        file = inputs["path"]["val"]
+        return cls(artifact=artifact, version=version, file=file)
+
+
+@dataclass(config=dataclass_config)
+class WeavePanelArtifact(WeavePanel):
     """
     A panel that shows an artifact logged to W&B.
 
@@ -2278,7 +3679,7 @@ def _metric_to_frontend_groupby(val: Optional[str]):
     Convert the backend form back into a user-friendly object.
         "epochs.value"   ➔ Config("epochs")
         "a.value.b"      ➔ Config("a.b")
-    Anything that isn't a config path (doesn't have '.value' as the second
+    Anything that isn’t a config path (doesn’t have '.value' as the second
     token) is returned unchanged.
     """
     if val is None or not isinstance(val, str):
