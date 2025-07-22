@@ -530,7 +530,7 @@ def test_runset_project_lookup(monkeypatch):
 
 def test_metric_to_backend_groupby():
     """Test the _metric_to_backend_groupby function with various input formats"""
-    
+
     # Test cases: (input, expected_output)
     test_cases = [
         # Core functionality - what users will actually use
@@ -539,35 +539,38 @@ def test_metric_to_backend_groupby():
         ("config.epochs", "epochs.value"),
         ("epochs", "epochs.value"),
         ("keys.key1", "keys.value.key1"),
-        
         # Edge cases
         (None, None),
         ("", ".value"),
     ]
-    
+
     for input_val, expected in test_cases:
         result = wr.interface._metric_to_backend_groupby(input_val)
-        assert result == expected, f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+        assert (
+            result == expected
+        ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
 
 
 def test_metric_to_frontend_groupby():
     """Test the _metric_to_frontend_groupby function"""
-    
+
     test_cases = [
         ("epochs.value", wr.Config("epochs")),
         ("keys.value.key1", wr.Config("keys.key1")),
         ("non_config_path", "non_config_path"),  # Should pass through unchanged
         (None, None),
     ]
-    
+
     for input_val, expected in test_cases:
         result = wr.interface._metric_to_frontend_groupby(input_val)
-        assert result == expected, f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+        assert (
+            result == expected
+        ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
 
 
 def test_groupby_aggregate_behavior():
     """Test that panels automatically set aggregate=True when groupby is specified"""
-    
+
     # Test that any panel with groupby automatically sets aggregate=True
     panels_with_groupby = [
         wr.LinePlot(groupby=wr.Config("epochs")),
@@ -575,19 +578,153 @@ def test_groupby_aggregate_behavior():
         wr.BarPlot(groupby=wr.Config("epochs")),
         wr.BarPlot(groupby="epochs"),
     ]
-    
+
     for panel in panels_with_groupby:
         model = panel._to_model()
         assert model.config.group_by == "epochs.value"
         assert model.config.aggregate is True
-    
+
     # Test that panels without groupby can control aggregate manually
     panels_without_groupby = [
         wr.LinePlot(groupby=None, aggregate=False),
         wr.BarPlot(groupby=None, aggregate=False),
     ]
-    
+
     for panel in panels_without_groupby:
         model = panel._to_model()
         assert model.config.group_by is None
         assert model.config.aggregate is False
+
+
+def test_strip_refs_basic():
+    """Test that _strip_refs removes ref fields correctly"""
+    # Test dictionary with various ref patterns
+    test_dict = {
+        "ref": "should_be_removed",
+        "panelRef": "should_be_removed",
+        "sectionRefs": ["should", "be", "removed"],
+        "runSetRef": {"nested": "should_be_removed"},
+        "normal_field": "should_remain",
+        "nested": {
+            "ref": "nested_should_be_removed",
+            "innerRef": "nested_should_be_removed",
+            "dataRefs": [1, 2, 3],
+            "keep_me": "should_remain",
+        },
+    }
+
+    wr.interface._strip_refs(test_dict)
+
+    # Check that ref fields are removed
+    assert "ref" not in test_dict
+    assert "panelRef" not in test_dict
+    assert "sectionRefs" not in test_dict
+    assert "runSetRef" not in test_dict
+
+    # Check that normal fields remain
+    assert test_dict["normal_field"] == "should_remain"
+
+    # Check nested removal
+    assert "ref" not in test_dict["nested"]
+    assert "innerRef" not in test_dict["nested"]
+    assert "dataRefs" not in test_dict["nested"]
+    assert test_dict["nested"]["keep_me"] == "should_remain"
+
+
+def test_strip_refs_in_lists():
+    """Test that _strip_refs works correctly on lists"""
+    test_list = [
+        {"ref": "remove_me", "data": "keep_me"},
+        {"itemRef": "remove_me", "value": 123},
+        {"normalField": "unchanged"},
+    ]
+
+    wr.interface._strip_refs(test_list)
+
+    assert "ref" not in test_list[0]
+    assert test_list[0]["data"] == "keep_me"
+    assert "itemRef" not in test_list[1]
+    assert test_list[1]["value"] == 123
+    assert test_list[2]["normalField"] == "unchanged"
+
+
+def test_strip_refs_edge_cases():
+    """Test _strip_refs with edge cases"""
+    # Empty dict
+    empty_dict = {}
+    wr.interface._strip_refs(empty_dict)
+    assert empty_dict == {}
+
+    # Empty list
+    empty_list = []
+    wr.interface._strip_refs(empty_list)
+    assert empty_list == []
+
+    # Non-container types (should not raise errors)
+    wr.interface._strip_refs("string")
+    wr.interface._strip_refs(123)
+    wr.interface._strip_refs(None)
+
+    # Dict with only ref fields
+    only_refs = {"ref": 1, "dataRef": 2, "itemRefs": [3, 4]}
+    wr.interface._strip_refs(only_refs)
+    assert only_refs == {}
+
+
+def test_url_to_viewspec_strips_refs(monkeypatch):
+    """Test that _url_to_viewspec properly strips refs from the spec field"""
+    import json
+
+    # Mock the API response with refs in the spec
+    mock_viewspec = {
+        "id": "test-id",
+        "spec": json.dumps(
+            {
+                "blocks": [
+                    {
+                        "type": "panel-grid",
+                        "ref": "should_be_removed",
+                        "metadata": {
+                            "panelBankSectionConfig": {
+                                "name": "Charts",
+                                "sectionRef": "should_be_removed",
+                            }
+                        },
+                    }
+                ]
+            }
+        ),
+        "topLevelRef": "should_be_removed",
+        "normalField": "should_remain",
+    }
+
+    mock_client = Mock()
+    mock_client.execute.return_value = {"view": mock_viewspec}
+
+    def mock_get_api():
+        return type("MockApi", (), {"client": mock_client})()
+
+    monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", mock_get_api)
+
+    # Call _url_to_viewspec
+    result = wr.interface._url_to_viewspec(
+        "https://wandb.ai/entity/project/reports/test--abc123"
+    )
+
+    # Parse the spec field to check refs were removed
+    spec_dict = json.loads(result["spec"])
+
+    # Check that refs in spec were removed
+    assert "ref" not in spec_dict["blocks"][0]
+    assert (
+        "sectionRef" not in spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]
+    )
+
+    # Check that top-level ref was removed
+    assert "topLevelRef" not in result
+
+    # Check that normal fields remain
+    assert result["normalField"] == "should_remain"
+    assert (
+        spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]["name"] == "Charts"
+    )
