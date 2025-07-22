@@ -3175,7 +3175,9 @@ class Report(Base):
             successful by the backend, ``False`` otherwise.
         """
         if self.id == "":
-            raise AttributeError("Cannot delete a report that has not been saved or does not have an id.")
+            raise AttributeError(
+                "Cannot delete a report that has not been saved or does not have an id."
+            )
 
         response = _get_api().client.execute(
             gql.delete_view,
@@ -3191,7 +3193,9 @@ class Report(Base):
         if success:
             wandb.termlog(f"Deleted report: {self.id}")
         else:
-            wandb.termwarn("Failed to delete report – backend returned unsuccessful status.")
+            wandb.termwarn(
+                "Failed to delete report – backend returned unsuccessful status."
+            )
 
         return success
 
@@ -3248,50 +3252,50 @@ def _url_to_viewspec(url):
         gql.view_report, variable_values={"reportId": report_id}
     )
     viewspec = r["view"]
-    
+
     # The spec field is a JSON string, we need to parse it, strip refs, and re-serialize
     if "spec" in viewspec and isinstance(viewspec["spec"], str):
         import json
+
         spec_dict = json.loads(viewspec["spec"])
         _strip_refs(spec_dict)
         viewspec["spec"] = json.dumps(spec_dict)
-    
+
     # Also strip refs from other fields in viewspec
     _strip_refs(viewspec)
-    
+
     return viewspec
 
 
 def _strip_refs(obj):
     """
     Recursively remove ref objects from the viewspec in place.
-    
+
     These are temporary values from the frontend that should not be persisted.
     This function modifies the input object in place.
-    
+
     Args:
         obj: The object to process (dict, list, or any other type)
     """
     if isinstance(obj, dict):
         # Collect keys to remove (can't modify dict while iterating)
         keys_to_remove = [
-            key for key in obj.keys()
-            if key == 'ref' or key.endswith(('Ref', 'Refs'))
+            key for key in obj.keys() if key == "ref" or key.endswith(("Ref", "Refs"))
         ]
-        
+
         # Remove the collected keys
         for key in keys_to_remove:
             del obj[key]
-        
+
         # Recursively process remaining values
         for value in obj.values():
             _strip_refs(value)
-            
+
     elif isinstance(obj, list):
         # Process each item in the list
         for item in obj:
             _strip_refs(item)
-    
+
     # For other types (strings, numbers, etc.), no action needed
 
 
@@ -3300,15 +3304,15 @@ def _url_to_report_id(url):
     path = parse_result.path
 
     _, entity, project, _, name = path.split("/")
-    
+
     # Use rfind to find the last occurrence of '--'
     separator_position = name.rfind("--")
     if separator_position == -1:
         raise ValueError("Attempted to parse invalid View ID: no separator found")
-    
+
     # Split at the last '--'
-    title = name[:separator_position]
-    report_id = name[separator_position + 2:] # +2 to skip the '--'
+    # title = name[:separator_position]  # Not used, commenting out to fix ruff warning
+    report_id = name[separator_position + 2 :]  # +2 to skip the '--'
 
     # Add correct base64 padding: calculate the number of '=' needed
     pad = (4 - (len(report_id) % 4)) % 4
@@ -3650,6 +3654,7 @@ def _metric_to_frontend_panel_grid(x: str):
         return Config(name)
     return _metric_to_frontend(x)
 
+
 def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[str]:
     """
     Normalise a group-by key so the backend always receives the form
@@ -3683,7 +3688,7 @@ def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[
 
     first, *rest = segments
     rest_path = "." + ".".join(rest) if rest else ""
-    return f"{first}.value{rest_path}" 
+    return f"{first}.value{rest_path}"
 
 
 def _metric_to_frontend_groupby(val: Optional[str]):
@@ -3705,6 +3710,7 @@ def _metric_to_frontend_groupby(val: Optional[str]):
     rest = parts[2:]
     path = first + ("." + ".".join(rest) if rest else "")
     return Config(path)
+
 
 def _get_rs_by_name(runsets, name):
     for rs in runsets:

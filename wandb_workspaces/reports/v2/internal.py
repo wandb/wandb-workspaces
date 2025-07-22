@@ -262,7 +262,9 @@ class PanelBankConfig(ReportAPIBaseModel):
 
 
 class PanelBankSectionConfig(ReportAPIBaseModel):
-    name: str = "Report Panels"  # Changed from Literal to allow "Charts" and other names
+    name: str = (
+        "Report Panels"  # Changed from Literal to allow "Charts" and other names
+    )
     is_open: bool = False
     panels: LList["PanelTypes"] = Field(default_factory=list)
     type: str = "grid"  # Changed from Literal to allow flexibility
