@@ -3248,7 +3248,51 @@ def _url_to_viewspec(url):
         gql.view_report, variable_values={"reportId": report_id}
     )
     viewspec = r["view"]
+    
+    # The spec field is a JSON string, we need to parse it, strip refs, and re-serialize
+    if "spec" in viewspec and isinstance(viewspec["spec"], str):
+        import json
+        spec_dict = json.loads(viewspec["spec"])
+        _strip_refs(spec_dict)
+        viewspec["spec"] = json.dumps(spec_dict)
+    
+    # Also strip refs from other fields in viewspec
+    _strip_refs(viewspec)
+    
     return viewspec
+
+
+def _strip_refs(obj):
+    """
+    Recursively remove ref objects from the viewspec in place.
+    
+    These are temporary values from the frontend that should not be persisted.
+    This function modifies the input object in place.
+    
+    Args:
+        obj: The object to process (dict, list, or any other type)
+    """
+    if isinstance(obj, dict):
+        # Collect keys to remove (can't modify dict while iterating)
+        keys_to_remove = [
+            key for key in obj.keys()
+            if key == 'ref' or key.endswith(('Ref', 'Refs'))
+        ]
+        
+        # Remove the collected keys
+        for key in keys_to_remove:
+            del obj[key]
+        
+        # Recursively process remaining values
+        for value in obj.values():
+            _strip_refs(value)
+            
+    elif isinstance(obj, list):
+        # Process each item in the list
+        for item in obj:
+            _strip_refs(item)
+    
+    # For other types (strings, numbers, etc.), no action needed
 
 
 def _url_to_report_id(url):
