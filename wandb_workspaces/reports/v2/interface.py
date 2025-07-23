@@ -58,6 +58,7 @@ from .internal import (
     ReportWidth,
     SmoothingType,
 )
+from wandb_workspaces import expr
 
 TextLike = Union[str, "TextWithInlineComments", "Link", "InlineLatex", "InlineCode"]
 TextLikeField = Union[TextLike, LList[TextLike]]
@@ -906,7 +907,9 @@ class Runset(Base):
         project (str): The name of the project were the runs are stored.
         name (str): The name of the run set. Set to `Run set` by default.
         query (str): A query string to filter runs.
-        filters (Optional[str]): A filter string to filter runs.
+        filters (Union[Optional[str], LList["expr.FilterExpr"]]): Filters for runs. Can be either:
+            - A filter string (e.g., "Metric('loss') < 0.5") - legacy format
+            - A list of FilterExpr objects (e.g., [Metric("loss") < 0.5]) - recommended format
         groupby (LList[str]): A list of metric names to group by. Supported formats are:
             - "group" or "run.group" to group by a run attribute
             - "config.param" to group by a config parameter
@@ -919,7 +922,7 @@ class Runset(Base):
     project: str = ""
     name: str = "Run set"
     query: str = ""
-    filters: Optional[str] = ""
+    filters: Union[Optional[str], LList["expr.FilterExpr"]] = ""
     groupby: LList[str] = Field(default_factory=list)
     order: LList[OrderBy] = Field(
         default_factory=lambda: [OrderBy("CreatedTimestamp", ascending=False)]
@@ -956,10 +959,39 @@ class Runset(Base):
                     "Please verify that the entity and project names are correct and that you have access to this project."
                 )
 
+        # Handle both string filters and FilterExpr lists
+        if isinstance(self.filters, str):
+            filters = expr_parsing.expr_to_filters(self.filters)
+        elif isinstance(self.filters, list):
+            # Convert FilterExpr list to filter string
+            # For now, we'll convert each filter to string and join with " and "
+            filter_strs = []
+            for f in self.filters:
+                # Convert the filter expression to string format
+                if hasattr(f, 'key') and hasattr(f, 'op') and hasattr(f, 'value'):
+                    key_str = str(f.key)
+                    op_str = f.op
+                    value_str = repr(f.value) if isinstance(f.value, (str, list)) else str(f.value)
+                    
+                    # Convert operator format
+                    if op_str == "IN":
+                        filter_strs.append(f"{key_str} in {value_str}")
+                    elif op_str == "=":
+                        filter_strs.append(f"{key_str} == {value_str}")
+                    else:
+                        filter_strs.append(f"{key_str} {op_str} {value_str}")
+                else:
+                    filter_strs.append(str(f))
+            
+            combined_filter = " and ".join(filter_strs) if filter_strs else ""
+            filters = expr_parsing.expr_to_filters(combined_filter)
+        else:
+            filters = expr_parsing.expr_to_filters(self.filters or "")
+        
         obj = internal.Runset(
             project=project,
             name=self.name,
-            filters=expr_parsing.expr_to_filters(self.filters),
+            filters=filters,
             grouping=[expr_parsing.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
         )

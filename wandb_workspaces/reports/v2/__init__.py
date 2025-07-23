@@ -21,3 +21,4 @@ from .interface import (
 )
 from .metrics import *  # noqa
 from .panels import *  # noqa
+from .filters import FilterBuilder, Filters
