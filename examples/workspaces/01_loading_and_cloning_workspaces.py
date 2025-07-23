@@ -4,8 +4,8 @@ import wandb_workspaces.workspaces as ws
 
 # !! edit to your entity, project, and saved view !!
 entity = os.getenv("WANDB_ENTITY")
-project = "workspace-api-demo2"
-saved_view = "oydw4wx21l"
+project = os.getenv("WANDB_PROJECT")
+saved_view = "51cset95tvn"
 
 # 1. Load a workspace from URL
 url = f"https://wandb.ai/{entity}/{project}?nw={saved_view}"
