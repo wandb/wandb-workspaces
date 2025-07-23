@@ -3278,10 +3278,28 @@ def _strip_refs(obj):
         obj: The object to process (dict, list, or any other type)
     """
     if isinstance(obj, dict):
+        # Helper function to check if a value is a valid ref object
+        def is_valid_ref(value):
+            """Check if value is a ref object with viewID, type, and id properties"""
+            if isinstance(value, dict):
+                return (
+                    "viewID" in value
+                    and isinstance(value.get("viewID"), str)
+                    and "type" in value
+                    and isinstance(value.get("type"), str)
+                    and "id" in value
+                    and isinstance(value.get("id"), str)
+                )
+            elif isinstance(value, list):
+                # For lists, check if all items are valid ref objects
+                return all(is_valid_ref(item) for item in value) if value else False
+            return False
+
         # Collect keys to remove (can't modify dict while iterating)
-        keys_to_remove = [
-            key for key in obj.keys() if key == "ref" or key.endswith(("Ref", "Refs"))
-        ]
+        keys_to_remove = []
+        for key, value in obj.items():
+            if (key == "ref" or key.endswith(("Ref", "Refs"))) and is_valid_ref(value):
+                keys_to_remove.append(key)
 
         # Remove the collected keys
         for key in keys_to_remove:

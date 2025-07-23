@@ -598,33 +598,52 @@ def test_groupby_aggregate_behavior():
 
 def test_strip_refs():
     """Test that _strip_refs removes ref fields correctly from nested structures"""
-    # Test comprehensive nested structure with dicts and lists
+    # Test comprehensive nested structure with proper ref objects
     test_data = {
-        "ref": "should_be_removed",
-        "panelRef": "should_be_removed",
-        "sectionRefs": ["should", "be", "removed"],
-        "runSetRef": {"nested": "should_be_removed"},
+        "ref": {"viewID": "test123", "type": "panel", "id": "abc123"},
+        "panelRef": {"viewID": "test456", "type": "panel", "id": "def456"},
+        "sectionRefs": [
+            {"viewID": "test789", "type": "section", "id": "ghi789"},
+            {"viewID": "test012", "type": "section", "id": "jkl012"},
+        ],
+        "runSetRef": {"viewID": "test345", "type": "runSet", "id": "mno345"},
+        "invalidRef": "should_not_be_removed",  # String, not a ref object
+        "partialRef": {"viewID": "test", "type": "missing_id"},  # Missing id
         "normal_field": "should_remain",
         "nested": {
-            "ref": "nested_should_be_removed",
-            "innerRef": "nested_should_be_removed",
-            "dataRefs": [1, 2, 3],
+            "ref": {"viewID": "nested123", "type": "panel", "id": "nested_abc"},
+            "innerRef": {"viewID": "nested456", "type": "inner", "id": "nested_def"},
+            "dataRefs": [
+                {"viewID": "data1", "type": "data", "id": "data_1"},
+                {"viewID": "data2", "type": "data", "id": "data_2"},
+            ],
+            "invalidRefs": [1, 2, 3],  # Not ref objects
             "keep_me": "should_remain",
         },
         "list_field": [
-            {"ref": "remove_me", "data": "keep_me"},
-            {"itemRef": "remove_me", "value": 123},
+            {
+                "ref": {"viewID": "list1", "type": "item", "id": "list_1"},
+                "data": "keep_me",
+            },
+            {
+                "itemRef": {"viewID": "list2", "type": "item", "id": "list_2"},
+                "value": 123,
+            },
             {"normalField": "unchanged"},
         ],
     }
 
     wr.interface._strip_refs(test_data)
 
-    # Check that ref fields are removed at top level
+    # Check that valid ref fields are removed at top level
     assert "ref" not in test_data
     assert "panelRef" not in test_data
     assert "sectionRefs" not in test_data
     assert "runSetRef" not in test_data
+
+    # Check that invalid refs remain
+    assert test_data["invalidRef"] == "should_not_be_removed"
+    assert test_data["partialRef"] == {"viewID": "test", "type": "missing_id"}
 
     # Check that normal fields remain
     assert test_data["normal_field"] == "should_remain"
@@ -633,6 +652,7 @@ def test_strip_refs():
     assert "ref" not in test_data["nested"]
     assert "innerRef" not in test_data["nested"]
     assert "dataRefs" not in test_data["nested"]
+    assert test_data["nested"]["invalidRefs"] == [1, 2, 3]  # Should remain
     assert test_data["nested"]["keep_me"] == "should_remain"
 
     # Check list processing
@@ -653,7 +673,7 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
     """Test that _url_to_viewspec properly strips refs from the spec field"""
     import json
 
-    # Mock the API response with refs in the spec
+    # Mock the API response with proper ref objects in the spec
     mock_viewspec = {
         "id": "test-id",
         "spec": json.dumps(
@@ -661,18 +681,27 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
                 "blocks": [
                     {
                         "type": "panel-grid",
-                        "ref": "should_be_removed",
+                        "ref": {
+                            "viewID": "test123",
+                            "type": "panel-grid",
+                            "id": "abc123",
+                        },
                         "metadata": {
                             "panelBankSectionConfig": {
                                 "name": "Charts",
-                                "sectionRef": "should_be_removed",
+                                "sectionRef": {
+                                    "viewID": "test456",
+                                    "type": "section",
+                                    "id": "def456",
+                                },
                             }
                         },
                     }
                 ]
             }
         ),
-        "topLevelRef": "should_be_removed",
+        "topLevelRef": {"viewID": "test789", "type": "view", "id": "ghi789"},
+        "invalidRef": "should_remain",  # String, not a ref object
         "normalField": "should_remain",
     }
 
@@ -700,6 +729,9 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
 
     # Check that top-level ref was removed
     assert "topLevelRef" not in result
+
+    # Check that invalid ref remains (it's a string, not a ref object)
+    assert result["invalidRef"] == "should_remain"
 
     # Check that normal fields remain
     assert result["normalField"] == "should_remain"
