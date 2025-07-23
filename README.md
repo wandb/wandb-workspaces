@@ -83,6 +83,60 @@ report = wr.Report(
 
 ![image](https://github.com/wandb/wandb-workspaces/assets/15385696/25939b7c-1f2c-4df7-9936-692464e6e3fc)
 
+### 4. Generate code from existing reports
+
+You can reverse-engineer any W&B report to generate the Python code needed to recreate it programmatically:
+
+```python
+import wandb_workspaces.reports as wr
+
+# Load an existing report from its URL
+report = wr.Report.from_url("https://wandb.ai/your-entity/your-project/reports/Report-Name--REPORT_ID")
+
+# Generate the Python code to recreate this report
+code = report.to_code()
+print(code)
+
+# Save the generated code to a file
+with open("recreated_report.py", "w") as f:
+    f.write(code)
+```
+
+This feature is particularly useful for:
+- Learning how to create reports programmatically by examining existing ones
+- Migrating reports between projects or entities
+- Version controlling report configurations
+- Creating templates from existing reports
+
+Example output:
+```python
+import wandb_workspaces.reports.v2 as wr
+
+# Create report
+report = wr.Report(
+    project='your-project',
+    entity='your-entity',
+    title='Example Report',
+    description='An example report with various visualizations.'
+)
+
+# Add blocks
+report.blocks = [
+    wr.H1(text='Performance Metrics'),
+    wr.PanelGrid(
+        panels=[
+            wr.LinePlot(x='Step', y=['loss', 'accuracy']),
+            wr.BarPlot(metrics=['final_score'], orientation='v')
+        ]
+    )
+]
+
+# Save the report
+report.save()
+```
+
+**Note**: If the report contains unknown block types (from newer API versions), the generated code will include comments indicating these blocks couldn't be recreated.
+
 ## More examples
 <p align='center'>
 <a href="https://colab.research.google.com/github/wandb/wandb-workspaces/blob/example-notebook/Workspace_tutorial.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" /></a>

@@ -13,6 +13,7 @@ from .interface import (
     InlineLatex,
     Layout,
     Link,
+    OrderBy,
     ParallelCoordinatesPlotColumn,
     Report,
     Runset,

@@ -1589,7 +1589,7 @@ class WeaveBlockArtifact(Block):
                             "name": "project-artifact",
                             "inputs": {
                                 "project": {
-                                    "nodeType": "output",
+                                    "nodeType": "var",
                                     "type": {
                                         "type": "tagged",
                                         "tag": {
@@ -1601,21 +1601,7 @@ class WeaveBlockArtifact(Block):
                                         },
                                         "value": "project",
                                     },
-                                    "fromOp": {
-                                        "name": "root-project",
-                                        "inputs": {
-                                            "entityName": {
-                                                "nodeType": "const",
-                                                "type": "string",
-                                                "val": self.entity,
-                                            },
-                                            "projectName": {
-                                                "nodeType": "const",
-                                                "type": "string",
-                                                "val": self.project,
-                                            },
-                                        },
-                                    },
+                                    "varName": "project",
                                 },
                                 "artifactName": {
                                     "nodeType": "const",
@@ -1657,13 +1643,11 @@ class WeaveBlockArtifact(Block):
     @classmethod
     def _from_model(cls, model: internal.WeaveBlock):
         inputs = internal._get_weave_block_inputs(model.config)
-        entity = inputs["project"]["fromOp"]["inputs"]["entityName"]["val"]
-        project = inputs["project"]["fromOp"]["inputs"]["projectName"]["val"]
         artifact = inputs["artifactName"]["val"]
-        tab = model.config["panelConfig"]["panelConfig"]["tabConfigs"]["overview"].get(
+        tab = model.config["panel2Config"]["panelConfig"]["tabConfigs"]["overview"].get(
             "selectedTab", "overview"
         )
-        return cls(entity=entity, project=project, artifact=artifact, tab=tab)
+        return cls(artifact=artifact, tab=tab)
 
 
 defined_weave_blocks = [
@@ -3199,6 +3183,166 @@ class Report(Base):
 
         return success
 
+    def to_code(self, include_id: bool = False) -> str:
+        """
+        Generate Python code that recreates this report.
+
+        This method reverse-engineers the report structure and generates
+        the Python code needed to recreate it programmatically.
+
+        Arguments:
+            include_id (bool): Whether to include the report ID in the generated code.
+                If True, the recreated report will have the same ID as the original.
+                Default is False, which means a new ID will be generated on save.
+
+        Returns:
+            str: Python code that can be executed to recreate this report.
+        """
+        lines = []
+        imports = set()
+        
+        # Always add the main import
+        imports.add("import wandb_workspaces.reports.v2 as wr")
+        
+        # Helper function to generate code for an object
+        def _object_to_code(obj, indent_level=0):
+            indent = "    " * indent_level
+            
+            if obj is None:
+                return "None"
+            elif isinstance(obj, (str, bool, int, float)):
+                return repr(obj)
+            elif isinstance(obj, list):
+                if not obj:
+                    return "[]"
+                items = [_object_to_code(item, indent_level) for item in obj]
+                # Check if we need multiline
+                if any("\n" in str(item) for item in items) or sum(len(str(item)) for item in items) > 60:
+                    inner_indent = "    " * (indent_level + 1)
+                    items_str = f",\n{inner_indent}".join(str(item) for item in items)
+                    return f"[\n{inner_indent}{items_str}\n{indent}]"
+                else:
+                    return f"[{', '.join(str(item) for item in items)}]"
+            elif isinstance(obj, dict):
+                if not obj:
+                    return "{}"
+                items = []
+                for k, v in obj.items():
+                    key_str = repr(k) if isinstance(k, str) else _object_to_code(k, indent_level)
+                    val_str = _object_to_code(v, indent_level)
+                    items.append(f"{key_str}: {val_str}")
+                if len(items) > 2 or any("\n" in item for item in items):
+                    inner_indent = "    " * (indent_level + 1)
+                    items_str = f",\n{inner_indent}".join(items)
+                    return f"{{\n{inner_indent}{items_str}\n{indent}}}"
+                else:
+                    return f"{{{', '.join(items)}}}"
+            else:
+                # Handle wandb_workspaces objects
+                class_name = obj.__class__.__name__
+                
+                # Special handling for known types
+                if hasattr(obj, '__module__') and 'wandb_workspaces' in obj.__module__:
+                    # Get the attributes to include
+                    attrs = []
+                    for k, v in obj.__dict__.items():
+                        if _should_show_attr(k, v):
+                            attrs.append((k, v))
+                    
+                    if not attrs:
+                        return f"wr.{class_name}()"
+                    
+                    # Generate arguments
+                    args = []
+                    for k, v in attrs:
+                        val_str = _object_to_code(v, indent_level + 1)
+                        args.append(f"{k}={val_str}")
+                    
+                    if len(args) == 1 and "\n" not in args[0]:
+                        return f"wr.{class_name}({args[0]})"
+                    else:
+                        inner_indent = "    " * (indent_level + 1)
+                        args_str = f",\n{inner_indent}".join(args)
+                        return f"wr.{class_name}(\n{inner_indent}{args_str}\n{indent})"
+                else:
+                    # Unknown object, try repr
+                    return repr(obj)
+        
+        # Generate report creation code
+        lines.append("\n# Create report")
+        report_args = []
+        
+        # Required fields
+        report_args.append(f"project={repr(self.project)}")
+        report_args.append(f"entity={repr(self.entity)}")
+        
+        # Optional fields
+        if self.title != "Untitled Report":
+            report_args.append(f"title={repr(self.title)}")
+        if self.description:
+            report_args.append(f"description={repr(self.description)}")
+        if self.width != "readable":
+            report_args.append(f"width={repr(self.width)}")
+        
+        if include_id and self.id:
+            wandb.termwarn("Note: Including report ID in generated code. The report will overwrite the existing one when saved.")
+            # We'll set this after creation since id is not an init parameter
+            
+        report_creation = f"report = wr.Report(\n    {',\n    '.join(report_args)}\n)"
+        lines.append(report_creation)
+        
+        if include_id and self.id:
+            lines.append(f"report.id = {repr(self.id)}")
+        
+        # Generate blocks code if there are blocks
+        if self.blocks:
+            lines.append("\n# Add blocks")
+            
+            # Filter out empty paragraph blocks at start and end (these are added automatically)
+            blocks = self.blocks
+            if blocks and isinstance(blocks[0], P) and not blocks[0].text:
+                blocks = blocks[1:]
+            if blocks and isinstance(blocks[-1], P) and not blocks[-1].text:
+                blocks = blocks[:-1]
+            
+            if blocks:
+                # Handle unknown blocks
+                unknown_block_count = 0
+                blocks_code = []
+                
+                for block in blocks:
+                    if isinstance(block, UnknownBlock):
+                        unknown_block_count += 1
+                        blocks_code.append(f"# UnknownBlock (type: {block._spec.get('type', 'unknown')})")
+                        blocks_code.append(f"# Spec: {block._spec}")
+                        continue
+                    
+                    block_code = _object_to_code(block, 1)
+                    blocks_code.append(block_code)
+                
+                if unknown_block_count > 0:
+                    wandb.termwarn(f"Found {unknown_block_count} unknown block(s) that cannot be recreated in code.")
+                
+                if len(blocks_code) == 1:
+                    lines.append(f"report.blocks = [{blocks_code[0]}]")
+                else:
+                    lines.append("report.blocks = [")
+                    for i, block_code in enumerate(blocks_code):
+                        if i < len(blocks_code) - 1:
+                            lines.append(f"    {block_code},")
+                        else:
+                            lines.append(f"    {block_code}")
+                    lines.append("]")
+        
+        lines.append("\n# Save the report")
+        lines.append("report.save()")
+        
+        # Join imports and code
+        import_lines = sorted(list(imports))
+        full_code = "\n".join(import_lines) + "\n" + "\n".join(lines) + "\n"
+        
+        return full_code
+    
     @classmethod
     def from_url(cls, url: str, *, as_model: bool = False):
         """
@@ -3209,11 +3353,16 @@ class Report(Base):
             as_model (bool): If True, return the model object instead of the Report object.
                 By default, set to `False`.
         """
-        vs = _url_to_viewspec(url)
-        model = internal.ReportViewspec.model_validate(vs)
-        if as_model:
-            return model
-        return cls._from_model(model)
+        try:
+            vs = _url_to_viewspec(url)
+            model = internal.ReportViewspec.model_validate(vs)
+            if as_model:
+                return model
+            return cls._from_model(model)
+        except Exception as e:
+            wandb.termerror(f"Failed to load report from URL: {url}")
+            wandb.termerror(f"Error: {str(e)}")
+            raise ValueError(f"Could not load report from URL. Please check the URL is valid and you have access to the report. Error: {str(e)}")
 
     def to_html(self, height: int = 1024, hidden: bool = False) -> str:
         """
@@ -3714,7 +3863,7 @@ def _metric_to_frontend_groupby(val: Optional[str]):
     Convert the backend form back into a user-friendly object.
         "epochs.value"   ➔ Config("epochs")
         "a.value.b"      ➔ Config("a.b")
-    Anything that isn’t a config path (doesn’t have '.value' as the second
+    Anything that isn't a config path (doesn't have '.value' as the second
     token) is returned unchanged.
     """
     if val is None or not isinstance(val, str):
