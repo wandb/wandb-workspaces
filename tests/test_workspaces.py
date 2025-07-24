@@ -18,6 +18,7 @@ from wandb_workspaces.utils.validators import (
 from wandb_workspaces.workspaces.errors import SpecVersionError, UnsupportedViewError
 
 ENTITY = os.getenv("WANDB_ENTITY")
+PROJECT = os.getenv("WANDB_PROJECT")
 
 T = TypeVar("T")
 
@@ -144,13 +145,13 @@ def test_filter_expr(expr, spec):
 
 
 def test_load_workspace_from_url():
-    url = f"https://wandb.ai/{ENTITY}/workspace-api-demo?nw=tkdujz254ke"
+    url = f"https://wandb.ai/{ENTITY}/{PROJECT}?nw=51cset95tvn"
     workspace = ws.Workspace.from_url(url)  # noqa: F841
 
 
 @pytest.mark.xfail(reason="Saving to the same workspace is currently bugged")
 def test_save_workspace():
-    workspace = ws.Workspace(entity=ENTITY, project="workspace-api-demo")
+    workspace = ws.Workspace(entity=ENTITY, project=PROJECT)
     workspace.save()
     workspace_name = workspace._internal_name
 
@@ -163,7 +164,7 @@ def test_save_workspace():
 
 
 def test_save_workspace_as_new_view():
-    workspace = ws.Workspace(entity=ENTITY, project="workspace-api-demo")
+    workspace = ws.Workspace(entity=ENTITY, project=PROJECT)
     workspace.save_as_new_view()
     workspace_name = workspace._internal_name
 

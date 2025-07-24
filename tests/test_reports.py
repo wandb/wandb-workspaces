@@ -530,7 +530,7 @@ def test_runset_project_lookup(monkeypatch):
 
 def test_metric_to_backend_groupby():
     """Test the _metric_to_backend_groupby function with various input formats"""
-    
+
     # Test cases: (input, expected_output)
     test_cases = [
         # Core functionality - what users will actually use
@@ -539,35 +539,38 @@ def test_metric_to_backend_groupby():
         ("config.epochs", "epochs.value"),
         ("epochs", "epochs.value"),
         ("keys.key1", "keys.value.key1"),
-        
         # Edge cases
         (None, None),
         ("", ".value"),
     ]
-    
+
     for input_val, expected in test_cases:
         result = wr.interface._metric_to_backend_groupby(input_val)
-        assert result == expected, f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+        assert (
+            result == expected
+        ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
 
 
 def test_metric_to_frontend_groupby():
     """Test the _metric_to_frontend_groupby function"""
-    
+
     test_cases = [
         ("epochs.value", wr.Config("epochs")),
         ("keys.value.key1", wr.Config("keys.key1")),
         ("non_config_path", "non_config_path"),  # Should pass through unchanged
         (None, None),
     ]
-    
+
     for input_val, expected in test_cases:
         result = wr.interface._metric_to_frontend_groupby(input_val)
-        assert result == expected, f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+        assert (
+            result == expected
+        ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
 
 
 def test_groupby_aggregate_behavior():
     """Test that panels automatically set aggregate=True when groupby is specified"""
-    
+
     # Test that any panel with groupby automatically sets aggregate=True
     panels_with_groupby = [
         wr.LinePlot(groupby=wr.Config("epochs")),
@@ -575,19 +578,163 @@ def test_groupby_aggregate_behavior():
         wr.BarPlot(groupby=wr.Config("epochs")),
         wr.BarPlot(groupby="epochs"),
     ]
-    
+
     for panel in panels_with_groupby:
         model = panel._to_model()
         assert model.config.group_by == "epochs.value"
         assert model.config.aggregate is True
-    
+
     # Test that panels without groupby can control aggregate manually
     panels_without_groupby = [
         wr.LinePlot(groupby=None, aggregate=False),
         wr.BarPlot(groupby=None, aggregate=False),
     ]
-    
+
     for panel in panels_without_groupby:
         model = panel._to_model()
         assert model.config.group_by is None
         assert model.config.aggregate is False
+
+
+def test_strip_refs():
+    """Test that _strip_refs removes ref fields correctly from nested structures"""
+    # Test comprehensive nested structure with proper ref objects
+    test_data = {
+        "ref": {"viewID": "test123", "type": "panel", "id": "abc123"},
+        "panelRef": {"viewID": "test456", "type": "panel", "id": "def456"},
+        "sectionRefs": [
+            {"viewID": "test789", "type": "section", "id": "ghi789"},
+            {"viewID": "test012", "type": "section", "id": "jkl012"},
+        ],
+        "runSetRef": {"viewID": "test345", "type": "runSet", "id": "mno345"},
+        "invalidRef": "should_not_be_removed",  # String, not a ref object
+        "partialRef": {"viewID": "test", "type": "missing_id"},  # Missing id
+        "normal_field": "should_remain",
+        "nested": {
+            "ref": {"viewID": "nested123", "type": "panel", "id": "nested_abc"},
+            "innerRef": {"viewID": "nested456", "type": "inner", "id": "nested_def"},
+            "dataRefs": [
+                {"viewID": "data1", "type": "data", "id": "data_1"},
+                {"viewID": "data2", "type": "data", "id": "data_2"},
+            ],
+            "invalidRefs": [1, 2, 3],  # Not ref objects
+            "keep_me": "should_remain",
+        },
+        "list_field": [
+            {
+                "ref": {"viewID": "list1", "type": "item", "id": "list_1"},
+                "data": "keep_me",
+            },
+            {
+                "itemRef": {"viewID": "list2", "type": "item", "id": "list_2"},
+                "value": 123,
+            },
+            {"normalField": "unchanged"},
+        ],
+    }
+
+    wr.interface._strip_refs(test_data)
+
+    # Check that valid ref fields are removed at top level
+    assert "ref" not in test_data
+    assert "panelRef" not in test_data
+    assert "sectionRefs" not in test_data
+    assert "runSetRef" not in test_data
+
+    # Check that invalid refs remain
+    assert test_data["invalidRef"] == "should_not_be_removed"
+    assert test_data["partialRef"] == {"viewID": "test", "type": "missing_id"}
+
+    # Check that normal fields remain
+    assert test_data["normal_field"] == "should_remain"
+
+    # Check nested dict removal
+    assert "ref" not in test_data["nested"]
+    assert "innerRef" not in test_data["nested"]
+    assert "dataRefs" not in test_data["nested"]
+    assert test_data["nested"]["invalidRefs"] == [1, 2, 3]  # Should remain
+    assert test_data["nested"]["keep_me"] == "should_remain"
+
+    # Check list processing
+    assert "ref" not in test_data["list_field"][0]
+    assert test_data["list_field"][0]["data"] == "keep_me"
+    assert "itemRef" not in test_data["list_field"][1]
+    assert test_data["list_field"][1]["value"] == 123
+    assert test_data["list_field"][2]["normalField"] == "unchanged"
+
+    # Test edge cases
+    wr.interface._strip_refs({})  # Empty dict
+    wr.interface._strip_refs([])  # Empty list
+    wr.interface._strip_refs("string")  # Non-container types
+    wr.interface._strip_refs(None)
+
+
+def test_url_to_viewspec_strips_refs(monkeypatch):
+    """Test that _url_to_viewspec properly strips refs from the spec field"""
+    import json
+
+    # Mock the API response with proper ref objects in the spec
+    mock_viewspec = {
+        "id": "test-id",
+        "spec": json.dumps(
+            {
+                "blocks": [
+                    {
+                        "type": "panel-grid",
+                        "ref": {
+                            "viewID": "test123",
+                            "type": "panel-grid",
+                            "id": "abc123",
+                        },
+                        "metadata": {
+                            "panelBankSectionConfig": {
+                                "name": "Charts",
+                                "sectionRef": {
+                                    "viewID": "test456",
+                                    "type": "section",
+                                    "id": "def456",
+                                },
+                            }
+                        },
+                    }
+                ]
+            }
+        ),
+        "topLevelRef": {"viewID": "test789", "type": "view", "id": "ghi789"},
+        "invalidRef": "should_remain",  # String, not a ref object
+        "normalField": "should_remain",
+    }
+
+    mock_client = Mock()
+    mock_client.execute.return_value = {"view": mock_viewspec}
+
+    def mock_get_api():
+        return type("MockApi", (), {"client": mock_client})()
+
+    monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", mock_get_api)
+
+    # Call _url_to_viewspec
+    result = wr.interface._url_to_viewspec(
+        "https://wandb.ai/entity/project/reports/test--abc123"
+    )
+
+    # Parse the spec field to check refs were removed
+    spec_dict = json.loads(result["spec"])
+
+    # Check that refs in spec were removed
+    assert "ref" not in spec_dict["blocks"][0]
+    assert (
+        "sectionRef" not in spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]
+    )
+
+    # Check that top-level ref was removed
+    assert "topLevelRef" not in result
+
+    # Check that invalid ref remains (it's a string, not a ref object)
+    assert result["invalidRef"] == "should_remain"
+
+    # Check that normal fields remain
+    assert result["normalField"] == "should_remain"
+    assert (
+        spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]["name"] == "Charts"
+    )
