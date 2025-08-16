@@ -630,6 +630,7 @@ class LinePlotConfig(ReportAPIBaseModel):
     legend_template: Optional[str] = None
     aggregate: Optional[bool] = None
     x_expression: Optional[str] = None
+    x_axis_format: Optional[str] = None
 
     override_line_widths: Optional[dict] = None
     override_colors: Optional[dict] = None

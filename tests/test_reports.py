@@ -414,7 +414,11 @@ def test_layout_config():
     CUSTOM_USER_DEFINED_LAYOUT = {"x": 0, "y": 0, "w": 24, "h": 24}
 
     p0 = wr.WeavePanelSummaryTable(table_name="test")
-    p1 = wr.WeavePanelSummaryTable(table_name="test", layout=CUSTOM_USER_DEFINED_LAYOUT)
+    p1 = wr.WeavePanelSummaryTable(
+        table_name="test",
+        layout=CUSTOM_USER_DEFINED_LAYOUT,
+        table_filter="metric>5",
+    )
     p2 = wr.WeavePanelArtifact(artifact="test", layout=CUSTOM_USER_DEFINED_LAYOUT)
     p3 = wr.WeavePanelArtifactVersionedFile(
         artifact="test",
@@ -428,6 +432,24 @@ def test_layout_config():
 
     for panel in [p1, p2, p3, p4]:
         assert panel._to_model().layout.model_dump() == CUSTOM_USER_DEFINED_LAYOUT
+
+
+def test_lineplot_xaxis_format():
+    lp = wr.LinePlot(y=["loss"], xaxis_format="dateTime")
+    assert lp._to_model().config.x_axis_format == "dateTime"
+
+
+def test_panelgrid_active_runset_none():
+    pg = wr.PanelGrid(active_runset=None)
+    assert pg._to_model().metadata.open_run_set is None
+
+
+def test_weave_table_filter_in_config():
+    p = wr.WeavePanelSummaryTable(table_name="test", table_filter="foo")
+    cfg = p._to_model().config
+    assert (
+        cfg["panel2Config"]["exp"]["fromOp"]["inputs"]["filter"] == "foo"
+    )
 
 
 def test_url_to_report_id_padding():
