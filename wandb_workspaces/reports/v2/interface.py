@@ -1029,7 +1029,7 @@ class PanelGrid(Block):
     runsets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
     hide_run_sets: bool = False
     panels: LList["PanelTypes"] = Field(default_factory=list)
-    active_runset: int = 0
+    active_runset: Optional[int] = 0
     custom_run_colors: Dict[Union[RunId, RunsetGroup], Union[str, dict]] = Field(
         default_factory=dict
     )
@@ -1051,6 +1051,7 @@ class PanelGrid(Block):
                     panel_bank_config=internal.PanelBankConfig(),
                     open_viz=self._open_viz,
                 ),
+                open_run_set=self.active_runset,
                 custom_run_colors=_to_color_dict(self.custom_run_colors, self.runsets),
             )
         )

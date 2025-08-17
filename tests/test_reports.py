@@ -738,3 +738,23 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
     assert (
         spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]["name"] == "Charts"
     )
+
+
+def test_panelgrid_active_runset():
+    """Test PanelGrid active_runset parameter to control runset visibility."""
+    # Test with default value
+    pg1 = wr.PanelGrid()
+    assert pg1._to_model().metadata.open_run_set == 0
+    
+    # Test with integer value
+    pg2 = wr.PanelGrid(active_runset=1)
+    assert pg2._to_model().metadata.open_run_set == 1
+    
+    # Test with None (hide runset selector)
+    pg3 = wr.PanelGrid(active_runset=None)
+    assert pg3._to_model().metadata.open_run_set is None
+    
+    # Test round-trip serialization
+    model = pg3._to_model()
+    reconstructed = wr.PanelGrid._from_model(model)
+    assert reconstructed.active_runset is None
