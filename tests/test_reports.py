@@ -528,6 +528,31 @@ def test_runset_project_lookup(monkeypatch):
     assert "project 'bad-entity/bad-project' not found" in str(exc_info.value)
 
 
+def test_runset_query_parameter():
+    """Test that Runset query parameter is passed through to internal model"""
+    # Test with query
+    runset = wr.Runset(
+        name="Test Runset",
+        query="user == 'alice'"
+    )
+    model = runset._to_model()
+    assert model.search.query == "user == 'alice'"
+    
+    # Test without query (default empty string)
+    runset2 = wr.Runset(name="Test Runset 2")
+    model2 = runset2._to_model()
+    assert model2.search.query == ""
+    
+    # Test round-trip serialization
+    runset3 = wr.Runset(
+        name="Test Runset 3",
+        query="config.lr > 0.01"
+    )
+    model3 = runset3._to_model()
+    reconstructed = wr.Runset._from_model(model3)
+    assert reconstructed.query == "config.lr > 0.01"
+
+
 def test_metric_to_backend_groupby():
     """Test the _metric_to_backend_groupby function with various input formats"""
 
