@@ -738,3 +738,23 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
     assert (
         spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]["name"] == "Charts"
     )
+
+
+def test_lineplot_xaxis_format():
+    """Test LinePlot xaxis_format parameter with lowercase datetime."""
+    # Test basic usage
+    lp = wr.LinePlot(y=["loss"], xaxis_format="datetime")
+    assert lp._to_model().config.x_axis_format == "datetime"
+    
+    # Test with custom metric
+    lp2 = wr.LinePlot(x="timestamp", y=["loss"], xaxis_format="datetime")
+    assert lp2._to_model().config.x_axis_format == "datetime"
+    
+    # Test None case
+    lp3 = wr.LinePlot(y=["loss"])
+    assert lp3._to_model().config.x_axis_format is None
+    
+    # Test round-trip serialization
+    model = lp._to_model()
+    reconstructed = wr.LinePlot._from_model(model)
+    assert reconstructed.xaxis_format == "datetime"

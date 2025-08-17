@@ -1029,7 +1029,7 @@ class PanelGrid(Block):
     runsets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
     hide_run_sets: bool = False
     panels: LList["PanelTypes"] = Field(default_factory=list)
-    active_runset: int = 0
+    active_runset: Optional[int] = 0
     custom_run_colors: Dict[Union[RunId, RunsetGroup], Union[str, dict]] = Field(
         default_factory=dict
     )
@@ -1051,6 +1051,7 @@ class PanelGrid(Block):
                     panel_bank_config=internal.PanelBankConfig(),
                     open_viz=self._open_viz,
                 ),
+                open_run_set=self.active_runset,
                 custom_run_colors=_to_color_dict(self.custom_run_colors, self.runsets),
             )
         )
@@ -1815,6 +1816,7 @@ class LinePlot(Panel):
     legend_template: Optional[str] = None
     aggregate: Optional[bool] = None
     xaxis_expression: Optional[str] = None
+    xaxis_format: Optional[str] = None
     legend_fields: Optional[LList[str]] = None
 
     def _to_model(self):
@@ -1846,6 +1848,7 @@ class LinePlot(Panel):
                 legend_template=self.legend_template,
                 aggregate=True if self.groupby else self.aggregate,
                 x_expression=self.xaxis_expression,
+                x_axis_format=self.xaxis_format,
                 legend_fields=self.legend_fields,
             ),
             id=self._id,
@@ -1879,6 +1882,7 @@ class LinePlot(Panel):
             legend_template=model.config.legend_template,
             aggregate=model.config.aggregate,
             xaxis_expression=model.config.x_expression,
+            xaxis_format=model.config.x_axis_format,
             layout=Layout._from_model(model.layout),
             legend_fields=model.config.legend_fields,
         )
@@ -2579,6 +2583,7 @@ class WeavePanelSummaryTable(Panel):
 
     # TODO: Replace with actual weave panels when ready
     table_name: str = Field(..., kw_only=True)
+    table_filter: Optional[str] = None
 
     def _to_model(self):
         return internal.WeavePanel(
@@ -2748,6 +2753,7 @@ class WeavePanelSummaryTable(Panel):
                                     "type": "string",
                                     "val": self.table_name,
                                 },
+                                "filter": self.table_filter,
                             },
                         },
                         "__userInput": True,
@@ -2761,7 +2767,7 @@ class WeavePanelSummaryTable(Panel):
     def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         table_name = inputs["key"]["val"]
-        return cls(table_name=table_name)
+        return cls(table_name=table_name, table_filter=inputs.get("filter"))
 
 
 @dataclass(config=dataclass_config)
