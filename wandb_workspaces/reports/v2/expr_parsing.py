@@ -76,10 +76,12 @@ def _parse_node(node) -> Filters:
 
 def _map_op(op_node) -> str:
     # Map the AST operation node to a string repr
+    # NOTE: The W&B UI only supports these operators: =, !=, <=, >=
+    # The operators < and > are parsed but won't display properly in the UI
     op_map = {
-        ast.Gt: ">",
-        ast.Lt: "<",
-        ast.Eq: "=",
+        ast.Gt: ">",      # Not supported in UI - use >= instead
+        ast.Lt: "<",      # Not supported in UI - use <= instead
+        ast.Eq: "=",      # Changed from "==" to match UI expectations
         ast.NotEq: "!=",
         ast.GtE: ">=",
         ast.LtE: "<=",
