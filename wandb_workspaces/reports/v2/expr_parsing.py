@@ -95,7 +95,7 @@ def _handle_comparison(node) -> Filters:
     op_map = {
         "Gt": ">",
         "Lt": "<",
-        "Eq": "==",
+        "Eq": "=",  # Changed from "==" to match UI expectations
         "NotEq": "!=",
         "GtE": ">=",
         "LtE": "<=",
@@ -103,7 +103,24 @@ def _handle_comparison(node) -> Filters:
         "NotIn": "NIN",
     }
 
-    left_operand = node.left.id if isinstance(node.left, ast.Name) else None
+    # Handle both simple names and dotted names
+    if isinstance(node.left, ast.Name):
+        left_operand = node.left.id
+    elif isinstance(node.left, ast.Attribute):
+        # Handle dotted names like config.model_type
+        parts = []
+        current = node.left
+        while isinstance(current, ast.Attribute):
+            parts.append(current.attr)
+            current = current.value
+        if isinstance(current, ast.Name):
+            parts.append(current.id)
+            left_operand = ".".join(reversed(parts))
+        else:
+            left_operand = None
+    else:
+        left_operand = None
+    
     left_operand_mapped = to_frontend_name(left_operand)
     right_operand = _extract_value(node.comparators[0])
     operation = type(node.ops[0]).__name__
