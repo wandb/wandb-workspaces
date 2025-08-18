@@ -79,7 +79,7 @@ def _map_op(op_node) -> str:
     op_map = {
         ast.Gt: ">",
         ast.Lt: "<",
-        ast.Eq: "==",
+        ast.Eq: "=",
         ast.NotEq: "!=",
         ast.GtE: ">=",
         ast.LtE: "<=",
