@@ -77,10 +77,31 @@ def _parse_node(node) -> Filters:
 def _map_op(op_node) -> str:
     # Map the AST operation node to a string repr
     # NOTE: The W&B UI only supports these operators: =, !=, <=, >=
-    # The operators < and > are parsed but won't display properly in the UI
+    # The operators < and > are not supported and will be mapped to <= and >=
+    
+    import warnings
+    
+    if type(op_node) == ast.Gt:
+        warnings.warn(
+            "The '>' operator is not supported in the W&B UI. "
+            "Automatically mapping to '>=' for compatibility. "
+            "Consider using '>=' explicitly to avoid this warning.",
+            UserWarning,
+            stacklevel=3
+        )
+        return ">="
+    
+    if type(op_node) == ast.Lt:
+        warnings.warn(
+            "The '<' operator is not supported in the W&B UI. "
+            "Automatically mapping to '<=' for compatibility. "
+            "Consider using '<=' explicitly to avoid this warning.",
+            UserWarning,
+            stacklevel=3
+        )
+        return "<="
+    
     op_map = {
-        ast.Gt: ">",      # Not supported in UI - use >= instead
-        ast.Lt: "<",      # Not supported in UI - use <= instead
         ast.Eq: "=",      # Changed from "==" to match UI expectations
         ast.NotEq: "!=",
         ast.GtE: ">=",
@@ -92,16 +113,37 @@ def _map_op(op_node) -> str:
 
 
 def _handle_comparison(node) -> Filters:
-    op_map = {
-        "Gt": ">",
-        "Lt": "<",
-        "Eq": "=",  # Changed from "==" to match UI expectations
-        "NotEq": "!=",
-        "GtE": ">=",
-        "LtE": "<=",
-        "In": "IN",
-        "NotIn": "NIN",
-    }
+    import warnings
+    
+    # First check if we need to warn about unsupported operators
+    op_type = type(node.ops[0]).__name__
+    
+    if op_type == "Gt":
+        warnings.warn(
+            "The '>' operator is not supported in the W&B UI. "
+            "Automatically mapping to '>=' for compatibility.",
+            UserWarning,
+            stacklevel=3
+        )
+        mapped_op = ">="
+    elif op_type == "Lt":
+        warnings.warn(
+            "The '<' operator is not supported in the W&B UI. "
+            "Automatically mapping to '<=' for compatibility.",
+            UserWarning,
+            stacklevel=3
+        )
+        mapped_op = "<="
+    else:
+        op_map = {
+            "Eq": "=",  # Changed from "==" to match UI expectations
+            "NotEq": "!=",
+            "GtE": ">=",
+            "LtE": "<=",
+            "In": "IN",
+            "NotIn": "NIN",
+        }
+        mapped_op = op_map.get(op_type)
 
     # Handle both simple names and dotted names
     if isinstance(node.left, ast.Name):
@@ -123,10 +165,9 @@ def _handle_comparison(node) -> Filters:
     
     left_operand_mapped = to_frontend_name(left_operand)
     right_operand = _extract_value(node.comparators[0])
-    operation = type(node.ops[0]).__name__
 
     return Filters(
-        op=op_map.get(operation),
+        op=mapped_op,
         key=_server_path_to_key(left_operand) if left_operand_mapped else None,
         value=right_operand,
         disabled=False,
