@@ -353,14 +353,14 @@ def test_fix_panel_collisions():
             "b == 1 and c == 2",
             [
                 Filters(
-                    op="==",
+                    op="=",
                     key=Key(section="run", name="b"),
                     filters=None,
                     value=1,
                     disabled=False,
                 ),
                 Filters(
-                    op="==",
+                    op="=",
                     key=Key(section="run", name="c"),
                     filters=None,
                     value=2,
@@ -412,6 +412,42 @@ def test_fix_panel_collisions():
                     key=Key(section="config", name="a"),
                     filters=None,
                     value=1,
+                    disabled=False,
+                )
+            ],
+        ],
+        [
+            'config.model_type == "resnet"',
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="config", name="model_type"),
+                    filters=None,
+                    value="resnet",
+                    disabled=False,
+                )
+            ],
+        ],
+        [
+            'summary.train_loss > 0.5',
+            [
+                Filters(
+                    op=">",
+                    key=Key(section="summary", name="train_loss"),
+                    filters=None,
+                    value=0.5,
+                    disabled=False,
+                )
+            ],
+        ],
+        [
+            'tags.framework == "pytorch"',
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="tags", name="framework"),
+                    filters=None,
+                    value="pytorch",
                     disabled=False,
                 )
             ],
