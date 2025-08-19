@@ -432,7 +432,7 @@ def test_fix_panel_collisions():
             'summary.train_loss > 0.5',
             [
                 Filters(
-                    op=">",
+                    op=">=",  # Changed from ">" because > is automatically mapped to >=
                     key=Key(section="summary", name="train_loss"),
                     filters=None,
                     value=0.5,
@@ -448,6 +448,18 @@ def test_fix_panel_collisions():
                     key=Key(section="tags", name="framework"),
                     filters=None,
                     value="pytorch",
+                    disabled=False,
+                )
+            ],
+        ],
+        [
+            'config.epochs < 100',
+            [
+                Filters(
+                    op="<=",  # < is automatically mapped to <=
+                    key=Key(section="config", name="epochs"),
+                    filters=None,
+                    value=100,
                     disabled=False,
                 )
             ],
