@@ -1029,7 +1029,7 @@ class PanelGrid(Block):
     runsets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
     hide_run_sets: bool = False
     panels: LList["PanelTypes"] = Field(default_factory=list)
-    active_runset: Optional[int] = 0
+    active_runset: int = 0
     custom_run_colors: Dict[Union[RunId, RunsetGroup], Union[str, dict]] = Field(
         default_factory=dict
     )
@@ -1051,7 +1051,6 @@ class PanelGrid(Block):
                     panel_bank_config=internal.PanelBankConfig(),
                     open_viz=self._open_viz,
                 ),
-                open_run_set=self.active_runset,
                 custom_run_colors=_to_color_dict(self.custom_run_colors, self.runsets),
             )
         )
@@ -2583,7 +2582,6 @@ class WeavePanelSummaryTable(Panel):
 
     # TODO: Replace with actual weave panels when ready
     table_name: str = Field(..., kw_only=True)
-    table_filter: Optional[str] = None
 
     def _to_model(self):
         return internal.WeavePanel(
@@ -2753,7 +2751,6 @@ class WeavePanelSummaryTable(Panel):
                                     "type": "string",
                                     "val": self.table_name,
                                 },
-                                "filter": self.table_filter,
                             },
                         },
                         "__userInput": True,
@@ -2767,7 +2764,7 @@ class WeavePanelSummaryTable(Panel):
     def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         table_name = inputs["key"]["val"]
-        return cls(table_name=table_name, table_filter=inputs.get("filter"))
+        return cls(table_name=table_name)
 
 
 @dataclass(config=dataclass_config)
