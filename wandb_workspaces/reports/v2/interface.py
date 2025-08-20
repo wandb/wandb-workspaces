@@ -2346,16 +2346,19 @@ class MediaBrowser(Panel):
     A panel that displays media files in a grid layout.
 
     Attributes:
+        title (Optional[str]): The title of the panel.
         num_columns (Optional[int]): The number of columns in the grid.
         media_keys (LList[str]): A list of media keys that correspond to the media files.
     """
 
+    title: Optional[str] = None
     num_columns: Optional[int] = None
     media_keys: LList[str] = Field(default_factory=list)
 
     def _to_model(self):
         return internal.MediaBrowser(
             config=internal.MediaBrowserConfig(
+                chart_title=self.title,
                 column_count=self.num_columns,
                 media_keys=self.media_keys,
             ),
@@ -2366,6 +2369,7 @@ class MediaBrowser(Panel):
     @classmethod
     def _from_model(cls, model: internal.MediaBrowser):
         obj = cls(
+            title=model.config.chart_title,
             num_columns=model.config.column_count,
             media_keys=model.config.media_keys,
             layout=Layout._from_model(model.layout),

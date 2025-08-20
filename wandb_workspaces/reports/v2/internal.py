@@ -585,6 +585,7 @@ class Panel(ReportAPIBaseModel):
 
 
 class MediaBrowserConfig(ReportAPIBaseModel):
+    chart_title: Optional[str] = None
     column_count: Optional[int] = None
     media_keys: LList[str] = Field(default_factory=list)
 
