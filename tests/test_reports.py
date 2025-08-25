@@ -738,3 +738,44 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
     assert (
         spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]["name"] == "Charts"
     )
+
+
+def test_operator_warnings_and_mapping():
+    """Test that > and < operators are automatically mapped with warnings"""
+    import warnings
+    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+    
+    # Test > operator mapping to >= 
+    result_gt = expr_to_filters("accuracy > 0.9")
+    filter_gt = result_gt.filters[0].filters[0]
+    assert filter_gt.op == ">="  # Should be mapped from >
+    assert filter_gt.key.section == "run" 
+    assert filter_gt.key.name == "accuracy"
+    assert filter_gt.value == 0.9
+    
+    # Test < operator mapping to <=
+    result_lt = expr_to_filters("loss < 0.1")
+    filter_lt = result_lt.filters[0].filters[0]
+    assert filter_lt.op == "<="  # Should be mapped from <
+    assert filter_lt.key.section == "run"
+    assert filter_lt.key.name == "loss"
+    assert filter_lt.value == 0.1
+    
+    # Test multiple unsupported operators in one expression
+    result_multi = expr_to_filters("accuracy > 0.9 and loss < 0.1")
+    filters = result_multi.filters[0].filters
+    assert len(filters) == 2
+    assert filters[0].op == ">="  # Mapped from >
+    assert filters[1].op == "<="  # Mapped from <
+    
+    # Test that supported operators work correctly
+    result_supported = expr_to_filters("accuracy >= 0.9 and loss <= 0.1")
+    supported_filters = result_supported.filters[0].filters
+    assert len(supported_filters) == 2
+    assert supported_filters[0].op == ">="  # Already >=
+    assert supported_filters[1].op == "<="  # Already <=
+    
+    # Test that unsupported operators are automatically mapped to supported ones
+    # This provides better UX by making unsupported operators work instead of failing
+    assert filter_gt.op == ">="  # > automatically becomes >=
+    assert filter_lt.op == "<="  # < automatically becomes <=

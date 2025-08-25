@@ -1,5 +1,6 @@
 import ast
 import sys
+import warnings
 from typing import Any
 
 from .internal import Filters, Key
@@ -75,24 +76,45 @@ def _parse_node(node) -> Filters:
 
 
 def _map_op(op_node) -> str:
-    # Map the AST operation node to a string repr
+    # Map the AST operation node to a string repr with automatic fixes for unsupported operators
+    op_type = type(op_node)
+    
+    # Handle unsupported operators with warnings and automatic mapping
+    if op_type == ast.Gt:
+        warnings.warn(
+            "Operator '>' is not supported in the UI and has been automatically mapped to '>=' for compatibility. "
+            "Consider using '>=' directly to avoid this warning.",
+            UserWarning,
+            stacklevel=3
+        )
+        return ">="
+    elif op_type == ast.Lt:
+        warnings.warn(
+            "Operator '<' is not supported in the UI and has been automatically mapped to '<=' for compatibility. "
+            "Consider using '<=' directly to avoid this warning.",
+            UserWarning,
+            stacklevel=3
+        )
+        return "<="
+    
+    # Standard operator mapping
     op_map = {
-        ast.Gt: ">",
-        ast.Lt: "<",
         ast.Eq: "==",
-        ast.NotEq: "!=",
+        ast.NotEq: "!=", 
         ast.GtE: ">=",
         ast.LtE: "<=",
         ast.In: "IN",
         ast.NotIn: "NIN",
     }
-    return op_map[type(op_node)]
+    return op_map[op_type]
 
 
 def _handle_comparison(node) -> Filters:
+    # Simple operator mapping for this code path
+    # Note: _map_op handles warnings and automatic mapping in the main code path
     op_map = {
-        "Gt": ">",
-        "Lt": "<",
+        "Gt": ">=",  # Map > to >= (consistent with _map_op)
+        "Lt": "<=",  # Map < to <= (consistent with _map_op)
         "Eq": "==",
         "NotEq": "!=",
         "GtE": ">=",
@@ -102,13 +124,12 @@ def _handle_comparison(node) -> Filters:
     }
 
     left_operand = node.left.id if isinstance(node.left, ast.Name) else None
-    left_operand_mapped = to_frontend_name(left_operand)
     right_operand = _extract_value(node.comparators[0])
     operation = type(node.ops[0]).__name__
 
     return Filters(
         op=op_map.get(operation),
-        key=_server_path_to_key(left_operand) if left_operand_mapped else None,
+        key=_server_path_to_key(left_operand) if left_operand else None,
         value=right_operand,
         disabled=False,
     )
