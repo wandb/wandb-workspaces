@@ -738,3 +738,56 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
     assert (
         spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]["name"] == "Charts"
     )
+
+
+def test_dotted_notation_support():
+    """Test that dotted notation expressions are parsed correctly"""
+    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+    from wandb_workspaces.reports.v2.internal import Key
+    
+    # Test config dotted notation
+    config_result = expr_to_filters("config.model_type == 'resnet'")
+    config_filter = config_result.filters[0].filters[0]
+    assert config_filter.op == "=="
+    assert config_filter.key.section == "config"
+    assert config_filter.key.name == "model_type"
+    assert config_filter.value == "resnet"
+    
+    # Test summary dotted notation
+    summary_result = expr_to_filters("summary.accuracy >= 0.95")
+    summary_filter = summary_result.filters[0].filters[0]
+    assert summary_filter.op == ">="
+    assert summary_filter.key.section == "summary"
+    assert summary_filter.key.name == "accuracy"
+    assert summary_filter.value == 0.95
+    
+    # Test tags dotted notation
+    tags_result = expr_to_filters("tags.environment == 'production'")
+    tags_filter = tags_result.filters[0].filters[0]
+    assert tags_filter.op == "=="
+    assert tags_filter.key.section == "tags"
+    assert tags_filter.key.name == "environment"
+    assert tags_filter.value == "production"
+    
+    # Test nested dotted notation (multiple levels)
+    nested_result = expr_to_filters("config.model.architecture == 'transformer'")
+    nested_filter = nested_result.filters[0].filters[0]
+    assert nested_filter.op == "=="
+    assert nested_filter.key.section == "config"
+    assert nested_filter.key.name == "model.architecture"
+    assert nested_filter.value == "transformer"
+    
+    # Test combined dotted and simple expressions
+    combined_result = expr_to_filters("config.batch_size >= 32 and name == 'test-run'")
+    combined_filters = combined_result.filters[0].filters
+    assert len(combined_filters) == 2
+    
+    # First filter should be dotted notation
+    assert combined_filters[0].key.section == "config"
+    assert combined_filters[0].key.name == "batch_size"
+    assert combined_filters[0].value == 32
+    
+    # Second filter should be simple name
+    assert combined_filters[1].key.section == "run"
+    assert combined_filters[1].key.name == "name"
+    assert combined_filters[1].value == "test-run"
