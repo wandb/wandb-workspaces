@@ -101,14 +101,29 @@ def _handle_comparison(node) -> Filters:
         "NotIn": "NIN",
     }
 
-    left_operand = node.left.id if isinstance(node.left, ast.Name) else None
-    left_operand_mapped = to_frontend_name(left_operand)
+    # Handle different types of left operands
+    left_operand = None
+    if isinstance(node.left, ast.Name):
+        # Simple name like 'name', 'state', etc.
+        left_operand = node.left.id
+    elif isinstance(node.left, ast.Attribute):
+        # Dotted notation like 'config.model_type', 'summary.accuracy'
+        parts = []
+        current = node.left
+        while isinstance(current, ast.Attribute):
+            parts.append(current.attr)
+            current = current.value
+        if isinstance(current, ast.Name):
+            parts.append(current.id)
+            left_operand = ".".join(reversed(parts))
+    
+
     right_operand = _extract_value(node.comparators[0])
     operation = type(node.ops[0]).__name__
 
     return Filters(
         op=op_map.get(operation),
-        key=_server_path_to_key(left_operand) if left_operand_mapped else None,
+        key=_server_path_to_key(left_operand) if left_operand else None,
         value=right_operand,
         disabled=False,
     )
@@ -222,6 +237,8 @@ def _server_path_to_key(path):
         return Key(section="config", name=path.split("config.", 1)[1])
     elif path.startswith("summary_metrics."):
         return Key(section="summary", name=path.split("summary_metrics.", 1)[1])
+    elif path.startswith("summary."):
+        return Key(section="summary", name=path.split("summary.", 1)[1])
     elif path.startswith("keys_info.keys."):
         return Key(section="keys_info", name=path.split("keys_info.keys.", 1)[1])
     elif path.startswith("tags."):
