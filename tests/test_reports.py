@@ -333,14 +333,14 @@ def test_fix_panel_collisions():
             "b == 1 and c == 2",
             [
                 Filters(
-                    op="==",
+                    op="=",
                     key=Key(section="run", name="b"),
                     filters=None,
                     value=1,
                     disabled=False,
                 ),
                 Filters(
-                    op="==",
+                    op="=",
                     key=Key(section="run", name="c"),
                     filters=None,
                     value=2,
@@ -738,3 +738,34 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
     assert (
         spec_dict["blocks"][0]["metadata"]["panelBankSectionConfig"]["name"] == "Charts"
     )
+
+
+def test_equality_operator_format():
+    """Test that equality operators use '=' format instead of '==' for UI compatibility"""
+    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+    from wandb_workspaces.reports.v2.internal import Filters, Key
+    
+    # Test that equality expressions are parsed with '=' operator
+    result = expr_to_filters("name == 'test-run'")
+    
+    # Should have one AND group with one equality filter
+    assert result.op == "OR"
+    assert len(result.filters) == 1
+    and_group = result.filters[0]
+    assert and_group.op == "AND"
+    assert len(and_group.filters) == 1
+    
+    equality_filter = and_group.filters[0]
+    assert equality_filter.op == "="  # Should be '=' not '=='
+    assert equality_filter.key.section == "run"
+    assert equality_filter.key.name == "name"
+    assert equality_filter.value == "test-run"
+    
+    # Test multiple equality operators
+    result_multi = expr_to_filters("a == 1 and b == 2")
+    and_group_multi = result_multi.filters[0]
+    assert len(and_group_multi.filters) == 2
+    
+    # Both filters should use '=' operator
+    assert and_group_multi.filters[0].op == "="
+    assert and_group_multi.filters[1].op == "="

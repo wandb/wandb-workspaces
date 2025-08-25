@@ -79,7 +79,7 @@ def _map_op(op_node) -> str:
     op_map = {
         ast.Gt: ">",
         ast.Lt: "<",
-        ast.Eq: "==",
+        ast.Eq: "=",
         ast.NotEq: "!=",
         ast.GtE: ">=",
         ast.LtE: "<=",
@@ -93,7 +93,7 @@ def _handle_comparison(node) -> Filters:
     op_map = {
         "Gt": ">",
         "Lt": "<",
-        "Eq": "==",
+        "Eq": "=",
         "NotEq": "!=",
         "GtE": ">=",
         "LtE": "<=",
