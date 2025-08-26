@@ -1815,6 +1815,7 @@ class LinePlot(Panel):
     legend_template: Optional[str] = None
     aggregate: Optional[bool] = None
     xaxis_expression: Optional[str] = None
+    xaxis_format: Optional[str] = None
     legend_fields: Optional[LList[str]] = None
 
     def _to_model(self):
@@ -1846,6 +1847,7 @@ class LinePlot(Panel):
                 legend_template=self.legend_template,
                 aggregate=True if self.groupby else self.aggregate,
                 x_expression=self.xaxis_expression,
+                x_axis_format=self.xaxis_format,
                 legend_fields=self.legend_fields,
             ),
             id=self._id,
@@ -1879,6 +1881,7 @@ class LinePlot(Panel):
             legend_template=model.config.legend_template,
             aggregate=model.config.aggregate,
             xaxis_expression=model.config.x_expression,
+            xaxis_format=model.config.x_axis_format,
             layout=Layout._from_model(model.layout),
             legend_fields=model.config.legend_fields,
         )
