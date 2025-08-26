@@ -3639,8 +3639,9 @@ def _metric_to_backend_pc(x: Optional[SummaryOrConfigOnlyMetric]):
         backend_name = expr_parsing.to_backend_name(name)
         return f"run:{backend_name}"
     if isinstance(x, Config):
-        name = x.name
-        return f"c::{name}"
+        name, *rest = x.name.split(".")
+        rest = "." + ".".join(rest) if rest else ""
+        return f"config:{name}.value{rest}"
     if isinstance(x, SummaryMetric):
         name = x.name
         return f"summary:{name}"
@@ -3650,6 +3651,14 @@ def _metric_to_backend_pc(x: Optional[SummaryOrConfigOnlyMetric]):
 def _metric_to_frontend_pc(x: str):
     if x is None:
         return x
+    if x.startswith("config:") and ".value" in x:
+        name = x.replace("config:", "")
+        value_idx = name.find(".value")
+        if value_idx != -1:
+            prefix = name[:value_idx]
+            suffix = name[value_idx + 6 :]  # Skip ".value"
+            full_name = prefix + suffix
+            return Config(full_name)
     if x.startswith("c::"):
         name = x.replace("c::", "")
         return Config(name)
