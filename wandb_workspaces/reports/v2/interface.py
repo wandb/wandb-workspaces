@@ -959,6 +959,7 @@ class Runset(Base):
         obj = internal.Runset(
             project=project,
             name=self.name,
+            search=internal.RunsetSearch(query=self.query),
             filters=expr_parsing.expr_to_filters(self.filters),
             grouping=[expr_parsing.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
@@ -982,6 +983,7 @@ class Runset(Base):
             entity=entity,
             project=project,
             name=model.name,
+            query=model.search.query if model.search else "",
             filters=expr_parsing.filters_to_expr(model.filters),
             groupby=[expr_parsing.to_frontend_name(k.name) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
