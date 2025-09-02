@@ -432,8 +432,12 @@ class Workspace(Base):
         run_settings = {}
 
         disabled_runs = model.spec.section.run_sets[0].selections.tree
-        for id in disabled_runs:
-            run_settings[id] = RunSettings(disabled=True)
+        for item in disabled_runs:
+            if isinstance(item, str):
+                run_settings[item] = RunSettings(disabled=True)
+            else:
+                for child_id in item.children:
+                    run_settings[child_id] = RunSettings(disabled=True)
 
         custom_run_colors = model.spec.section.custom_run_colors
         for k, v in custom_run_colors.items():
