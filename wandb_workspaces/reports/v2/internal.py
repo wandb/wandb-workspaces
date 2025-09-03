@@ -350,10 +350,16 @@ class Sort(ReportAPIBaseModel):
     keys: LList[SortKey] = Field(default_factory=lambda: [SortKey()])
 
 
+class SelectionTreeNode(ReportAPIBaseModel):
+    value: str
+    children: LList[str] = Field(default_factory=list)
+    skip: Optional[bool] = None
+
+
 class RunsetSelections(ReportAPIBaseModel):
     root: int = 1
     bounds: LList = Field(default_factory=list)
-    tree: LList[str] = Field(default_factory=list)
+    tree: Union[LList[str], LList[SelectionTreeNode]] = Field(default_factory=list)
 
 
 class Runset(ReportAPIBaseModel):
