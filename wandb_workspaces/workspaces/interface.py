@@ -99,18 +99,14 @@ class SectionLayoutSettings(Base):
     top right of the section of the W&B App Workspace UI.
 
     Attributes:
-        layout (Literal["standard", "custom"]): The layout of panels in the section. `standard`
-            follows the default grid layout, `custom` allows per per-panel layouts controlled
-            by the individual panel settings.
+        layout (Literal["standard", "custom"]): The layout of panels in the section.
         columns (int): In a standard layout, the number of columns in the layout. Default is 3.
         rows (int): In a standard layout, the number of rows in the layout. Default is 2.
     """
 
     layout: Literal["standard", "custom"] = "standard"
     """
-    The layout of panels in the section
-        - `standard`: Follows the default grid layout
-        - `custom`: Allows per per-panel layouts controlled by the individual panel settings
+    The layout of panels in the section. Only `standard` grid layout is supported. If you specify `custom`, `standard` grid mode is actually used.
     """
 
     columns: int = 3
