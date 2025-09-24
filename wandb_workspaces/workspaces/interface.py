@@ -99,18 +99,8 @@ class SectionLayoutSettings(Base):
     top right of the section of the W&B App Workspace UI.
 
     Attributes:
-        layout (Literal["standard", "custom"]): The layout of panels in the section. `standard`
-            follows the default grid layout, `custom` allows per per-panel layouts controlled
-            by the individual panel settings.
-        columns (int): In a standard layout, the number of columns in the layout. Default is 3.
-        rows (int): In a standard layout, the number of rows in the layout. Default is 2.
-    """
-
-    layout: Literal["standard", "custom"] = "standard"
-    """
-    The layout of panels in the section
-        - `standard`: Follows the default grid layout
-        - `custom`: Allows per per-panel layouts controlled by the individual panel settings
+        columns (int): The number of columns in the layout. Default is 3.
+        rows (int): The number of rows in the layout. Default is 2.
     """
 
     columns: int = 3
@@ -119,14 +109,13 @@ class SectionLayoutSettings(Base):
     @classmethod
     def _from_model(cls, model: internal.FlowConfig):
         return cls(
-            layout="standard" if model.snap_to_columns else "custom",
             columns=model.columns_per_page,
             rows=model.rows_per_page,
         )
 
     def _to_model(self):
         return internal.FlowConfig(
-            snap_to_columns=self.layout == "standard",
+            snap_to_columns=True,
             columns_per_page=self.columns,
             rows_per_page=self.rows,
         )
@@ -190,7 +179,7 @@ class Section(Base):
         name (str): The name/title of the section.
         panels (LList[PanelTypes]): An ordered list of panels in the section. By default, first is top-left and last is bottom-right.
         is_open (bool): Whether the section is open or closed. Default is closed.
-        layout_settings (Literal["standard", "custom"]): Settings for panel layout in the section.
+        layout_settings (SectionLayoutSettings): Settings for panel layout in the section.
         panel_settings: Panel-level settings applied to all panels in the section, similar to `WorkspaceSettings` for a `Section`.
     """
 
