@@ -43,7 +43,6 @@ from .. import expr
 from . import internal
 
 __all__ = [
-    "SectionLayoutSettings",
     "SectionPanelSettings",
     "Section",
     "WorkspaceSettings",
@@ -91,45 +90,6 @@ class Base:
     @property
     def _spec(self):
         return self._model.model_dump(by_alias=True, exclude_none=True)
-
-
-@dataclass(config=dataclass_config, repr=False)
-class SectionLayoutSettings(Base):
-    """Panel layout settings for a section, typically seen at the
-    top right of the section of the W&B App Workspace UI.
-
-    Attributes:
-        layout (Literal["standard", "custom"]): The layout of panels in the section. `standard`
-            follows the default grid layout, `custom` allows per per-panel layouts controlled
-            by the individual panel settings.
-        columns (int): In a standard layout, the number of columns in the layout. Default is 3.
-        rows (int): In a standard layout, the number of rows in the layout. Default is 2.
-    """
-
-    layout: Literal["standard", "custom"] = "standard"
-    """
-    The layout of panels in the section
-        - `standard`: Follows the default grid layout
-        - `custom`: Allows per per-panel layouts controlled by the individual panel settings
-    """
-
-    columns: int = 3
-    rows: int = 2
-
-    @classmethod
-    def _from_model(cls, model: internal.FlowConfig):
-        return cls(
-            layout="standard" if model.snap_to_columns else "custom",
-            columns=model.columns_per_page,
-            rows=model.rows_per_page,
-        )
-
-    def _to_model(self):
-        return internal.FlowConfig(
-            snap_to_columns=self.layout == "standard",
-            columns_per_page=self.columns,
-            rows_per_page=self.rows,
-        )
 
 
 @dataclass
@@ -190,7 +150,6 @@ class Section(Base):
         name (str): The name/title of the section.
         panels (LList[PanelTypes]): An ordered list of panels in the section. By default, first is top-left and last is bottom-right.
         is_open (bool): Whether the section is open or closed. Default is closed.
-        layout_settings (Literal["standard", "custom"]): Settings for panel layout in the section.
         panel_settings: Panel-level settings applied to all panels in the section, similar to `WorkspaceSettings` for a `Section`.
     """
 
@@ -198,9 +157,6 @@ class Section(Base):
     panels: LList[PanelTypes] = Field(default_factory=list)
     is_open: bool = False
 
-    layout_settings: SectionLayoutSettings = Field(
-        default_factory=SectionLayoutSettings
-    )
     panel_settings: SectionPanelSettings = Field(default_factory=SectionPanelSettings)
 
     @classmethod
@@ -209,13 +165,11 @@ class Section(Base):
             name=model.name,
             panels=[_lookup_panel(p) for p in model.panels],
             is_open=model.is_open,
-            layout_settings=SectionLayoutSettings._from_model(model.flow_config),
             panel_settings=SectionPanelSettings._from_model(model.local_panel_settings),
         )
 
     def _to_model(self):
         panel_models = [p._to_model() for p in self.panels]
-        flow_config = self.layout_settings._to_model()
         local_panel_settings = self.panel_settings._to_model()
 
         # Add warning that panel layout only works if they set section settings layout = "custom"
@@ -224,7 +178,6 @@ class Section(Base):
             name=self.name,
             panels=panel_models,
             is_open=self.is_open,
-            flow_config=flow_config,
             local_panel_settings=local_panel_settings,
         )
 
