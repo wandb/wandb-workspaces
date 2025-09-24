@@ -74,6 +74,11 @@ class SectionFactory(CustomDataclassFactory[ws.Section]):
 
 
 @register_fixture
+class SectionLayoutSettingsFactory(CustomDataclassFactory[ws.SectionLayoutSettings]):
+    __model__ = ws.SectionLayoutSettings
+
+
+@register_fixture
 class SectionPanelSettingsFactory(CustomDataclassFactory[ws.SectionPanelSettings]):
     __model__ = ws.SectionPanelSettings
 
