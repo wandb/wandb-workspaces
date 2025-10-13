@@ -559,6 +559,7 @@ def test_metric_to_frontend_groupby():
         ("keys.value.key1", wr.Config("keys.key1")),
         ("non_config_path", "non_config_path"),  # Should pass through unchanged
         (None, None),
+        ("None", "None"),
     ]
 
     for input_val, expected in test_cases:
@@ -588,11 +589,13 @@ def test_groupby_aggregate_behavior():
     panels_without_groupby = [
         wr.LinePlot(groupby=None, aggregate=False),
         wr.BarPlot(groupby=None, aggregate=False),
+        wr.LinePlot(groupby="None", aggregate=False),
+        wr.BarPlot(groupby="None", aggregate=False),
     ]
 
     for panel in panels_without_groupby:
         model = panel._to_model()
-        assert model.config.group_by is None
+        assert model.config.group_by in (None, "None")
         assert model.config.aggregate is False
 
 
@@ -745,15 +748,15 @@ def test_lineplot_xaxis_format():
     # Test basic usage
     lp = wr.LinePlot(y=["loss"], xaxis_format="datetime")
     assert lp._to_model().config.x_axis_format == "datetime"
-    
+
     # Test with custom metric
     lp2 = wr.LinePlot(x="timestamp", y=["loss"], xaxis_format="datetime")
     assert lp2._to_model().config.x_axis_format == "datetime"
-    
+
     # Test None case
     lp3 = wr.LinePlot(y=["loss"])
     assert lp3._to_model().config.x_axis_format is None
-    
+
     # Test round-trip serialization
     model = lp._to_model()
     reconstructed = wr.LinePlot._from_model(model)

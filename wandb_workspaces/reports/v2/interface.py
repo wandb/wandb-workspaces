@@ -1845,7 +1845,7 @@ class LinePlot(Panel):
                 font_size=self.font_size,
                 legend_position=self.legend_position,
                 legend_template=self.legend_template,
-                aggregate=True if self.groupby else self.aggregate,
+                aggregate=self.groupby not in (None, "None") or self.aggregate,
                 x_expression=self.xaxis_expression,
                 x_axis_format=self.xaxis_format,
                 legend_fields=self.legend_fields,
@@ -2064,14 +2064,14 @@ class BarPlot(Panel):
                 font_size=self.font_size,
                 override_series_titles=self.line_titles,
                 override_colors=self.line_colors,
-                aggregate=True if self.groupby else self.aggregate,
+                aggregate=self.groupby not in (None, "None") or self.aggregate,
             ),
             layout=self.layout._to_model(),
             id=self._id,
         )
 
     @classmethod
-    def _from_model(cls, model: internal.ScatterPlot):
+    def _from_model(cls, model: internal.BarPlot):
         obj = cls(
             title=model.config.chart_title,
             metrics=[_metric_to_frontend(name) for name in model.config.metrics],
@@ -3703,8 +3703,8 @@ def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[
     Anything that is already in the correct format
     ("epochs.value", "a.value.b", …) is returned unchanged.
     """
-    if val is None:
-        return None
+    if val in (None, "None"):
+        return val
 
     # 1) unwrap wr.Config
     if isinstance(val, Config):
@@ -3733,7 +3733,7 @@ def _metric_to_frontend_groupby(val: Optional[str]):
     Anything that isn’t a config path (doesn’t have '.value' as the second
     token) is returned unchanged.
     """
-    if val is None or not isinstance(val, str):
+    if val in (None, "None") or not isinstance(val, str):
         return val
 
     parts = val.split(".")
