@@ -89,6 +89,32 @@ factory_names = [
 ]
 
 
+def create_mock_wandb_api(execute_return_value=None, app_url="https://app.wandb.test"):
+    """
+    Helper function to create a mocked wandb.Api instance.
+
+    Args:
+        execute_return_value: Return value for client.execute() calls.
+                             Can be a single value or a list for side_effect.
+        app_url: The app URL to return from client.app_url
+
+    Returns:
+        tuple: (mock_api_instance, mock_client) for assertions
+    """
+    mock_api_instance = Mock()
+    mock_client = Mock()
+
+    if isinstance(execute_return_value, list):
+        mock_client.execute.side_effect = execute_return_value
+    else:
+        mock_client.execute.return_value = execute_return_value
+
+    mock_client.app_url = app_url
+    mock_api_instance.client = mock_client
+
+    return mock_api_instance, mock_client
+
+
 @pytest.mark.skipif(
     sys.version_info < (3, 8), reason="polyfactory requires py38 or higher"
 )
@@ -161,10 +187,7 @@ def test_load_workspace_from_url():
         }
     }
 
-    mock_api_instance = Mock()
-    mock_client = Mock()
-    mock_client.execute.return_value = mock_response
-    mock_api_instance.client = mock_client
+    mock_api_instance, mock_client = create_mock_wandb_api(mock_response)
 
     with patch("wandb.Api", return_value=mock_api_instance):
         workspace = ws.Workspace.from_url(url)
@@ -195,11 +218,7 @@ def test_save_workspace():
         }
     }
 
-    mock_api_instance = Mock()
-    mock_client = Mock()
-    mock_client.execute.return_value = mock_upsert_response
-    mock_client.app_url = "https://app.wandb.test"
-    mock_api_instance.client = mock_client
+    mock_api_instance, mock_client = create_mock_wandb_api(mock_upsert_response)
 
     with patch("wandb.Api", return_value=mock_api_instance):
         workspace = ws.Workspace(entity="test", project="test")
