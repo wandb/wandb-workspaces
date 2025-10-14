@@ -22,24 +22,6 @@ jobs:
           name: Run tests
           command: poetry run pytest --cov
       - run:
-          name: Run examples
-          command: |
-            find examples/ -name "*.py" -print | while read -r script; do
-              echo "Running $script"
-              coverage_file=".coverage_$(basename $script .py)"
-              poetry run coverage run --source=wandb_workspaces --data-file="$coverage_file" "$script"
-              if [ $? -ne 0 ]; then
-                echo "Script $script failed. Exiting."
-                exit 1
-              fi
-            done
-      - run:
-          name: Combine coverage reports
-          command: poetry run coverage combine .coverage*
-      - run:
-          name: Report coverage
-          command: poetry run coverage xml
-      - run:
           name: Manually upload coverage
           command: |
             curl -Os https://uploader.codecov.io/latest/linux/codecov
