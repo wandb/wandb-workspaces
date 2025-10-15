@@ -235,7 +235,7 @@ def test_save_workspace():
         # Important: id SHOULD be in the second call as the view has been created
         assert "id" in cargs_list[1][0][1]
 
-        # Important: id SHOULD not be in the second call as we want to make a new view
+        # Important: id SHOULD not be in the third call as we want to make a new view
         assert "id" not in cargs_list[2][0][1]
 
         # all the gql should be the same
