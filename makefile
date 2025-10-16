@@ -1,7 +1,7 @@
 .PHONY: publish-pypi publish-github publish-all
 
 # Environment variable for version
-VERSION ?= $(shell poetry version -s)
+VERSION ?= $(shell grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2)
 GITHUB_VERSION = v$(VERSION)
 
 # Publishing steps:
@@ -11,7 +11,8 @@ GITHUB_VERSION = v$(VERSION)
 # Publish to PyPI
 publish-pypi:
 	@echo "Publishing to PyPI..."
-	poetry publish --build
+	uv build
+	uv publish
 
 # Tag and create a release on GitHub
 publish-github:
