@@ -10,17 +10,17 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Verify Poetry installation
+          name: Install uv
           command: |
-            poetry --version
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> $BASH_ENV
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> $BASH_ENV
             source $BASH_ENV
       - run:
           name: Install dependencies
-          command: poetry install -E test -vvv
+          command: uv sync --extra test
       - run:
           name: Run tests
-          command: poetry run pytest --cov
+          command: uv run pytest --cov
       - run:
           name: Manually upload coverage
           command: |
