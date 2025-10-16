@@ -38,7 +38,7 @@ Documentation = "https://docs.wandb.ai/ref/wandb_workspaces/"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.2",
+    "pytest>=8.2,<8.4",
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "polyfactory>=2.15",
