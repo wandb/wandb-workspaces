@@ -339,3 +339,77 @@ def test_validate_url(example, should_pass):
 def test_panel_lookup(panel_config, should_return_instance):
     panel = wr.interface._lookup_panel(panel_config)
     assert isinstance(panel, should_return_instance)
+
+
+# Column Management Tests
+
+
+def test_column_pinning():
+    """Test that column pinning is preserved through serialization."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(
+            pinned_columns=["summary:accuracy"],  # run:displayName auto-added
+        ),
+    )
+    model = workspace._to_model()
+
+    # Backend should receive dict format with True values
+    # run:displayName should be auto-added
+    assert model.spec.section.run_sets[0].run_feed.column_pinned == {
+        "run:displayName": True,
+        "summary:accuracy": True,
+    }
+
+    # column_visible should match column_pinned (pinned columns are the only visible ones)
+    assert model.spec.section.run_sets[0].run_feed.column_visible == {
+        "run:displayName": True,
+        "summary:accuracy": True,
+    }
+
+    # column_order should also match
+    assert model.spec.section.run_sets[0].run_feed.column_order == [
+        "run:displayName",
+        "summary:accuracy",
+    ]
+
+    # Test round-trip - should convert back to list format
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_columns == [
+        "run:displayName",
+        "summary:accuracy",
+    ]
+
+
+def test_empty_column_settings():
+    """Test that empty column settings are handled correctly."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(),
+    )
+
+    model = workspace._to_model()
+    run_feed = model.spec.section.run_sets[0].run_feed
+
+    # Verify empty settings serialize correctly
+    assert run_feed.column_pinned == {}
+    assert run_feed.column_visible == {}
+    assert run_feed.column_order == []
+
+    # Test round-trip - should be empty list
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_columns == []
+
+
+def test_run_display_name_auto_added_to_pinned():
+    """Test that 'run:displayName' is automatically added to pinned_columns if missing."""
+    # This should work without errors - run:displayName is auto-added in validation
+    runset_settings = ws.RunsetSettings(
+        pinned_columns=[
+            "summary:accuracy"
+        ],  # missing run:displayName - will be auto-added
+    )
+    # run:displayName is added and moved to first position during validation
+    assert runset_settings.pinned_columns == ["run:displayName", "summary:accuracy"]
