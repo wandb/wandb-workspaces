@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 
 import wandb
 from annotated_types import Annotated, Ge
-from pydantic import AfterValidator, ConfigDict, Field, PositiveInt
+from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, model_validator
 from pydantic.dataclasses import dataclass
 
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
@@ -326,6 +326,39 @@ class RunsetSettings(Base):
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
         run_settings (Dict[str, RunSettings]): A dictionary of run settings, where the key
             is the run's ID and the value is a RunSettings object.
+        pinned_columns (Dict[str, bool]): Dictionary mapping column names to pinned status.
+            Column names use format: "run:displayName", "summary:metric", "config:param".
+            Example: {"run:displayName": True, "summary:accuracy": True}
+        visible_columns (Dict[str, bool]): Dictionary mapping column names to visibility status.
+            Example: {"run:displayName": True, "summary:loss": False}
+        column_order (LList[str]): Order of columns in the table (left to right).
+            If empty, default ordering is used.
+        column_widths (Dict[str, int]): Column widths in pixels.
+            Example: {"run:displayName": 200, "summary:accuracy": 150}
+
+    Note:
+        Column management validation rules:
+        - If pinned_columns is populated, both visible_columns and column_order must also be provided.
+        - The column "run:displayName" must always be in pinned_columns with value True.
+        - Any column with pinned_columns[col] = True must also have visible_columns[col] = True.
+        - Any column with pinned_columns[col] = True must also be present in column_order.
+        - Columns with pinned_columns[col] = False do not need to be in visible_columns or column_order.
+        - To ONLY display select columns with visible_columns, ALL possible columns must be passed with
+          only the desired columns having a value of True and the rest must be False
+
+    Example:
+        Valid column configuration:
+        ```python
+        RunsetSettings(
+            pinned_columns={"run:displayName": True, "summary:accuracy": True},
+            visible_columns={
+                "run:displayName": True,
+                "summary:accuracy": True,
+                "summary:loss": True,
+            },
+            column_order=["run:displayName", "summary:accuracy", "summary:loss"],
+        )
+        ```
     """
 
     query: str = ""
@@ -351,6 +384,61 @@ class RunsetSettings(Base):
     }
     ```
     """
+
+    # Column management
+    pinned_columns: Dict[str, bool] = Field(default_factory=dict)
+    visible_columns: Dict[str, bool] = Field(default_factory=dict)
+    column_order: LList[str] = Field(default_factory=list)
+    column_widths: Dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_column_management(self):
+        """Validate that if pinned_columns is populated, visible_columns and column_order must also be present."""
+        if self.pinned_columns:
+            if not self.visible_columns:
+                raise ValueError(
+                    "If pinned_columns is populated, visible_columns must also be provided. "
+                    "All pinned columns should be included in visible_columns."
+                )
+            if not self.column_order:
+                raise ValueError(
+                    "If pinned_columns is populated, column_order must also be provided. "
+                    "All pinned columns should be included in column_order."
+                )
+
+            # Get the set of pinned column names (only those with True value)
+            pinned_cols = {
+                col for col, is_pinned in self.pinned_columns.items() if is_pinned
+            }
+
+            # Check that "run:displayName" is in pinned_columns
+            if "run:displayName" not in pinned_cols:
+                raise ValueError(
+                    "The column 'run:displayName' must be in pinned_columns with value True. "
+                    "This ensures the run name is always visible and pinned."
+                )
+
+            # Check that all pinned columns are in visible_columns (and set to True)
+            visible_cols = {
+                col for col, is_visible in self.visible_columns.items() if is_visible
+            }
+            missing_from_visible = pinned_cols - visible_cols
+            if missing_from_visible:
+                raise ValueError(
+                    f"All pinned columns must also be in visible_columns with value True. "
+                    f"Missing from visible_columns: {sorted(missing_from_visible)}"
+                )
+
+            # Check that all pinned columns are in column_order
+            order_cols = set(self.column_order)
+            missing_from_order = pinned_cols - order_cols
+            if missing_from_order:
+                raise ValueError(
+                    f"All pinned columns must also be in column_order. "
+                    f"Missing from column_order: {sorted(missing_from_order)}"
+                )
+
+        return self
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -487,6 +575,11 @@ class Workspace(Base):
             group_by_prefix=group_by_prefix,
         )
 
+        # Extract column settings from run_feed
+        run_feed = model.spec.section.run_sets[0].run_feed
+        pinned_columns = run_feed.column_pinned
+        visible_columns = run_feed.column_visible
+
         # then construct the Workspace object
         obj = cls(
             entity=model.entity,
@@ -512,6 +605,11 @@ class Workspace(Base):
                     for s in model.spec.section.run_sets[0].sort.keys
                 ],
                 run_settings=run_settings,
+                # Column management
+                pinned_columns=pinned_columns,
+                visible_columns=visible_columns,
+                column_order=run_feed.column_order,
+                column_widths=run_feed.column_widths,
             ),
         )
         obj._internal_name = model.name
@@ -578,6 +676,12 @@ class Workspace(Base):
                     run_sets=[
                         internal.Runset(
                             id=self._internal_runset_id,
+                            run_feed=internal.RunFeed(
+                                column_pinned=self.runset_settings.pinned_columns,
+                                column_visible=self.runset_settings.visible_columns,
+                                column_order=self.runset_settings.column_order,
+                                column_widths=self.runset_settings.column_widths,
+                            ),
                             search=internal.RunsetSearch(
                                 query=self.runset_settings.query,
                                 is_regex=is_regex,

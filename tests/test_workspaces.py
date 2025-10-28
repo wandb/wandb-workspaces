@@ -339,3 +339,301 @@ def test_validate_url(example, should_pass):
 def test_panel_lookup(panel_config, should_return_instance):
     panel = wr.interface._lookup_panel(panel_config)
     assert isinstance(panel, should_return_instance)
+
+
+# Column Management Tests
+
+
+def test_column_pinning():
+    """Test that column pinning is preserved through serialization."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(
+            pinned_columns={"run:displayName": True, "summary:accuracy": True},
+            visible_columns={
+                "run:displayName": True,
+                "summary:accuracy": True,
+                "summary:loss": True,
+            },
+            column_order=["run:displayName", "summary:accuracy", "summary:loss"],
+        ),
+    )
+    model = workspace._to_model()
+    assert model.spec.section.run_sets[0].run_feed.column_pinned == {
+        "run:displayName": True,
+        "summary:accuracy": True,
+    }
+
+    # Test round-trip
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_columns == {
+        "run:displayName": True,
+        "summary:accuracy": True,
+    }
+
+
+def test_column_visibility():
+    """Test that column visibility is preserved."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(
+            visible_columns={
+                "run:displayName": True,
+                "summary:loss": True,
+                "config:learning_rate": True,
+            }
+        ),
+    )
+    model = workspace._to_model()
+    assert model.spec.section.run_sets[0].run_feed.column_visible == {
+        "run:displayName": True,
+        "summary:loss": True,
+        "config:learning_rate": True,
+    }
+
+    # Test round-trip
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.visible_columns == {
+        "run:displayName": True,
+        "summary:loss": True,
+        "config:learning_rate": True,
+    }
+
+
+def test_column_ordering():
+    """Test that column order is preserved."""
+    order = ["run:displayName", "summary:accuracy", "summary:loss"]
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(column_order=order),
+    )
+    model = workspace._to_model()
+    assert model.spec.section.run_sets[0].run_feed.column_order == order
+
+    # Test round-trip
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.column_order == order
+
+
+def test_column_widths():
+    """Test that column widths are preserved."""
+    widths = {"run:displayName": 200, "summary:accuracy": 150}
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(column_widths=widths),
+    )
+    model = workspace._to_model()
+    assert model.spec.section.run_sets[0].run_feed.column_widths == widths
+
+    # Test round-trip
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.column_widths == widths
+
+
+def test_all_column_management_features():
+    """Test that all column management features work together."""
+    pinned_cols = {"run:displayName": True, "run:state": True}
+    visible_cols = {
+        "run:displayName": True,
+        "run:state": True,
+        "summary:accuracy": True,
+        "config:learning_rate": True,
+    }
+    col_order = [
+        "run:displayName",
+        "run:state",
+        "summary:accuracy",
+        "config:learning_rate",
+    ]
+    col_widths = {
+        "run:displayName": 250,
+        "summary:accuracy": 120,
+    }
+
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(
+            pinned_columns=pinned_cols,
+            visible_columns=visible_cols,
+            column_order=col_order,
+            column_widths=col_widths,
+        ),
+    )
+
+    model = workspace._to_model()
+    run_feed = model.spec.section.run_sets[0].run_feed
+
+    # Verify serialization
+    assert run_feed.column_pinned == {
+        "run:displayName": True,
+        "run:state": True,
+    }
+    assert run_feed.column_visible == {
+        "run:displayName": True,
+        "run:state": True,
+        "summary:accuracy": True,
+        "config:learning_rate": True,
+    }
+    assert run_feed.column_order == col_order
+    assert run_feed.column_widths == col_widths
+
+    # Test round-trip
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_columns == pinned_cols
+    assert workspace2.runset_settings.visible_columns == visible_cols
+    assert workspace2.runset_settings.column_order == col_order
+    assert workspace2.runset_settings.column_widths == col_widths
+
+
+def test_empty_column_settings():
+    """Test that empty column settings are handled correctly."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(),
+    )
+
+    model = workspace._to_model()
+    run_feed = model.spec.section.run_sets[0].run_feed
+
+    # Verify empty settings serialize correctly
+    assert run_feed.column_pinned == {}
+    assert run_feed.column_visible == {}
+    assert run_feed.column_order == []
+    assert run_feed.column_widths == {}
+
+    # Test round-trip
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_columns == {}
+    assert workspace2.runset_settings.visible_columns == {}
+    assert workspace2.runset_settings.column_order == []
+    assert workspace2.runset_settings.column_widths == {}
+
+
+def test_pinned_columns_requires_visible_columns():
+    """Test that pinned_columns requires visible_columns to be populated."""
+    with pytest.raises(ValueError, match="visible_columns must also be provided"):
+        ws.RunsetSettings(
+            pinned_columns={"run:displayName": True},
+            column_order=["run:displayName"],
+        )
+
+
+def test_pinned_columns_requires_column_order():
+    """Test that pinned_columns requires column_order to be populated."""
+    with pytest.raises(ValueError, match="column_order must also be provided"):
+        ws.RunsetSettings(
+            pinned_columns={"run:displayName": True},
+            visible_columns={"run:displayName": True},
+        )
+
+
+def test_pinned_columns_requires_both():
+    """Test that pinned_columns requires both visible_columns and column_order."""
+    with pytest.raises(ValueError, match="visible_columns must also be provided"):
+        ws.RunsetSettings(
+            pinned_columns={"run:displayName": True},
+        )
+
+
+def test_all_column_settings_together_valid():
+    """Test that all column settings can be used together without error."""
+    # This should not raise an error
+    runset_settings = ws.RunsetSettings(
+        pinned_columns={"run:displayName": True},
+        visible_columns={"run:displayName": True, "summary:accuracy": True},
+        column_order=["run:displayName", "summary:accuracy"],
+    )
+    assert runset_settings.pinned_columns == {"run:displayName": True}
+    assert runset_settings.visible_columns == {
+        "run:displayName": True,
+        "summary:accuracy": True,
+    }
+    assert runset_settings.column_order == ["run:displayName", "summary:accuracy"]
+
+
+def test_pinned_column_must_be_in_visible_columns():
+    """Test that pinned columns must be in visible_columns."""
+    with pytest.raises(
+        ValueError, match="Missing from visible_columns: \\['summary:accuracy'\\]"
+    ):
+        ws.RunsetSettings(
+            pinned_columns={"run:displayName": True, "summary:accuracy": True},
+            visible_columns={"run:displayName": True},  # missing summary:accuracy
+            column_order=["run:displayName", "summary:accuracy"],
+        )
+
+
+def test_pinned_column_must_be_visible():
+    """Test that pinned columns must have value True in visible_columns."""
+    with pytest.raises(
+        ValueError, match="Missing from visible_columns: \\['summary:accuracy'\\]"
+    ):
+        ws.RunsetSettings(
+            pinned_columns={"run:displayName": True, "summary:accuracy": True},
+            visible_columns={
+                "run:displayName": True,
+                "summary:accuracy": False,  # set to False!
+            },
+            column_order=["run:displayName", "summary:accuracy"],
+        )
+
+
+def test_pinned_column_must_be_in_column_order():
+    """Test that pinned columns must be in column_order."""
+    with pytest.raises(
+        ValueError, match="Missing from column_order: \\['summary:accuracy'\\]"
+    ):
+        ws.RunsetSettings(
+            pinned_columns={"run:displayName": True, "summary:accuracy": True},
+            visible_columns={"run:displayName": True, "summary:accuracy": True},
+            column_order=["run:displayName"],  # missing summary:accuracy
+        )
+
+
+def test_pinned_false_does_not_require_presence():
+    """Test that columns set to False in pinned_columns don't need to be present."""
+    # This should work - only columns with True value need to be present
+    runset_settings = ws.RunsetSettings(
+        pinned_columns={"run:displayName": True, "summary:loss": False},
+        visible_columns={"run:displayName": True},
+        column_order=["run:displayName"],
+    )
+    assert runset_settings.pinned_columns == {
+        "run:displayName": True,
+        "summary:loss": False,
+    }
+
+
+def test_run_display_name_must_be_pinned():
+    """Test that 'run:displayName' must be in pinned_columns."""
+    with pytest.raises(
+        ValueError,
+        match="The column 'run:displayName' must be in pinned_columns with value True",
+    ):
+        ws.RunsetSettings(
+            pinned_columns={"summary:accuracy": True},  # missing run:displayName
+            visible_columns={"summary:accuracy": True},
+            column_order=["summary:accuracy"],
+        )
+
+
+def test_run_display_name_with_false_value_fails():
+    """Test that 'run:displayName' with False value is not sufficient."""
+    with pytest.raises(
+        ValueError,
+        match="The column 'run:displayName' must be in pinned_columns with value True",
+    ):
+        ws.RunsetSettings(
+            pinned_columns={
+                "run:displayName": False,  # False is not allowed
+                "summary:accuracy": True,
+            },
+            visible_columns={"run:displayName": True, "summary:accuracy": True},
+            column_order=["run:displayName", "summary:accuracy"],
+        )
