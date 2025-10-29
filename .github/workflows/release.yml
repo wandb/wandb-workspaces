@@ -39,8 +39,8 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
       
-      - name: Install hatch
-        run: pip install hatch
+      - name: Install toml
+        run: pip install toml
       
       - name: Create release branch
         id: create_branch
@@ -51,12 +51,26 @@ jobs:
           
       - name: Bump version
         run: |
-          CURRENT_VERSION=$(hatch version)
-          echo "Current version: $CURRENT_VERSION"
+          python << 'EOF'
+          import toml
           
-          hatch version ${{ inputs.version }}
-          NEW_VERSION=$(hatch version)
-          echo "New version: $NEW_VERSION"
+          # Read pyproject.toml
+          with open('pyproject.toml', 'r') as f:
+              data = toml.load(f)
+          
+          current_version = data['project']['version']
+          new_version = "${{ inputs.version }}"
+          
+          print(f"Current version: {current_version}")
+          print(f"New version: {new_version}")
+          
+          # Update version
+          data['project']['version'] = new_version
+          
+          # Write back to pyproject.toml
+          with open('pyproject.toml', 'w') as f:
+              toml.dump(data, f)
+          EOF
           
       - name: Commit and push changes
         run: |
