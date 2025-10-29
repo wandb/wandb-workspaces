@@ -124,17 +124,21 @@ jobs:
       - name: Build package
         run: uv build
         
+      - name: Create git tag
+        run: |
+          git tag v${{ inputs.version }}
+          git push origin v${{ inputs.version }}
+        
       - name: Create draft GitHub Release
-        uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048 # v2.2.0
-        with:
-          name: v${{ inputs.version }}
-          tag_name: v${{ inputs.version }}
-          body: "Release v${{ inputs.version }}"
-          files: |
-            dist/*.whl
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v${{ inputs.version }} \
+            --draft \
+            --title "v${{ inputs.version }}" \
+            --notes "Release v${{ inputs.version }}" \
+            dist/*.whl \
             dist/*.tar.gz
-          draft: true
-          prerelease: false
           
       - name: Publish to PyPI
         if: ${{ !inputs.dry_run }}
