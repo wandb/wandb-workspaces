@@ -8,88 +8,109 @@ on:
         required: true
         type: string
       dry_run:
-        description: 'Dry run (skip PyPI publish and create draft release)'
+        description: 'Dry run (skip PyPI publish)'
         required: false
         type: boolean
         default: false
 
 jobs:
-  bump-version:
+  create-release-pr:
+    name: Create Release PR
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     outputs:
-      new_version: ${{ steps.bump.outputs.new_version }}
-      dry_run: ${{ inputs.dry_run }}
+      branch_name: ${{ steps.create_branch.outputs.branch_name }}
       
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Set up Python
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: '3.11'
           
-      - name: Install dependencies
+      - name: Setup git config
         run: |
-          python -m pip install --upgrade pip
-          pip install toml
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+      
+      - name: Install toml
+        run: pip install toml
+      
+      - name: Create release branch
+        id: create_branch
+        run: |
+          BRANCH_NAME="release/v${{ inputs.version }}"
+          git checkout -b $BRANCH_NAME
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           
       - name: Bump version
-        id: bump
         run: |
           python << 'EOF'
           import toml
-          import os
           
           # Read pyproject.toml
           with open('pyproject.toml', 'r') as f:
               data = toml.load(f)
           
           current_version = data['project']['version']
-          new_version = os.environ.get('NEW_VERSION')
+          new_version = "${{ inputs.version }}"
           
           print(f"Current version: {current_version}")
           print(f"New version: {new_version}")
           
-          # Update version in pyproject.toml
+          # Update version
           data['project']['version'] = new_version
+          
+          # Write back to pyproject.toml
           with open('pyproject.toml', 'w') as f:
               toml.dump(data, f)
-          
-          # Write to GitHub output
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"new_version={new_version}\n")
           EOF
-        env:
-          NEW_VERSION: ${{ inputs.version }}
           
-      - name: Commit version bump
+      - name: Commit and push changes
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
           git add pyproject.toml
-          git commit -m "Bump version to ${{ steps.bump.outputs.new_version }}"
-          git tag -a "v${{ steps.bump.outputs.new_version }}" -m "Release v${{ steps.bump.outputs.new_version }}"
-          git push origin main
-          git push origin "v${{ steps.bump.outputs.new_version }}"
+          git commit -m "chore: bump version to ${{ inputs.version }}"
+          git push origin ${{ steps.create_branch.outputs.branch_name }}
+          
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base main \
+            --head ${{ steps.create_branch.outputs.branch_name }} \
+            --title "Release v${{ inputs.version }}" \
+            --body "This PR bumps the version to ${{ inputs.version }} for release.
+
+          ## Automated Actions Completed
+          - ✅ Package built
+          - ✅ Draft GitHub release created
+          - ${{ inputs.dry_run && '⏭️ PyPI publish skipped (dry run)' || '✅ Published to PyPI' }}
+          
+          ## Next Steps
+          1. Review this PR
+          2. Merge this PR to main
+          3. Review and publish the draft release on GitHub"
 
   build-and-publish:
-    needs: bump-version
+    name: Build and Publish
+    needs: create-release-pr
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       
     steps:
-      - name: Checkout code
+      - name: Checkout release branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: v${{ needs.bump-version.outputs.new_version }}
+          ref: ${{ needs.create-release-pr.outputs.branch_name }}
           fetch-depth: 0
           
       - name: Set up Python
@@ -104,43 +125,59 @@ jobs:
         run: uv build
         
       - name: Generate release notes
-        id: release_notes
         run: |
+          python << 'EOF'
+          import subprocess
+          
           # Get the previous tag
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "v${{ needs.bump-version.outputs.new_version }}" | head -n 1)
-          
-          echo "Generating release notes from $PREVIOUS_TAG to v${{ needs.bump-version.outputs.new_version }}"
-          
-          # Generate commit log
-          COMMITS=$(git log $PREVIOUS_TAG..v${{ needs.bump-version.outputs.new_version }} --pretty=format:"- %s (%h)" --no-merges)
+          try:
+              previous_tag = subprocess.check_output(
+                  ['git', 'tag', '--sort=-version:refname'],
+                  text=True
+              ).strip().split('\n')[0]
+              print(f"Previous tag: {previous_tag}")
+              
+              # Get commits since previous tag
+              commits = subprocess.check_output(
+                  ['git', 'log', f'{previous_tag}..HEAD', '--pretty=format:- %s (%h)', '--no-merges'],
+                  text=True
+              ).strip()
+          except (subprocess.CalledProcessError, IndexError):
+              print("No previous tag found, showing all commits")
+              commits = subprocess.check_output(
+                  ['git', 'log', '--pretty=format:- %s (%h)', '--no-merges'],
+                  text=True
+              ).strip()
           
           # Create release notes
-          cat << EOF > release_notes.md
-          ## What's Changed
+          release_notes = "## What's Changed\n\n" + commits
           
-          $COMMITS
+          # Write to file
+          with open('release_notes.txt', 'w', encoding='utf-8') as f:
+              f.write(release_notes)
           
+          print("Release notes generated successfully")
+          print(release_notes)
           EOF
-          
-          echo "Release notes generated successfully"
-          cat release_notes.md
         
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048 # v2.2.0
-        with:
-          tag_name: v${{ needs.bump-version.outputs.new_version }}
-          name: Release v${{ needs.bump-version.outputs.new_version }}${{ needs.bump-version.outputs.dry_run == 'true' && ' (DRY RUN)' || '' }}
-          body_path: release_notes.md
-          files: |
-            dist/*
-          draft: ${{ needs.bump-version.outputs.dry_run == 'true' }}
-          prerelease: false
+      - name: Create git tag
+        run: |
+          git tag v${{ inputs.version }}
+          git push origin v${{ inputs.version }}
+        
+      - name: Create draft GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v${{ inputs.version }} \
+            --draft \
+            --title "v${{ inputs.version }}" \
+            --notes-file release_notes.txt \
+            dist/*.whl \
+            dist/*.tar.gz
           
       - name: Publish to PyPI
-        if: needs.bump-version.outputs.dry_run != 'true'
+        if: ${{ !inputs.dry_run }}
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1
         with:
           print-hash: true
-
