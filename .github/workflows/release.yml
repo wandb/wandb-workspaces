@@ -151,10 +151,7 @@ jobs:
               ).strip()
           
           # Create release notes
-          release_notes = f"""## What's Changed
-
-{commits}
-"""
+          release_notes = "## What's Changed\n\n" + commits + "\n"
           
           # Write to file with explicit UTF-8 encoding
           with open('release_notes.md', 'w', encoding='utf-8') as f:
