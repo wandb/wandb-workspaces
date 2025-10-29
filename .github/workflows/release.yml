@@ -124,49 +124,12 @@ jobs:
       - name: Build package
         run: uv build
         
-      - name: Generate release notes
-        id: release_notes
-        run: |
-          python << 'EOF'
-          import subprocess
-          
-          # Get the previous tag
-          try:
-              previous_tag = subprocess.check_output(
-                  ['git', 'tag', '--sort=-version:refname'],
-                  text=True
-              ).strip().split('\n')[0]
-              print(f"Previous tag: {previous_tag}")
-              
-              # Get commits since previous tag
-              commits = subprocess.check_output(
-                  ['git', 'log', f'{previous_tag}..HEAD', '--pretty=format:- %s (%h)', '--no-merges'],
-                  text=True
-              ).strip()
-          except (subprocess.CalledProcessError, IndexError):
-              print("No previous tag found, showing all commits")
-              commits = subprocess.check_output(
-                  ['git', 'log', '--pretty=format:- %s (%h)', '--no-merges'],
-                  text=True
-              ).strip()
-          
-          # Create release notes
-          release_notes = "## What's Changed\n\n" + commits + "\n"
-          
-          # Write to file with explicit UTF-8 encoding
-          with open('release_notes.md', 'w', encoding='utf-8') as f:
-              f.write(release_notes)
-          
-          print("Release notes generated successfully")
-          print(release_notes)
-          EOF
-          
       - name: Create draft GitHub Release
         uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048 # v2.2.0
         with:
           name: v${{ inputs.version }}
           tag_name: v${{ inputs.version }}
-          body_path: release_notes.md
+          generate_release_notes: true
           files: dist/*
           draft: true
           prerelease: false
