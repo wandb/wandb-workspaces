@@ -8,135 +8,95 @@ on:
         required: true
         type: string
       dry_run:
-        description: 'Dry run (skip PyPI publish and create draft release)'
+        description: 'Dry run (skip PyPI publish)'
         required: false
         type: boolean
         default: false
 
 jobs:
-  bump-version:
+  create-release-pr:
+    name: Create Release PR
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     outputs:
-      new_version: ${{ steps.bump.outputs.new_version }}
-      dry_run: ${{ inputs.dry_run }}
+      branch_name: ${{ steps.create_branch.outputs.branch_name }}
       
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Set up Python
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: '3.11'
           
-      # Use the GHA bot credentials: https://api.github.com/users/github-actions%5Bbot%5D
       - name: Setup git config
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git remote set-url origin https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-
-      - name: Install Dependencies
-        run: pip install bump2version click
-
-      - name: Create and Switch to Release Branch
+      
+      - name: Install hatch
+        run: pip install hatch
+      
+      - name: Create release branch
+        id: create_branch
         run: |
-          git checkout -b release-${{ github.event.inputs.version }}
+          BRANCH_NAME="release/v${{ inputs.version }}"
+          git checkout -b $BRANCH_NAME
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           
       - name: Bump version
-        id: bump
         run: |
-          python << 'EOF'
-          import toml
-          import os
+          CURRENT_VERSION=$(hatch version)
+          echo "Current version: $CURRENT_VERSION"
           
-          # Read pyproject.toml
-          with open('pyproject.toml', 'r') as f:
-              data = toml.load(f)
+          hatch version ${{ inputs.version }}
+          NEW_VERSION=$(hatch version)
+          echo "New version: $NEW_VERSION"
           
-          current_version = data['project']['version']
-          new_version = os.environ.get('NEW_VERSION')
-          
-          print(f"Current version: {current_version}")
-          print(f"New version: {new_version}")
-          
-          # Update version in pyproject.toml
-          data['project']['version'] = new_version
-          with open('pyproject.toml', 'w') as f:
-              toml.dump(data, f)
-          
-          # Write to GitHub output
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"new_version={new_version}\n")
-          EOF
-        env:
-          NEW_VERSION: ${{ inputs.version }}
-          
-      - name: Commit version bump
+      - name: Commit and push changes
         run: |
           git add pyproject.toml
-          git commit -m "Bump version to ${{ steps.bump.outputs.new_version }}"
-          git push origin release-${{ github.event.inputs.version }}
-
-
-  create-dev-branch:
-    name: Create dev branch and PR
-    needs: pypi-publish
-    runs-on: ubuntu-latest
-    if: ${{ inputs.update-changelog && !inputs.dry-run }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: release-${{ github.event.inputs.version }}
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install bump2version
-        run: pip install bump2version
-
-      - name: Setup git config
-        run: |
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-
-      - name: Create and switch to dev branch
-        run: |
-          IFS='.' read -r major minor patch <<< "${{ github.event.inputs.version }}"
-          new_version="${major}.${minor}.$((patch + 1)).dev1"
-          git checkout -b bump-${new_version}
-          bump2version patch --no-tag --no-commit --config-file .bumpversion.cfg --new-version ${new_version}
-          git commit -am "chore(sdk): bump version to ${new_version}"
-          git push -u origin bump-${new_version}
-
+          git commit -m "chore: bump version to ${{ inputs.version }}"
+          git push origin ${{ steps.create_branch.outputs.branch_name }}
+          
       - name: Create Pull Request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          IFS='.' read -r major minor patch <<< "${{ github.event.inputs.version }}"
-          new_version="${major}.${minor}.$((patch + 1)).dev1"
-          gh pr create --base main --head bump-${new_version} --title "chore(sdk): bump version to ${new_version}" --body "This PR bumps the version to the next dev version after the release of ${{ github.event.inputs.version }}."
+          gh pr create \
+            --base main \
+            --head ${{ steps.create_branch.outputs.branch_name }} \
+            --title "Release v${{ inputs.version }}" \
+            --body "This PR bumps the version to ${{ inputs.version }} for release.
+
+          ## Checklist
+          - [ ] Version number is correct
+          - [ ] All tests are passing
+          - [ ] Ready to merge and release
+          
+          After merging this PR, the build-and-publish job will automatically:
+          - Build the package
+          - Create a draft GitHub release
+          - ${{ inputs.dry_run && 'Skip PyPI publish (dry run)' || 'Publish to PyPI' }}"
 
   build-and-publish:
-    needs: bump-version
+    name: Build and Publish
+    needs: create-release-pr
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       
     steps:
-      - name: Checkout code
+      - name: Checkout release branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: v${{ needs.bump-version.outputs.new_version }}
+          ref: ${{ needs.create-release-pr.outputs.branch_name }}
           fetch-depth: 0
           
       - name: Set up Python
@@ -149,18 +109,20 @@ jobs:
           
       - name: Build package
         run: uv build
-
         
       - name: Generate release notes
         id: release_notes
         run: |
           # Get the previous tag
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "v${{ needs.bump-version.outputs.new_version }}" | head -n 1)
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | head -n 1)
           
-          echo "Generating release notes from $PREVIOUS_TAG to v${{ needs.bump-version.outputs.new_version }}"
-          
-          # Generate commit log
-          COMMITS=$(git log $PREVIOUS_TAG..v${{ needs.bump-version.outputs.new_version }} --pretty=format:"- %s (%h)" --no-merges)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found, showing all commits"
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            echo "Generating release notes from $PREVIOUS_TAG to current"
+            COMMITS=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
           
           # Create release notes
           cat << EOF > release_notes.md
@@ -172,21 +134,20 @@ jobs:
           
           echo "Release notes generated successfully"
           cat release_notes.md
-        
-      - name: Create GitHub Release
+          
+      - name: Create draft GitHub Release
         uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048 # v2.2.0
         with:
-          name: v${{ github.event.inputs.version }}
-          tag_name: v${{ github.event.inputs.version }}
+          name: v${{ inputs.version }}
+          tag_name: v${{ inputs.version }}
           body_path: release_notes.md
-          files: |
-            dist/*
+          files: dist/*
           draft: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: false
+          target_commitish: ${{ needs.create-release-pr.outputs.branch_name }}
           
       - name: Publish to PyPI
-        if: inputs.dry_run != 'true'
+        if: ${{ !inputs.dry_run }}
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1
         with:
           print-hash: true
-
