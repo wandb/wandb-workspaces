@@ -75,7 +75,7 @@ jobs:
       - name: Commit and push changes
         run: |
           git add pyproject.toml
-          git commit -m "chore: bump version to ${{ inputs.version }}"
+          git commit -m "chore(release): bump version to ${{ inputs.version }}"
           git push origin ${{ steps.create_branch.outputs.branch_name }}
           
       - name: Create Pull Request
@@ -85,7 +85,7 @@ jobs:
           gh pr create \
             --base main \
             --head ${{ steps.create_branch.outputs.branch_name }} \
-            --title "Release v${{ inputs.version }}" \
+            --title "chore(release): bump version to v${{ inputs.version }}" \
             --body "This PR bumps the version to ${{ inputs.version }} for release.
 
           ## Automated Actions Completed
@@ -159,11 +159,6 @@ jobs:
           print("Release notes generated successfully")
           print(release_notes)
           EOF
-        
-      - name: Create git tag
-        run: |
-          git tag v${{ inputs.version }}
-          git push origin v${{ inputs.version }}
         
       - name: Create draft GitHub Release
         env:
