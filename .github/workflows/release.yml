@@ -88,15 +88,15 @@ jobs:
             --title "Release v${{ inputs.version }}" \
             --body "This PR bumps the version to ${{ inputs.version }} for release.
 
-          ## Checklist
-          - [ ] Version number is correct
-          - [ ] All tests are passing
-          - [ ] Ready to merge and release
+          ## Automated Actions Completed
+          - ✅ Package built
+          - ✅ Draft GitHub release created
+          - ${{ inputs.dry_run && '⏭️ PyPI publish skipped (dry run)' || '✅ Published to PyPI' }}
           
-          After merging this PR, the build-and-publish job will automatically:
-          - Build the package
-          - Create a draft GitHub release
-          - ${{ inputs.dry_run && 'Skip PyPI publish (dry run)' || 'Publish to PyPI' }}"
+          ## Next Steps
+          1. Review this PR
+          2. Merge this PR to main
+          3. Review and publish the draft release on GitHub"
 
   build-and-publish:
     name: Build and Publish
@@ -124,6 +124,42 @@ jobs:
       - name: Build package
         run: uv build
         
+      - name: Generate release notes
+        run: |
+          python << 'EOF'
+          import subprocess
+          
+          # Get the previous tag
+          try:
+              previous_tag = subprocess.check_output(
+                  ['git', 'tag', '--sort=-version:refname'],
+                  text=True
+              ).strip().split('\n')[0]
+              print(f"Previous tag: {previous_tag}")
+              
+              # Get commits since previous tag
+              commits = subprocess.check_output(
+                  ['git', 'log', f'{previous_tag}..HEAD', '--pretty=format:- %s (%h)', '--no-merges'],
+                  text=True
+              ).strip()
+          except (subprocess.CalledProcessError, IndexError):
+              print("No previous tag found, showing all commits")
+              commits = subprocess.check_output(
+                  ['git', 'log', '--pretty=format:- %s (%h)', '--no-merges'],
+                  text=True
+              ).strip()
+          
+          # Create release notes
+          release_notes = "## What's Changed\n\n" + commits
+          
+          # Write to file
+          with open('release_notes.txt', 'w', encoding='utf-8') as f:
+              f.write(release_notes)
+          
+          print("Release notes generated successfully")
+          print(release_notes)
+          EOF
+        
       - name: Create git tag
         run: |
           git tag v${{ inputs.version }}
@@ -136,7 +172,7 @@ jobs:
           gh release create v${{ inputs.version }} \
             --draft \
             --title "v${{ inputs.version }}" \
-            --notes "Release v${{ inputs.version }}" \
+            --notes-file release_notes.txt \
             dist/*.whl \
             dist/*.tar.gz
           
