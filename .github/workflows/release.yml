@@ -129,11 +129,12 @@ jobs:
         with:
           name: v${{ inputs.version }}
           tag_name: v${{ inputs.version }}
-          generate_release_notes: true
-          files: dist/*
+          body: "Release v${{ inputs.version }}"
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
           draft: true
           prerelease: false
-          target_commitish: ${{ needs.create-release-pr.outputs.branch_name }}
           
       - name: Publish to PyPI
         if: ${{ !inputs.dry_run }}
