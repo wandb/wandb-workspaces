@@ -26,8 +26,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          fetch-depth: 0
           
       - name: Set up Python
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
@@ -79,6 +77,7 @@ jobs:
           git push origin ${{ steps.create_branch.outputs.branch_name }}
           
       - name: Create Pull Request
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -98,9 +97,9 @@ jobs:
           2. Merge this PR to main
           3. Review and publish the draft release on GitHub"
 
-  build-and-publish:
-    name: Build and Publish
-    needs: create-release-pr
+  build-and-release:
+    name: Build and Release
+    needs: build-and-release
     runs-on: ubuntu-latest
     permissions:
       contents: write
