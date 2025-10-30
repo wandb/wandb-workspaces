@@ -168,6 +168,47 @@ def test_filter_expr(expr, spec):
     assert expr.to_model().model_dump(by_alias=True, exclude_none=True) == spec
 
 
+def test_section_pinning():
+    """Test that section pinning is properly preserved through serialization."""
+    # Create sections with different pinning states
+    pinned_section = ws.Section(
+        name="Pinned Section",
+        panels=[wr.LinePlot(x="Step", y=["loss"])],
+        pinned=True,
+    )
+
+    unpinned_section = ws.Section(
+        name="Unpinned Section",
+        panels=[wr.LinePlot(x="Step", y=["accuracy"])],
+        pinned=False,
+    )
+
+    # Test that pinned=True is preserved
+    pinned_model = pinned_section._to_model()
+    assert pinned_model.pinned is True
+
+    pinned_roundtrip = ws.Section._from_model(pinned_model)
+    assert pinned_roundtrip.pinned is True
+    assert pinned_roundtrip.name == "Pinned Section"
+
+    # Test that pinned=False is preserved
+    unpinned_model = unpinned_section._to_model()
+    assert unpinned_model.pinned is False
+
+    unpinned_roundtrip = ws.Section._from_model(unpinned_model)
+    assert unpinned_roundtrip.pinned is False
+    assert unpinned_roundtrip.name == "Unpinned Section"
+
+    # Test that sections with pinned=None default to False
+    model_with_none = _wr.PanelBankConfigSectionsItem(
+        name="Test Section",
+        panels=[],
+        pinned=None,
+    )
+    section_from_none = ws.Section._from_model(model_with_none)
+    assert section_from_none.pinned is False
+
+
 def test_load_workspace_from_url():
     url = "https://app.wandb.test/test_entity/test_project?nw=51cset95tvn"
 

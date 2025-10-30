@@ -179,6 +179,7 @@ class Section(Base):
         name (str): The name/title of the section.
         panels (LList[PanelTypes]): An ordered list of panels in the section. By default, first is top-left and last is bottom-right.
         is_open (bool): Whether the section is open or closed. Default is closed.
+        pinned (bool): Whether the section is pinned. Pinned sections appear at the top of the workspace. Default is False.
         layout_settings (SectionLayoutSettings): Settings for panel layout in the section.
         panel_settings: Panel-level settings applied to all panels in the section, similar to `WorkspaceSettings` for a `Section`.
     """
@@ -186,6 +187,7 @@ class Section(Base):
     name: str
     panels: LList[PanelTypes] = Field(default_factory=list)
     is_open: bool = False
+    pinned: bool = False
 
     layout_settings: SectionLayoutSettings = Field(
         default_factory=SectionLayoutSettings
@@ -198,6 +200,7 @@ class Section(Base):
             name=model.name,
             panels=[_lookup_panel(p) for p in model.panels],
             is_open=model.is_open,
+            pinned=model.pinned if model.pinned is not None else False,
             layout_settings=SectionLayoutSettings._from_model(model.flow_config),
             panel_settings=SectionPanelSettings._from_model(model.local_panel_settings),
         )
@@ -213,6 +216,7 @@ class Section(Base):
             name=self.name,
             panels=panel_models,
             is_open=self.is_open,
+            pinned=self.pinned,
             flow_config=flow_config,
             local_panel_settings=local_panel_settings,
         )
