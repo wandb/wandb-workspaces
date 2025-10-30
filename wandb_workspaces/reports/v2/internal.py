@@ -240,6 +240,7 @@ class PanelBankConfigSectionsItem(ReportAPIBaseModel):
     sorted: int = 0
     local_panel_settings: LocalPanelSettings = Field(default_factory=LocalPanelSettings)
     panels: LList["PanelTypes"] = Field(default_factory=list)
+    pinned: Optional[bool] = None
 
 
 class PanelBankConfig(ReportAPIBaseModel):

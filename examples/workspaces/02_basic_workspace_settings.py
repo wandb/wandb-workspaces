@@ -14,6 +14,7 @@ workspace = ws.Workspace(name="An example workspace", entity=entity, project=pro
 # 2. Add sections with panels (these are the the collapsible blocks in the workspace))
 workspace.sections = [
     # For example, put your validation metrics front and center
+    # You can pin important sections to keep them at the top of the workspace
     ws.Section(
         name="Validation",
         panels=[
@@ -23,6 +24,7 @@ workspace.sections = [
             wr.ScalarChart(metric="recall", groupby_aggfunc="mean"),
         ],
         is_open=True,
+        pinned=True,  # Pinned sections appear at the top of the workspace
     ),
     # And have collapsed sections for just when you need them
     ws.Section(
