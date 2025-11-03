@@ -1,0 +1,95 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.2.0)'
+        required: true
+        type: string
+
+jobs:
+  create-release-pr:
+    name: Create Release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+          
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: '3.11'
+          
+      - name: Setup git config
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+      
+      - name: Install toml
+        run: pip install toml
+      
+      - name: Create release branch
+        id: create_branch
+        run: |
+          BRANCH_NAME="release/v${{ inputs.version }}"
+          git checkout -b $BRANCH_NAME
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          
+      - name: Bump version
+        run: |
+          python << 'EOF'
+          import toml
+          
+          # Read pyproject.toml
+          with open('pyproject.toml', 'r') as f:
+              data = toml.load(f)
+          
+          current_version = data['project']['version']
+          new_version = "${{ inputs.version }}"
+          
+          print(f"Current version: {current_version}")
+          print(f"New version: {new_version}")
+          
+          # Update version
+          data['project']['version'] = new_version
+          
+          # Write back to pyproject.toml
+          with open('pyproject.toml', 'w') as f:
+              toml.dump(data, f)
+          EOF
+          
+      - name: Commit and push changes
+        run: |
+          git add pyproject.toml
+          git commit -m "chore(release): bump version to ${{ inputs.version }}"
+          git push origin ${{ steps.create_branch.outputs.branch_name }}
+          
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base main \
+            --head ${{ steps.create_branch.outputs.branch_name }} \
+            --title "chore(release): bump version to v${{ inputs.version }}" \
+            --body "This PR bumps the version to ${{ inputs.version }} for release.
+
+          ## Next Steps
+          1. Review this PR and ensure all changes are correct
+          2. Merge this PR to main
+          3. Create and push a git tag: \`git tag v${{ inputs.version }} && git push origin v${{ inputs.version }}\`
+          4. Or create a GitHub release with tag \`v${{ inputs.version }}\` via the GitHub UI
+          5. The tag push will automatically trigger the build and publish workflow
+          
+          ## What happens after tagging
+          The \`publish-release.yml\` workflow will automatically:
+          - Build the package from the tagged commit
+          - Generate release notes from commits since last release
+          - Create a GitHub Release
+          - Publish to PyPI using Trusted Publishing"
+
