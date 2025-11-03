@@ -55,38 +55,19 @@ git push origin v0.2.0
 
 Once the tag is pushed, the `publish-release.yml` workflow automatically:
 
-1. ✅ Checks out the code at the tagged commit
-2. ✅ Builds the package using `uv`
-3. ✅ Generates release notes from commits since the last release
-4. ✅ Creates a GitHub Release with the built artifacts
-5. ✅ Publishes to PyPI using Trusted Publishing
+1. Checks out the code at the tagged commit
+2. Builds the package using `uv`
+3. Generates release notes from commits since the last release
+4.  Creates a GitHub Release with the built artifacts
+5.  Publishes to PyPI using Trusted Publishing
 
 ## What Gets Published
 
 - **GitHub Release**: Created with auto-generated release notes and attached distribution files
 - **PyPI**: Package published with Trusted Publishing (no API tokens needed)
 
-## Prerequisites
-
-### PyPI Trusted Publishing
-
-You must configure Trusted Publishing on PyPI:
-
-1. Go to https://pypi.org/manage/project/wandb-workspaces/
-2. Navigate to **Publishing** → **Add a new publisher**
-3. Configure:
-   - **Owner**: `wandb`
-   - **Repository name**: `wandb-workspaces`
-   - **Workflow name**: `publish-release.yml`
-   - **Environment name**: (leave blank)
-
-### GitHub Permissions
-
-The workflows use `GITHUB_TOKEN` which requires:
-- **Settings** → **Actions** → **General** → **Workflow permissions**
-- Select **Read and write permissions**
-
 ## Troubleshooting
+
 
 **Tag already exists**:
 ```bash
@@ -98,13 +79,10 @@ git push origin :refs/tags/v0.2.0
 - Ensure the tag name starts with `v` (e.g., `v0.2.0`)
 - Check the Actions tab for any errors
 
-**PyPI publish fails**:
-- Verify Trusted Publishing is configured correctly on PyPI
-- Check that `id-token: write` permission is set in the workflow
 
 ## Security
 
 - All GitHub Actions are pinned to commit SHAs
 - PyPI publishing uses Trusted Publishing (OIDC), not API tokens
-- No secrets need to be stored in the repository
+- No secrets should be stored in the repository
 
