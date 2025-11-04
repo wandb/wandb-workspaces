@@ -38,8 +38,9 @@ jobs:
             # Upload the distribution files
             gh release upload "$TAG" dist/*.whl dist/*.tar.gz --clobber
             
-            # Note: Can't regenerate notes for existing release, keeping original notes
-            echo "Distribution files uploaded to existing release"
+            # Regenerate release notes
+            echo "Regenerating release notes..."
+            gh release edit "$TAG" --generate-notes
           else
             echo "Creating new release $TAG..."
             gh release create "$TAG" \
