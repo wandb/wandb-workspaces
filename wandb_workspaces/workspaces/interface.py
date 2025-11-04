@@ -41,6 +41,7 @@ from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
 from . import internal
+from .internal import fetch_project_fields
 
 __all__ = [
     "SectionLayoutSettings",
@@ -50,6 +51,7 @@ __all__ = [
     "RunSettings",
     "RunsetSettings",
     "Workspace",
+    "fetch_project_fields",
 ]
 
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid")
@@ -394,23 +396,17 @@ class RunsetSettings(Base):
 
     @model_validator(mode="after")
     def validate_column_management(self):
-        """Validate that if pinned_columns is populated, visible_columns and column_order must also be present."""
+        """Validate column management settings."""
         if self.pinned_columns:
             if not self.visible_columns:
                 raise ValueError(
                     "If pinned_columns is populated, visible_columns must also be provided. "
                     "All pinned columns should be included in visible_columns."
                 )
-            if not self.column_order:
-                raise ValueError(
-                    "If pinned_columns is populated, column_order must also be provided. "
-                    "All pinned columns should be included in column_order."
-                )
 
             # Convert to sets for easier checking
             pinned_cols = set(self.pinned_columns)
             visible_cols = set(self.visible_columns)
-            order_cols = set(self.column_order)
 
             # Check that all pinned columns are in visible_columns
             # Note: run:displayName is automatically added if not present, so we check user-provided columns
@@ -421,13 +417,16 @@ class RunsetSettings(Base):
                     f"Missing from visible_columns: {sorted(missing_from_visible)}"
                 )
 
-            # Check that all pinned columns are in column_order
-            missing_from_order = pinned_cols - order_cols
-            if missing_from_order:
-                raise ValueError(
-                    f"All pinned columns must also be in column_order. "
-                    f"Missing from column_order: {sorted(missing_from_order)}"
-                )
+            # Check that all pinned columns are in column_order (only if column_order is not empty)
+            # Empty column_order is allowed - it will be populated in Workspace.__post_init__()
+            if self.column_order:
+                order_cols = set(self.column_order)
+                missing_from_order = pinned_cols - order_cols
+                if missing_from_order:
+                    raise ValueError(
+                        f"All pinned columns must also be in column_order. "
+                        f"Missing from column_order: {sorted(missing_from_order)}"
+                    )
 
         return self
 
@@ -484,6 +483,11 @@ class Workspace(Base):
 
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
+
+    _visible_columns_dict: Dict[str, bool] = Field(
+        default_factory=dict, init=False, repr=False
+    )
+    "Internal dict storing all project fields with visibility flags when columns are specified."
 
     def __post_init__(self):
         """Automatically hide columns not explicitly specified."""

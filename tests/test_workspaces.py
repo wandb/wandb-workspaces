@@ -344,8 +344,16 @@ def test_panel_lookup(panel_config, should_return_instance):
 # Column Management Tests
 
 
-def test_column_pinning():
+@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
+def test_column_pinning(mock_fetch):
     """Test that column pinning is preserved through serialization."""
+    # Mock fetch_project_fields to return a known set of fields
+    mock_fetch.return_value = [
+        "run:displayName",
+        "summary:accuracy",
+        "summary:loss",
+    ]
+
     workspace = ws.Workspace(
         entity="test-entity",
         project="test-project",
@@ -370,8 +378,16 @@ def test_column_pinning():
     ]
 
 
-def test_column_visibility():
+@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
+def test_column_visibility(mock_fetch):
     """Test that column visibility is preserved."""
+    # Mock fetch_project_fields to return a known set of fields
+    mock_fetch.return_value = [
+        "run:displayName",
+        "summary:loss",
+        "config:learning_rate",
+    ]
+
     workspace = ws.Workspace(
         entity="test-entity",
         project="test-project",
@@ -461,8 +477,17 @@ def test_column_width_below_minimum_fails():
         ws.RunsetSettings(column_widths={"run:displayName": 69})
 
 
-def test_all_column_management_features():
+@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
+def test_all_column_management_features(mock_fetch):
     """Test that all column management features work together."""
+    # Mock fetch_project_fields to return a known set of fields
+    mock_fetch.return_value = [
+        "run:displayName",
+        "run:state",
+        "summary:accuracy",
+        "config:learning_rate",
+    ]
+
     pinned_cols = ["run:displayName", "run:state"]
     visible_cols = [
         "run:displayName",
@@ -551,13 +576,18 @@ def test_pinned_columns_requires_visible_columns():
         )
 
 
-def test_pinned_columns_requires_column_order():
-    """Test that pinned_columns requires column_order to be populated."""
-    with pytest.raises(ValueError, match="column_order must also be provided"):
-        ws.RunsetSettings(
-            pinned_columns=["run:displayName"],
-            visible_columns=["run:displayName"],
-        )
+def test_pinned_columns_allows_empty_column_order():
+    """Test that pinned_columns allows empty column_order (it will be populated in Workspace.__post_init__())."""
+    # This should work - empty column_order is OK
+    runset_settings = ws.RunsetSettings(
+        pinned_columns=["run:displayName"],
+        visible_columns=["run:displayName"],
+        column_order=[],  # Empty is allowed
+    )
+    assert runset_settings.pinned_columns == ["run:displayName"]
+    assert (
+        runset_settings.column_order == []
+    )  # Will be populated by Workspace.__post_init__()
 
 
 def test_pinned_columns_requires_both():
@@ -636,8 +666,7 @@ def test_run_display_name_can_be_out_of_order():
     assert "run:displayName" in runset_settings.pinned_columns
 
 
-@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
-def test_fetch_project_fields_basic(mock_fetch):
+def test_fetch_project_fields_basic():
     """Test that fetch_project_fields returns correctly formatted field names."""
     from wandb_workspaces.workspaces import internal
 
