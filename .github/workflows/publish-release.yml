@@ -17,12 +17,7 @@ jobs:
       - name: Checkout code at tag
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          fetch-depth: 0
-          
-      - name: Set up Python
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
-        with:
-          python-version: '3.11'
+          ref: ${{ github.ref }}
           
       - name: Install uv
         uses: astral-sh/setup-uv@5f42d5af6c403a722299fda36d451c39f302a433 # v4.1.0
@@ -30,73 +25,29 @@ jobs:
       - name: Build package
         run: uv build
         
-      - name: Generate release notes
-        id: release_notes
-        run: |
-          python << 'EOF'
-          import subprocess
-          import os
-          
-          # Get the current tag
-          current_tag = os.environ.get('GITHUB_REF_NAME')
-          print(f"Current tag: {current_tag}")
-          
-          # Get the previous tag
-          try:
-              all_tags = subprocess.check_output(
-                  ['git', 'tag', '--sort=-version:refname'],
-                  text=True
-              ).strip().split('\n')
-              
-              # Find previous tag (skip current one)
-              previous_tag = None
-              for tag in all_tags:
-                  if tag != current_tag:
-                      previous_tag = tag
-                      break
-              
-              if previous_tag:
-                  print(f"Previous tag: {previous_tag}")
-                  # Get commits since previous tag
-                  commits = subprocess.check_output(
-                      ['git', 'log', f'{previous_tag}..{current_tag}', '--pretty=format:- %s (%h)', '--no-merges'],
-                      text=True
-                  ).strip()
-              else:
-                  print("No previous tag found, showing all commits")
-                  commits = subprocess.check_output(
-                      ['git', 'log', f'{current_tag}', '--pretty=format:- %s (%h)', '--no-merges'],
-                      text=True
-                  ).strip()
-          except subprocess.CalledProcessError as e:
-              print(f"Error getting commits: {e}")
-              commits = "Release " + current_tag
-          
-          # Create release notes
-          if commits:
-              release_notes = "## What's Changed\n\n" + commits
-          else:
-              release_notes = "Release " + current_tag
-          
-          # Write to file
-          with open('release_notes.txt', 'w', encoding='utf-8') as f:
-              f.write(release_notes)
-          
-          print("Release notes generated successfully")
-          print(release_notes)
-          EOF
-        env:
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-        
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create ${{ github.ref_name }} \
-            --title "${{ github.ref_name }}" \
-            --notes-file release_notes.txt \
-            dist/*.whl \
-            dist/*.tar.gz
+          TAG="${{ github.ref_name }}"
+          
+          # Check if release already exists
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, updating it..."
+            
+            # Upload the distribution files
+            gh release upload "$TAG" dist/*.whl dist/*.tar.gz --clobber
+            
+            # Note: Can't regenerate notes for existing release, keeping original notes
+            echo "Distribution files uploaded to existing release"
+          else
+            echo "Creating new release $TAG..."
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              dist/*.whl \
+              dist/*.tar.gz
+          fi
           
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1

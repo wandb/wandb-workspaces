@@ -1,14 +1,17 @@
 # Release Process
 
-This repository uses a two-stage release process with GitHub Actions.
+This repository uses a mostly automated release process with GitHub Actions.
 
 ## Workflows
 
 ### 1. **Prepare Release** (`prepare-release.yml`)
 Creates a pull request with the version bump.
 
-### 2. **Publish Release** (`publish-release.yml`)
-Automatically triggers when a version tag is pushed, builds the package, creates a GitHub release, and publishes to PyPI.
+### 2. **Auto Release** (`auto-release.yml`)
+Detects version changes on main and automatically creates tags.
+
+### 3. **Publish Release** (`publish-release.yml`)
+Triggers on versioned tag creation, builds and publishes to GitHub and PyPI.
 
 ## How to Release
 
@@ -25,41 +28,29 @@ This will:
 - Push the branch
 - Create a PR to `main`
 
-### Step 2: Review and Merge
+### Step 2: Merge and Done!
 
 1. Review the PR created by the workflow
 2. Ensure the version bump is correct
 3. Wait for CI checks to pass
 4. Merge the PR to `main`
 
-### Step 3: Create the Tag
+The rest happens automatically:
 
-You have two options:
+### The Automation Chain
 
-#### Option A: Via Git Command Line
-```bash
-git checkout main
-git pull origin main
-git tag v0.2.0
-git push origin v0.2.0
-```
+The `auto-release` workflow:
+1. Reads version from `pyproject.toml` at HEAD
+2. Reads version from `pyproject.toml` at HEAD~1
+3. If they differ, creates and pushes the tag
+4. If unchanged, does nothing (safe for other commits to main)
 
-#### Option B: Via GitHub UI
-1. Go to **Releases** → **Draft a new release**
-2. Click **Choose a tag**
-3. Type `v0.2.0` and click **Create new tag: v0.2.0 on publish**
-4. The tag field and title will auto-populate
-5. Click **Publish release**
-
-### Step 4: Automatic Publishing
-
-Once the tag is pushed, the `publish-release.yml` workflow automatically:
-
+The `publish-release` workflow then:
 1. Checks out the code at the tagged commit
 2. Builds the package using `uv`
 3. Generates release notes from commits since the last release
-4.  Creates a GitHub Release with the built artifacts
-5.  Publishes to PyPI using Trusted Publishing
+4. Creates a GitHub Release with the built artifacts
+5. Publishes to PyPI using Trusted Publishing
 
 ## What Gets Published
 
