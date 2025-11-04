@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 
 import wandb
 from annotated_types import Annotated, Ge
-from pydantic import AfterValidator, ConfigDict, Field, PositiveInt
+from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, model_validator
 from pydantic.dataclasses import dataclass
 
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
@@ -330,6 +330,19 @@ class RunsetSettings(Base):
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
         run_settings (Dict[str, RunSettings]): A dictionary of run settings, where the key
             is the run's ID and the value is a RunSettings object.
+        pinned_columns (LList[str]): List of column names to pin.
+            Column names use format: "run:displayName", "summary:metric", "config:param".
+            run:displayName is automatically added if not present.
+            Example: ["summary:accuracy", "summary:loss"]
+
+    Example:
+        ```python
+        # Specify columns to pin
+        # Note: run:displayName is automatically added and pinned first
+        RunsetSettings(
+            pinned_columns=["summary:accuracy", "summary:loss"],
+        )
+        ```
     """
 
     query: str = ""
@@ -355,6 +368,33 @@ class RunsetSettings(Base):
     }
     ```
     """
+
+    # Column management
+    pinned_columns: LList[str] = Field(default_factory=list)
+
+    # Internal fields for backend serialization (not user-facing)
+    _visible_columns: LList[str] = Field(default_factory=list, init=False, repr=False)
+    _column_order: LList[str] = Field(default_factory=list, init=False, repr=False)
+
+    @model_validator(mode="after")
+    def validate_and_setup_columns(self):
+        """Ensure run:displayName is present and set up internal column fields."""
+        if self.pinned_columns:
+            # Ensure run:displayName is in pinned_columns
+            if "run:displayName" not in self.pinned_columns:
+                # Add it as the first element
+                self.pinned_columns.insert(0, "run:displayName")
+            elif self.pinned_columns[0] != "run:displayName":
+                # Move it to the first position
+                self.pinned_columns.remove("run:displayName")
+                self.pinned_columns.insert(0, "run:displayName")
+
+            # Set internal fields to match pinned_columns
+            # Use object.__setattr__ to avoid recursion with Pydantic validation
+            object.__setattr__(self, "_visible_columns", list(self.pinned_columns))
+            object.__setattr__(self, "_column_order", list(self.pinned_columns))
+
+        return self
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -491,6 +531,13 @@ class Workspace(Base):
             group_by_prefix=group_by_prefix,
         )
 
+        # Extract column settings from run_feed
+        run_feed = model.spec.section.run_sets[0].run_feed
+        # Only extract pinned_columns - visible_columns and column_order are derived from it
+        pinned_columns = [
+            col for col, is_pinned in run_feed.column_pinned.items() if is_pinned
+        ]
+
         # then construct the Workspace object
         obj = cls(
             entity=model.entity,
@@ -516,6 +563,7 @@ class Workspace(Base):
                     for s in model.spec.section.run_sets[0].sort.keys
                 ],
                 run_settings=run_settings,
+                pinned_columns=pinned_columns,
             ),
         )
         obj._internal_name = model.name
@@ -559,6 +607,18 @@ class Workspace(Base):
             should_auto_generate_panels=self.auto_generate_panels,
         )
 
+        # Convert list format (SDK) to dict format (backend) for columns
+        # column_visible and column_pinned are the same (pinned columns are the only visible ones. We pass this for consistency but other columns will be visibile in the FE)
+        column_pinned_dict = {col: True for col in self.runset_settings.pinned_columns}
+        column_visible_dict = column_pinned_dict  # Same as pinned
+
+        # Use internal _column_order if set, otherwise use pinned_columns as order
+        column_order = (
+            self.runset_settings._column_order
+            if self.runset_settings._column_order
+            else list(self.runset_settings.pinned_columns)
+        )
+
         return internal.View(
             entity=self.entity,
             project=self.project,
@@ -582,6 +642,12 @@ class Workspace(Base):
                     run_sets=[
                         internal.Runset(
                             id=self._internal_runset_id,
+                            run_feed=internal.RunFeed(
+                                column_pinned=column_pinned_dict,
+                                column_visible=column_visible_dict,
+                                column_order=column_order,
+                                column_widths={},  # No column widths support
+                            ),
                             search=internal.RunsetSearch(
                                 query=self.runset_settings.query,
                                 is_regex=is_regex,
