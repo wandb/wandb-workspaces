@@ -224,3 +224,133 @@ def _generate_view_name() -> str:
     random_id = wandb.util.generate_id(11)
     name = _url_query_str_to_internal_name(random_id)
     return name
+
+
+def fetch_project_fields(
+    entity: str,
+    project: str,
+    columns: Optional[LList[str]] = None,
+    types: Optional[LList[str]] = None,
+) -> LList[str]:
+    """
+    Fetch all available fields for a project from the W&B backend.
+
+    This queries the ProjectFields GraphQL endpoint to get all columns (config, summary, system)
+    that are available in the project, and returns them in workspace SDK format.
+
+    Args:
+        entity: The entity name (user or team)
+        project: The project name
+        columns: Optional list of column types to filter. Defaults to all columns.
+                 Valid values: ["config", "summary_metrics", "system_metrics"]
+        types: Optional list of field types to filter. Defaults to all types.
+               Valid values: ["number", "string", "boolean", etc.]
+
+    Returns:
+        List of field names in workspace SDK format, e.g.:
+        ["run:displayName", "run:state", "summary:loss", "config:learning_rate.value", "tags:__ALL__"]
+    """
+    query = gql(
+        """
+        query ProjectFields($entityName: String!, $projectName: String!, $columns: [String!], $types: [String!]) {
+            project(name: $projectName, entityName: $entityName) {
+                fields(columns: $columns, types: $types) {
+                    edges {
+                        node {
+                            path
+                            type
+                        }
+                    }
+                }
+            }
+        }
+        """
+    )
+
+    api = wandb.Api()
+    variables: Dict[str, Any] = {
+        "entityName": entity,
+        "projectName": project,
+    }
+
+    if columns is not None:
+        variables["columns"] = columns
+    if types is not None:
+        variables["types"] = types
+
+    response = api.client.execute(query, variables)
+
+    # Handle both response formats (with and without "data" wrapper)
+    data = response.get("data", response)
+    p = data.get("project")
+    if p is None:
+        raise ValueError(
+            f"Project `{entity}/{project}` not found. Do you have access to this project?"
+        )
+
+    fields = p.get("fields", {}).get("edges", [])
+
+    # Transform backend field format to workspace SDK format
+    result = []
+
+    # Always include standard run columns
+    standard_run_columns = [
+        "run:displayName",
+        "run:state",
+        "run:createdAt",
+        "run:duration",
+        "run:name",
+        "run:notes",
+        "run:username",
+        "run:sweep",
+    ]
+    result.extend(standard_run_columns)
+
+    # Always include tags
+    result.append("tags:__ALL__")
+
+    # Process fields from the backend
+    for edge in fields:
+        node = edge.get("node", {})
+        path = node.get("path", "")
+
+        if not path:
+            continue
+
+        # Transform backend format to workspace SDK format
+        # "summary_metrics.loss" -> "summary:loss"
+        # "config.learning_rate.value" -> "config:learning_rate.value"
+        # "system_metrics._runtime" -> "system:_runtime"
+        # "aggregations_min.loss" -> "aggregations_min:loss"
+
+        if path.startswith("summary_metrics."):
+            field_name = path.replace("summary_metrics.", "summary:", 1)
+            result.append(field_name)
+        elif path.startswith("config."):
+            field_name = path.replace("config.", "config:", 1)
+            # Config fields should already have .value suffix from backend
+            # but only add it if not present (for backwards compatibility)
+            if not field_name.endswith(".value"):
+                field_name = f"{field_name}.value"
+            result.append(field_name)
+        elif path.startswith("system_metrics."):
+            field_name = path.replace("system_metrics.", "system:", 1)
+            result.append(field_name)
+        elif path.startswith("aggregations_min."):
+            # Aggregation fields are synthetic, transform them appropriately
+            field_name = path.replace("aggregations_min.", "aggregations_min:", 1)
+            result.append(field_name)
+        elif path.startswith("aggregations_max."):
+            # Aggregation fields are synthetic, transform them appropriately
+            field_name = path.replace("aggregations_max.", "aggregations_max:", 1)
+            result.append(field_name)
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_result = []
+    for field in result:
+        if field not in seen:
+            seen.add(field)
+            unique_result.append(field)
+
+    return unique_result

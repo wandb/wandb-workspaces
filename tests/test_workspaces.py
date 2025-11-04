@@ -350,27 +350,24 @@ def test_column_pinning():
         entity="test-entity",
         project="test-project",
         runset_settings=ws.RunsetSettings(
-            pinned_columns={"run:displayName": True, "summary:accuracy": True},
-            visible_columns={
-                "run:displayName": True,
-                "summary:accuracy": True,
-                "summary:loss": True,
-            },
+            pinned_columns=["run:displayName", "summary:accuracy"],
+            visible_columns=["run:displayName", "summary:accuracy", "summary:loss"],
             column_order=["run:displayName", "summary:accuracy", "summary:loss"],
         ),
     )
     model = workspace._to_model()
+    # Backend should receive dict format with True values
     assert model.spec.section.run_sets[0].run_feed.column_pinned == {
         "run:displayName": True,
         "summary:accuracy": True,
     }
 
-    # Test round-trip
+    # Test round-trip - should convert back to list format
     workspace2 = ws.Workspace._from_model(model)
-    assert workspace2.runset_settings.pinned_columns == {
-        "run:displayName": True,
-        "summary:accuracy": True,
-    }
+    assert workspace2.runset_settings.pinned_columns == [
+        "run:displayName",
+        "summary:accuracy",
+    ]
 
 
 def test_column_visibility():
@@ -379,27 +376,24 @@ def test_column_visibility():
         entity="test-entity",
         project="test-project",
         runset_settings=ws.RunsetSettings(
-            visible_columns={
-                "run:displayName": True,
-                "summary:loss": True,
-                "config:learning_rate": True,
-            }
+            visible_columns=["run:displayName", "summary:loss", "config:learning_rate"]
         ),
     )
     model = workspace._to_model()
+    # Backend should receive dict format
     assert model.spec.section.run_sets[0].run_feed.column_visible == {
         "run:displayName": True,
         "summary:loss": True,
         "config:learning_rate": True,
     }
 
-    # Test round-trip
+    # Test round-trip - should convert back to list format
     workspace2 = ws.Workspace._from_model(model)
-    assert workspace2.runset_settings.visible_columns == {
-        "run:displayName": True,
-        "summary:loss": True,
-        "config:learning_rate": True,
-    }
+    assert workspace2.runset_settings.visible_columns == [
+        "run:displayName",
+        "summary:loss",
+        "config:learning_rate",
+    ]
 
 
 def test_column_ordering():
@@ -434,15 +428,48 @@ def test_column_widths():
     assert workspace2.runset_settings.column_widths == widths
 
 
+def test_column_width_minimum_enforced():
+    """Test that column widths must be at least 70px."""
+    with pytest.raises(
+        ValueError,
+        match="Column width for 'summary:accuracy' is 50px, but minimum width is 70px",
+    ):
+        ws.RunsetSettings(
+            column_widths={
+                "run:displayName": 200,
+                "summary:accuracy": 50,
+            }  # Too narrow!
+        )
+
+
+def test_column_width_at_minimum_allowed():
+    """Test that column width of exactly 70px is allowed."""
+    # This should work without errors
+    runset_settings = ws.RunsetSettings(
+        column_widths={"run:displayName": 70, "summary:accuracy": 70}
+    )
+    assert runset_settings.column_widths["run:displayName"] == 70
+    assert runset_settings.column_widths["summary:accuracy"] == 70
+
+
+def test_column_width_below_minimum_fails():
+    """Test that column width below 70px fails."""
+    with pytest.raises(
+        ValueError,
+        match="Column width for 'run:displayName' is 69px, but minimum width is 70px",
+    ):
+        ws.RunsetSettings(column_widths={"run:displayName": 69})
+
+
 def test_all_column_management_features():
     """Test that all column management features work together."""
-    pinned_cols = {"run:displayName": True, "run:state": True}
-    visible_cols = {
-        "run:displayName": True,
-        "run:state": True,
-        "summary:accuracy": True,
-        "config:learning_rate": True,
-    }
+    pinned_cols = ["run:displayName", "run:state"]
+    visible_cols = [
+        "run:displayName",
+        "run:state",
+        "summary:accuracy",
+        "config:learning_rate",
+    ]
     col_order = [
         "run:displayName",
         "run:state",
@@ -468,7 +495,7 @@ def test_all_column_management_features():
     model = workspace._to_model()
     run_feed = model.spec.section.run_sets[0].run_feed
 
-    # Verify serialization
+    # Verify serialization - backend should receive dict format
     assert run_feed.column_pinned == {
         "run:displayName": True,
         "run:state": True,
@@ -482,7 +509,7 @@ def test_all_column_management_features():
     assert run_feed.column_order == col_order
     assert run_feed.column_widths == col_widths
 
-    # Test round-trip
+    # Test round-trip - should convert back to list format
     workspace2 = ws.Workspace._from_model(model)
     assert workspace2.runset_settings.pinned_columns == pinned_cols
     assert workspace2.runset_settings.visible_columns == visible_cols
@@ -507,10 +534,10 @@ def test_empty_column_settings():
     assert run_feed.column_order == []
     assert run_feed.column_widths == {}
 
-    # Test round-trip
+    # Test round-trip - should be empty lists
     workspace2 = ws.Workspace._from_model(model)
-    assert workspace2.runset_settings.pinned_columns == {}
-    assert workspace2.runset_settings.visible_columns == {}
+    assert workspace2.runset_settings.pinned_columns == []
+    assert workspace2.runset_settings.visible_columns == []
     assert workspace2.runset_settings.column_order == []
     assert workspace2.runset_settings.column_widths == {}
 
@@ -519,7 +546,7 @@ def test_pinned_columns_requires_visible_columns():
     """Test that pinned_columns requires visible_columns to be populated."""
     with pytest.raises(ValueError, match="visible_columns must also be provided"):
         ws.RunsetSettings(
-            pinned_columns={"run:displayName": True},
+            pinned_columns=["run:displayName"],
             column_order=["run:displayName"],
         )
 
@@ -528,8 +555,8 @@ def test_pinned_columns_requires_column_order():
     """Test that pinned_columns requires column_order to be populated."""
     with pytest.raises(ValueError, match="column_order must also be provided"):
         ws.RunsetSettings(
-            pinned_columns={"run:displayName": True},
-            visible_columns={"run:displayName": True},
+            pinned_columns=["run:displayName"],
+            visible_columns=["run:displayName"],
         )
 
 
@@ -537,7 +564,7 @@ def test_pinned_columns_requires_both():
     """Test that pinned_columns requires both visible_columns and column_order."""
     with pytest.raises(ValueError, match="visible_columns must also be provided"):
         ws.RunsetSettings(
-            pinned_columns={"run:displayName": True},
+            pinned_columns=["run:displayName"],
         )
 
 
@@ -545,15 +572,12 @@ def test_all_column_settings_together_valid():
     """Test that all column settings can be used together without error."""
     # This should not raise an error
     runset_settings = ws.RunsetSettings(
-        pinned_columns={"run:displayName": True},
-        visible_columns={"run:displayName": True, "summary:accuracy": True},
+        pinned_columns=["run:displayName"],
+        visible_columns=["run:displayName", "summary:accuracy"],
         column_order=["run:displayName", "summary:accuracy"],
     )
-    assert runset_settings.pinned_columns == {"run:displayName": True}
-    assert runset_settings.visible_columns == {
-        "run:displayName": True,
-        "summary:accuracy": True,
-    }
+    assert runset_settings.pinned_columns == ["run:displayName"]
+    assert runset_settings.visible_columns == ["run:displayName", "summary:accuracy"]
     assert runset_settings.column_order == ["run:displayName", "summary:accuracy"]
 
 
@@ -563,23 +587,8 @@ def test_pinned_column_must_be_in_visible_columns():
         ValueError, match="Missing from visible_columns: \\['summary:accuracy'\\]"
     ):
         ws.RunsetSettings(
-            pinned_columns={"run:displayName": True, "summary:accuracy": True},
-            visible_columns={"run:displayName": True},  # missing summary:accuracy
-            column_order=["run:displayName", "summary:accuracy"],
-        )
-
-
-def test_pinned_column_must_be_visible():
-    """Test that pinned columns must have value True in visible_columns."""
-    with pytest.raises(
-        ValueError, match="Missing from visible_columns: \\['summary:accuracy'\\]"
-    ):
-        ws.RunsetSettings(
-            pinned_columns={"run:displayName": True, "summary:accuracy": True},
-            visible_columns={
-                "run:displayName": True,
-                "summary:accuracy": False,  # set to False!
-            },
+            pinned_columns=["run:displayName", "summary:accuracy"],
+            visible_columns=["run:displayName"],  # missing summary:accuracy
             column_order=["run:displayName", "summary:accuracy"],
         )
 
@@ -590,50 +599,340 @@ def test_pinned_column_must_be_in_column_order():
         ValueError, match="Missing from column_order: \\['summary:accuracy'\\]"
     ):
         ws.RunsetSettings(
-            pinned_columns={"run:displayName": True, "summary:accuracy": True},
-            visible_columns={"run:displayName": True, "summary:accuracy": True},
+            pinned_columns=["run:displayName", "summary:accuracy"],
+            visible_columns=["run:displayName", "summary:accuracy"],
             column_order=["run:displayName"],  # missing summary:accuracy
         )
 
 
-def test_pinned_false_does_not_require_presence():
-    """Test that columns set to False in pinned_columns don't need to be present."""
-    # This should work - only columns with True value need to be present
+def test_run_display_name_auto_added_to_pinned():
+    """Test that 'run:displayName' is automatically added to pinned_columns if missing."""
+    # This should work without errors - run:displayName is auto-added
     runset_settings = ws.RunsetSettings(
-        pinned_columns={"run:displayName": True, "summary:loss": False},
-        visible_columns={"run:displayName": True},
-        column_order=["run:displayName"],
+        pinned_columns=[
+            "summary:accuracy"
+        ],  # missing run:displayName - will be auto-added
+        visible_columns=["summary:accuracy"],
+        column_order=["summary:accuracy"],
     )
-    assert runset_settings.pinned_columns == {
-        "run:displayName": True,
-        "summary:loss": False,
+    # At this point, validation has passed, but run:displayName hasn't been added yet
+    # It's added in Workspace.__post_init__()
+    assert runset_settings.pinned_columns == ["summary:accuracy"]
+
+
+def test_run_display_name_can_be_out_of_order():
+    """Test that 'run:displayName' order is automatically fixed in Workspace.__post_init__()."""
+    # This should work without errors - run:displayName order is auto-fixed
+    runset_settings = ws.RunsetSettings(
+        pinned_columns=["run:displayName", "summary:accuracy"],
+        visible_columns=["run:displayName", "summary:accuracy"],
+        column_order=[
+            "summary:accuracy",
+            "run:displayName",
+        ],  # Wrong order - will be auto-fixed
+    )
+    # At this point validation has passed
+    # run:displayName order is fixed in Workspace.__post_init__()
+    assert "run:displayName" in runset_settings.pinned_columns
+
+
+@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
+def test_fetch_project_fields_basic(mock_fetch):
+    """Test that fetch_project_fields returns correctly formatted field names."""
+    from wandb_workspaces.workspaces import internal
+
+    # Mock the GraphQL response using actual dev server response structure
+    mock_response = {
+        "data": {
+            "project": {
+                "id": "UHJvamVjdDp2MTpncm91cGVkOmFjYXNleS1kZXY=",
+                "fields": {
+                    "pageInfo": {
+                        "hasNextPage": False,
+                        "endCursor": "YXJyYXljb25uZWN0aW9uOjEy",
+                        "__typename": "PageInfo",
+                    },
+                    "edges": [
+                        {
+                            "node": {
+                                "path": "config.architecture.value",
+                                "type": "string",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "config.dataset.value",
+                                "type": "string",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "config.epochs.value",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "config.learning_rate.value",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "summary_metrics._runtime",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "summary_metrics._step",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "summary_metrics._timestamp",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "summary_metrics.acc",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "summary_metrics.loss",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "aggregations_min.acc",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "aggregations_max.acc",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "aggregations_min.loss",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                        {
+                            "node": {
+                                "path": "aggregations_max.loss",
+                                "type": "number",
+                                "__typename": "ProjectField",
+                            },
+                            "__typename": "ProjectFieldEdge",
+                        },
+                    ],
+                    "__typename": "ProjectFieldConnection",
+                },
+                "__typename": "Project",
+            }
+        }
     }
 
+    # Setup mock to return our response
+    with patch("wandb.Api") as mock_api:
+        mock_client = Mock()
+        mock_client.execute.return_value = mock_response
+        mock_api.return_value.client = mock_client
 
-def test_run_display_name_must_be_pinned():
-    """Test that 'run:displayName' must be in pinned_columns."""
-    with pytest.raises(
-        ValueError,
-        match="The column 'run:displayName' must be in pinned_columns with value True",
-    ):
-        ws.RunsetSettings(
-            pinned_columns={"summary:accuracy": True},  # missing run:displayName
-            visible_columns={"summary:accuracy": True},
-            column_order=["summary:accuracy"],
-        )
+        fields = internal.fetch_project_fields("test-entity", "test-project")
+
+        # Should include standard run columns
+        assert "run:displayName" in fields
+        assert "run:state" in fields
+        assert "tags:__ALL__" in fields
+
+        # Should transform backend format to workspace SDK format
+        # Config fields already have .value suffix in backend response
+        assert "config:architecture.value" in fields
+        assert "config:dataset.value" in fields
+        assert "config:epochs.value" in fields
+        assert "config:learning_rate.value" in fields
+
+        # Summary metrics
+        assert "summary:_runtime" in fields
+        assert "summary:_step" in fields
+        assert "summary:_timestamp" in fields
+        assert "summary:acc" in fields
+        assert "summary:loss" in fields
+
+        # Aggregation fields
+        assert "aggregations_min:acc" in fields
+        assert "aggregations_max:acc" in fields
+        assert "aggregations_min:loss" in fields
+        assert "aggregations_max:loss" in fields
 
 
-def test_run_display_name_with_false_value_fails():
-    """Test that 'run:displayName' with False value is not sufficient."""
-    with pytest.raises(
-        ValueError,
-        match="The column 'run:displayName' must be in pinned_columns with value True",
-    ):
-        ws.RunsetSettings(
-            pinned_columns={
-                "run:displayName": False,  # False is not allowed
-                "summary:accuracy": True,
-            },
-            visible_columns={"run:displayName": True, "summary:accuracy": True},
-            column_order=["run:displayName", "summary:accuracy"],
-        )
+@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
+def test_auto_hide_others_basic(mock_fetch):
+    """Test that specifying columns automatically hides all others (default behavior)."""
+    # Mock fetch_project_fields to return a known set of fields
+    mock_fetch.return_value = [
+        "run:displayName",
+        "run:state",
+        "run:createdAt",
+        "summary:loss",
+        "summary:accuracy",
+        "config:learning_rate.value",
+        "tags:__ALL__",
+    ]
+
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        name="Test Auto Hide",
+        runset_settings=ws.RunsetSettings(
+            pinned_columns=["run:displayName", "summary:loss"],
+            visible_columns=["run:displayName", "summary:loss"],
+            column_order=["run:displayName", "summary:loss"],
+        ),
+    )
+
+    # Check that _visible_columns_dict was created with all fields
+    assert hasattr(workspace, "_visible_columns_dict")
+    assert "run:displayName" in workspace._visible_columns_dict
+    assert "summary:loss" in workspace._visible_columns_dict
+    assert "summary:accuracy" in workspace._visible_columns_dict
+    assert "config:learning_rate.value" in workspace._visible_columns_dict
+
+    # Check that specified columns are True
+    assert workspace._visible_columns_dict["run:displayName"] is True
+    assert workspace._visible_columns_dict["summary:loss"] is True
+
+    # Check that other columns are False
+    assert workspace._visible_columns_dict["summary:accuracy"] is False
+    assert workspace._visible_columns_dict["config:learning_rate.value"] is False
+    assert workspace._visible_columns_dict["run:state"] is False
+
+
+@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
+def test_auto_hide_others_ensures_run_display_name(mock_fetch):
+    """Test that column specification ensures run:displayName is always pinned and first."""
+    mock_fetch.return_value = [
+        "run:displayName",
+        "run:state",
+        "summary:loss",
+        "summary:accuracy",
+    ]
+
+    # Don't explicitly include run:displayName in pinned_columns
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        name="Test Auto Hide",
+        runset_settings=ws.RunsetSettings(
+            pinned_columns=["summary:loss"],
+            visible_columns=["summary:loss"],
+            column_order=["summary:loss"],
+        ),
+    )
+
+    # Should automatically add run:displayName to pinned_columns
+    assert "run:displayName" in workspace.runset_settings.pinned_columns
+    assert workspace.runset_settings.pinned_columns[0] == "run:displayName"
+
+    # Should be in visible columns
+    assert "run:displayName" in workspace._visible_columns_dict
+    assert workspace._visible_columns_dict["run:displayName"] is True
+
+    # Should be first in column_order
+    assert workspace.runset_settings.column_order[0] == "run:displayName"
+
+
+@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
+def test_auto_hide_others_preserves_explicit_visible_columns(mock_fetch):
+    """Test that column specification preserves explicitly set visible_columns."""
+    mock_fetch.return_value = [
+        "run:displayName",
+        "summary:loss",
+        "summary:accuracy",
+        "summary:f1",
+    ]
+
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        name="Test Auto Hide",
+        runset_settings=ws.RunsetSettings(
+            pinned_columns=["run:displayName", "summary:loss"],
+            visible_columns=[
+                "run:displayName",
+                "summary:loss",
+                "summary:accuracy",  # Explicitly set to visible, not pinned
+            ],
+            column_order=["run:displayName", "summary:loss"],
+        ),
+    )
+
+    # Pinned columns should be True in the internal dict
+    assert workspace._visible_columns_dict["run:displayName"] is True
+    assert workspace._visible_columns_dict["summary:loss"] is True
+
+    # Explicitly set visible column should be True
+    assert workspace._visible_columns_dict["summary:accuracy"] is True
+
+    # Other columns should be False
+    assert workspace._visible_columns_dict["summary:f1"] is False
+
+
+@patch("wandb_workspaces.workspaces.internal.fetch_project_fields")
+def test_auto_hide_others_with_empty_column_order(mock_fetch):
+    """Test that column specification creates column_order if it's empty."""
+    mock_fetch.return_value = [
+        "run:displayName",
+        "run:state",
+        "summary:loss",
+        "summary:accuracy",
+    ]
+
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        name="Test Auto Hide",
+        runset_settings=ws.RunsetSettings(
+            pinned_columns=["run:displayName", "summary:loss"],
+            visible_columns=["run:displayName", "summary:loss"],
+            column_order=[],  # Empty
+        ),
+    )
+
+    # Should create column_order with run:displayName first
+    assert len(workspace.runset_settings.column_order) > 0
+    assert workspace.runset_settings.column_order[0] == "run:displayName"
+    assert "summary:loss" in workspace.runset_settings.column_order

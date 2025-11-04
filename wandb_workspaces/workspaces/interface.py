@@ -326,37 +326,38 @@ class RunsetSettings(Base):
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
         run_settings (Dict[str, RunSettings]): A dictionary of run settings, where the key
             is the run's ID and the value is a RunSettings object.
-        pinned_columns (Dict[str, bool]): Dictionary mapping column names to pinned status.
+        pinned_columns (LList[str]): List of column names to pin to the left side of the table.
             Column names use format: "run:displayName", "summary:metric", "config:param".
-            Example: {"run:displayName": True, "summary:accuracy": True}
-        visible_columns (Dict[str, bool]): Dictionary mapping column names to visibility status.
-            Example: {"run:displayName": True, "summary:loss": False}
+            Example: ["run:displayName", "summary:accuracy"]
+        visible_columns (LList[str]): List of column names to make visible in the table.
+            Example: ["run:displayName", "summary:loss", "summary:accuracy"]
         column_order (LList[str]): Order of columns in the table (left to right).
             If empty, default ordering is used.
-        column_widths (Dict[str, int]): Column widths in pixels.
+        column_widths (Dict[str, int]): Column widths in pixels. Minimum width is 70px.
             Example: {"run:displayName": 200, "summary:accuracy": 150}
 
     Note:
         Column management validation rules:
         - If pinned_columns is populated, both visible_columns and column_order must also be provided.
-        - The column "run:displayName" must always be in pinned_columns with value True.
-        - Any column with pinned_columns[col] = True must also have visible_columns[col] = True.
-        - Any column with pinned_columns[col] = True must also be present in column_order.
-        - Columns with pinned_columns[col] = False do not need to be in visible_columns or column_order.
-        - To ONLY display select columns with visible_columns, ALL possible columns must be passed with
-          only the desired columns having a value of True and the rest must be False
+        - All pinned columns must also be in visible_columns.
+        - All pinned columns must also be in column_order.
+        - Column widths must be at least 70px (minimum enforced).
+        - When columns are specified, all columns not in pinned_columns or visible_columns will be
+          automatically hidden (requires entity and project to be set in the parent Workspace).
+
+        Automatic enforcement:
+        - The column "run:displayName" is automatically added to pinned_columns if not present.
+        - The column "run:displayName" is automatically placed first in column_order.
+        - You don't need to explicitly include "run:displayName" - it's always pinned and first.
 
     Example:
-        Valid column configuration:
         ```python
+        # Specify only the columns you want - all others are automatically hidden
+        # Note: run:displayName is automatically added and pinned first
         RunsetSettings(
-            pinned_columns={"run:displayName": True, "summary:accuracy": True},
-            visible_columns={
-                "run:displayName": True,
-                "summary:accuracy": True,
-                "summary:loss": True,
-            },
-            column_order=["run:displayName", "summary:accuracy", "summary:loss"],
+            pinned_columns=["summary:accuracy"],
+            visible_columns=["summary:accuracy", "summary:loss"],
+            column_order=["summary:accuracy", "summary:loss"],
         )
         ```
     """
@@ -386,8 +387,8 @@ class RunsetSettings(Base):
     """
 
     # Column management
-    pinned_columns: Dict[str, bool] = Field(default_factory=dict)
-    visible_columns: Dict[str, bool] = Field(default_factory=dict)
+    pinned_columns: LList[str] = Field(default_factory=list)
+    visible_columns: LList[str] = Field(default_factory=list)
     column_order: LList[str] = Field(default_factory=list)
     column_widths: Dict[str, int] = Field(default_factory=dict)
 
@@ -406,36 +407,40 @@ class RunsetSettings(Base):
                     "All pinned columns should be included in column_order."
                 )
 
-            # Get the set of pinned column names (only those with True value)
-            pinned_cols = {
-                col for col, is_pinned in self.pinned_columns.items() if is_pinned
-            }
+            # Convert to sets for easier checking
+            pinned_cols = set(self.pinned_columns)
+            visible_cols = set(self.visible_columns)
+            order_cols = set(self.column_order)
 
-            # Check that "run:displayName" is in pinned_columns
-            if "run:displayName" not in pinned_cols:
-                raise ValueError(
-                    "The column 'run:displayName' must be in pinned_columns with value True. "
-                    "This ensures the run name is always visible and pinned."
-                )
-
-            # Check that all pinned columns are in visible_columns (and set to True)
-            visible_cols = {
-                col for col, is_visible in self.visible_columns.items() if is_visible
-            }
+            # Check that all pinned columns are in visible_columns
+            # Note: run:displayName is automatically added if not present, so we check user-provided columns
             missing_from_visible = pinned_cols - visible_cols
             if missing_from_visible:
                 raise ValueError(
-                    f"All pinned columns must also be in visible_columns with value True. "
+                    f"All pinned columns must also be in visible_columns. "
                     f"Missing from visible_columns: {sorted(missing_from_visible)}"
                 )
 
             # Check that all pinned columns are in column_order
-            order_cols = set(self.column_order)
             missing_from_order = pinned_cols - order_cols
             if missing_from_order:
                 raise ValueError(
                     f"All pinned columns must also be in column_order. "
                     f"Missing from column_order: {sorted(missing_from_order)}"
+                )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_column_widths(self):
+        """Validate that all column widths meet the minimum requirement of 70px."""
+        MIN_WIDTH = 70
+
+        for column, width in self.column_widths.items():
+            if width < MIN_WIDTH:
+                raise ValueError(
+                    f"Column width for '{column}' is {width}px, but minimum width is {MIN_WIDTH}px. "
+                    f"Please set a width of at least {MIN_WIDTH}px."
                 )
 
         return self
@@ -479,6 +484,45 @@ class Workspace(Base):
 
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
+
+    def __post_init__(self):
+        """Automatically hide columns not explicitly specified."""
+        # If user specified any columns, fetch all available fields and hide the rest
+        if self.runset_settings.pinned_columns or self.runset_settings.visible_columns:
+            # Fetch all project fields
+            all_fields = internal.fetch_project_fields(self.entity, self.project)
+
+            # Build the complete visible columns list
+            # Start with fields that should be visible (pinned + explicitly visible)
+            visible_set = set(self.runset_settings.pinned_columns) | set(
+                self.runset_settings.visible_columns
+            )
+
+            # Ensure run:displayName is always in the visible set and pinned
+            visible_set.add("run:displayName")
+            if "run:displayName" not in self.runset_settings.pinned_columns:
+                self.runset_settings.pinned_columns.insert(0, "run:displayName")
+
+            # Create the visible_columns dict for the backend (all fields, with bools)
+            # We'll store this internally for _to_model() to use
+            self._visible_columns_dict = {
+                field: field in visible_set for field in all_fields
+            }
+
+            # Ensure run:displayName is first in column_order
+            if self.runset_settings.column_order:
+                if "run:displayName" in self.runset_settings.column_order:
+                    # Remove it from wherever it is
+                    self.runset_settings.column_order.remove("run:displayName")
+                # Add it to the front
+                self.runset_settings.column_order.insert(0, "run:displayName")
+            elif self.runset_settings.pinned_columns:
+                # If column_order is empty but we have pinned columns, create it
+                pinned_cols = list(self.runset_settings.pinned_columns)
+                # Ensure run:displayName is first
+                if "run:displayName" in pinned_cols:
+                    pinned_cols.remove("run:displayName")
+                self.runset_settings.column_order = ["run:displayName"] + pinned_cols
 
     @property
     def auto_generate_panels(self) -> bool:
@@ -577,8 +621,13 @@ class Workspace(Base):
 
         # Extract column settings from run_feed
         run_feed = model.spec.section.run_sets[0].run_feed
-        pinned_columns = run_feed.column_pinned
-        visible_columns = run_feed.column_visible
+        # Convert dict format from backend to list format for SDK
+        pinned_columns = [
+            col for col, is_pinned in run_feed.column_pinned.items() if is_pinned
+        ]
+        visible_columns = [
+            col for col, is_visible in run_feed.column_visible.items() if is_visible
+        ]
 
         # then construct the Workspace object
         obj = cls(
@@ -653,6 +702,18 @@ class Workspace(Base):
             should_auto_generate_panels=self.auto_generate_panels,
         )
 
+        # Convert list format (SDK) to dict format (backend) for columns
+        # If columns were specified, we have a complete dict with all project fields
+        if hasattr(self, "_visible_columns_dict"):
+            column_visible_dict = self._visible_columns_dict
+        else:
+            # No columns specified - convert visible_columns list to dict (True for listed columns)
+            column_visible_dict = {
+                col: True for col in self.runset_settings.visible_columns
+            }
+
+        column_pinned_dict = {col: True for col in self.runset_settings.pinned_columns}
+
         return internal.View(
             entity=self.entity,
             project=self.project,
@@ -677,8 +738,8 @@ class Workspace(Base):
                         internal.Runset(
                             id=self._internal_runset_id,
                             run_feed=internal.RunFeed(
-                                column_pinned=self.runset_settings.pinned_columns,
-                                column_visible=self.runset_settings.visible_columns,
+                                column_pinned=column_pinned_dict,
+                                column_visible=column_visible_dict,
                                 column_order=self.runset_settings.column_order,
                                 column_widths=self.runset_settings.column_widths,
                             ),
