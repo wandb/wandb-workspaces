@@ -8,10 +8,7 @@ This repository uses a mostly automated release process with GitHub Actions.
 Creates a pull request with the version bump.
 
 ### 2. **Auto Release** (`auto-release.yml`)
-Detects version changes on main and automatically creates tags.
-
-### 3. **Publish Release** (`publish-release.yml`)
-Triggers on versioned tag creation, builds and publishes to GitHub and PyPI.
+Detects version changes on main, then builds and publishes to GitHub and PyPI.
 
 ## How to Release
 
@@ -39,18 +36,15 @@ The rest happens automatically:
 
 ### The Automation Chain
 
-The `auto-release` workflow:
+When the PR is merged, the `auto-release` workflow:
 1. Reads version from `pyproject.toml` at HEAD
 2. Reads version from `pyproject.toml` at HEAD~1
-3. If they differ, creates and pushes the tag
+3. If they differ:
+   - Builds the package using `uv`
+   - Creates a GitHub Release with auto-generated notes (which also creates the tag)
+   - Attaches the built distribution files
+   - Publishes to PyPI using Trusted Publishing
 4. If unchanged, does nothing (safe for other commits to main)
-
-The `publish-release` workflow then:
-1. Checks out the code at the tagged commit
-2. Builds the package using `uv`
-3. Generates release notes from commits since the last release
-4. Creates a GitHub Release with the built artifacts
-5. Publishes to PyPI using Trusted Publishing
 
 ## What Gets Published
 

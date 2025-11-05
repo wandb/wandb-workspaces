@@ -88,9 +88,9 @@ jobs:
           When you merge:
           1. Commit lands on main with new version in \`pyproject.toml\`
           2. \`auto-release.yml\` detects the version change (HEAD vs HEAD~1)
-          3. Automatically creates and pushes tag \`v${{ inputs.version }}\`
-          4. \`publish-release.yml\` is triggered by the tag
-          5. Package is built, release created, and published to PyPI
+          3. Builds the package using \`uv\`
+          4. Creates GitHub Release \`v${{ inputs.version }}\` with auto-generated notes (also creates the tag)
+          5. Publishes to PyPI using Trusted Publishing
           
           **No manual steps required after merge!**"
 
