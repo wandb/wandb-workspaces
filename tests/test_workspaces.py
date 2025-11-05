@@ -138,7 +138,7 @@ def test_idempotency(request, factory_name) -> None:
         (
             wandb_workspaces.expr.Metric("abc") > 1,
             {
-                "op": ">",
+                "op": ">=",  # > maps to >= internally
                 "key": {"section": "run", "name": "abc"},
                 "value": 1,
                 "disabled": False,
@@ -166,6 +166,180 @@ def test_idempotency(request, factory_name) -> None:
 )
 def test_filter_expr(expr, spec):
     assert expr.to_model().model_dump(by_alias=True, exclude_none=True) == spec
+
+
+def test_runset_settings_string_filters():
+    """Test that RunsetSettings accepts filters as both string and FilterExpr list.
+
+    Note: After unification, filters are always stored internally as strings,
+    matching the behavior of Reports v2.
+    """
+    # Test with single = operator (string input)
+    settings1 = ws.RunsetSettings(filters="Config('learning_rate') = 0.001")
+    assert isinstance(settings1.filters, str)
+    assert "learning_rate" in settings1.filters
+    assert "0.001" in settings1.filters
+
+    # Test with == operator (string input)
+    settings2 = ws.RunsetSettings(filters="Config('learning_rate') == 0.001")
+    assert isinstance(settings2.filters, str)
+    assert "learning_rate" in settings2.filters
+
+    # Test with multiple filters (string input)
+    settings3 = ws.RunsetSettings(
+        filters="Config('optimizer') = 'adam' and SummaryMetric('accuracy') >= 0.9"
+    )
+    assert isinstance(settings3.filters, str)
+    assert "optimizer" in settings3.filters
+    assert "adam" in settings3.filters
+    assert "accuracy" in settings3.filters
+
+    # Test with list of FilterExpr (gets converted to string internally)
+    settings4 = ws.RunsetSettings(
+        filters=[wandb_workspaces.expr.Config("learning_rate") == 0.001]
+    )
+    assert isinstance(settings4.filters, str)
+    assert "learning_rate" in settings4.filters
+    assert "0.001" in settings4.filters
+
+    # Test empty string
+    settings5 = ws.RunsetSettings(filters="")
+    assert settings5.filters == ""
+
+    # Test default (no filters)
+    settings6 = ws.RunsetSettings()
+    assert settings6.filters == ""
+
+
+def test_workspace_operator_mapping():
+    """Test that < maps to <= and > maps to >= in workspace filters."""
+    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+    import wandb_workspaces.expr as expr
+    import warnings
+
+    # Test string filters with < and >
+    # For string filters, no warning occurs during RunsetSettings creation
+    # (it's just storing the string), but warning occurs when filter is parsed
+    settings1 = ws.RunsetSettings(filters="Config('learning_rate') < 0.01")
+    with pytest.warns(UserWarning, match="'<' operator.*mapped to '<='"):
+        parsed1 = expr_to_filters(settings1.filters)
+    assert parsed1.filters[0].filters[0].op == "<="
+
+    settings2 = ws.RunsetSettings(filters="SummaryMetric('accuracy') > 0.95")
+    with pytest.warns(UserWarning, match="'>' operator.*mapped to '>='"):
+        parsed2 = expr_to_filters(settings2.filters)
+    assert parsed2.filters[0].filters[0].op == ">="
+
+    # Test FilterExpr list with < and >
+    with pytest.warns(UserWarning):
+        settings3 = ws.RunsetSettings(
+            filters=[
+                expr.Config("learning_rate") < 0.01,
+                expr.Summary("accuracy") > 0.95,
+            ]
+        )
+    # After conversion to string, no more warnings
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        parsed3 = expr_to_filters(settings3.filters)
+        assert parsed3.filters[0].filters[0].op == "<="
+        assert parsed3.filters[0].filters[1].op == ">="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    # Test that = and == both work without warnings
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        settings4 = ws.RunsetSettings(filters="Config('optimizer') = 'adam'")
+        parsed4 = expr_to_filters(settings4.filters)
+        assert parsed4.filters[0].filters[0].op == "="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        settings5 = ws.RunsetSettings(filters="Config('optimizer') == 'adam'")
+        parsed5 = expr_to_filters(settings5.filters)
+        assert parsed5.filters[0].filters[0].op == "="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    # Test combined operators
+    settings6 = ws.RunsetSettings(
+        filters="Config('lr') < 0.01 and SummaryMetric('acc') > 0.9 and Metric('State') = 'finished'"
+    )
+    with pytest.warns(UserWarning, match="'<' and/or '>' operators"):
+        parsed6 = expr_to_filters(settings6.filters)
+    assert parsed6.filters[0].filters[0].op == "<="
+    assert parsed6.filters[0].filters[1].op == ">="
+    assert parsed6.filters[0].filters[2].op == "="
+
+
+def test_workspace_string_filters_summary_alias():
+    """Test that workspace string filters work with both SummaryMetric (old) and Summary (new) aliases"""
+    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+
+    # Test SummaryMetric (old name) in workspace
+    settings1 = ws.RunsetSettings(filters="SummaryMetric('loss') <= 0.5")
+    parsed1 = expr_to_filters(settings1.filters)
+    assert parsed1.filters[0].filters[0].key.section == "summary"
+    assert parsed1.filters[0].filters[0].key.name == "loss"
+    assert parsed1.filters[0].filters[0].op == "<="
+    assert parsed1.filters[0].filters[0].value == 0.5
+
+    # Test Summary (new alias) in workspace
+    settings2 = ws.RunsetSettings(filters="Summary('loss') <= 0.5")
+    parsed2 = expr_to_filters(settings2.filters)
+    assert parsed2.filters[0].filters[0].key.section == "summary"
+    assert parsed2.filters[0].filters[0].key.name == "loss"
+    assert parsed2.filters[0].filters[0].op == "<="
+    assert parsed2.filters[0].filters[0].value == 0.5
+
+    # Test mixed usage in workspace
+    settings3 = ws.RunsetSettings(
+        filters="SummaryMetric('loss') <= 0.5 and Summary('accuracy') >= 0.85"
+    )
+    parsed3 = expr_to_filters(settings3.filters)
+    assert len(parsed3.filters[0].filters) == 2
+    assert parsed3.filters[0].filters[0].key.section == "summary"
+    assert parsed3.filters[0].filters[0].key.name == "loss"
+    assert parsed3.filters[0].filters[0].op == "<="
+    assert parsed3.filters[0].filters[1].key.section == "summary"
+    assert parsed3.filters[0].filters[1].key.name == "accuracy"
+    assert parsed3.filters[0].filters[1].op == ">="
+
+    # Test in full Workspace object
+    workspace = ws.Workspace(
+        entity="test",
+        project="test",
+        name="Test Workspace",
+        runset_settings=ws.RunsetSettings(
+            filters="SummaryMetric('loss') <= 0.3 and Summary('val_loss') <= 0.4"
+        ),
+    )
+    assert (
+        "SummaryMetric" in workspace.runset_settings.filters
+        or "Summary" in workspace.runset_settings.filters
+    )
+    parsed_ws = expr_to_filters(workspace.runset_settings.filters)
+    assert len(parsed_ws.filters[0].filters) == 2
+    assert parsed_ws.filters[0].filters[0].key.section == "summary"
+    assert parsed_ws.filters[0].filters[1].key.section == "summary"
 
 
 def test_section_pinning():

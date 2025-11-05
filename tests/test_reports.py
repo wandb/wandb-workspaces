@@ -447,6 +447,265 @@ def test_expression_parsing(expr, expected_filters):
     )
 
 
+def test_runset_filters_accept_filterexpr_list():
+    """Test that Runset accepts filters as both string and FilterExpr list."""
+    import wandb_workspaces.expr as expr
+
+    # Test with FilterExpr list
+    runset1 = wr.Runset(
+        entity="test-entity",
+        project="test-project",
+        filters=[
+            expr.Config("learning_rate") == 0.001,
+            expr.Metric("State") == "finished",
+        ],
+    )
+    # After validation, filters should be converted to string
+    assert isinstance(runset1.filters, str)
+    assert "learning_rate" in runset1.filters
+    assert "0.001" in runset1.filters
+    # Note: "State" gets converted to "state" by the name mapping
+    assert "state" in runset1.filters.lower()
+    assert "finished" in runset1.filters
+
+    # Test with string (original way still works)
+    runset2 = wr.Runset(
+        entity="test-entity",
+        project="test-project",
+        filters="Config('learning_rate') = 0.001",
+    )
+    assert isinstance(runset2.filters, str)
+    assert "learning_rate" in runset2.filters
+
+    # Test with empty list
+    runset3 = wr.Runset(entity="test-entity", project="test-project", filters=[])
+    assert runset3.filters == ""
+
+    # Test with empty string (default)
+    runset4 = wr.Runset(entity="test-entity", project="test-project")
+    assert runset4.filters == ""
+
+
+def test_operator_mapping_in_string_filters():
+    """Test that < maps to <= and > maps to >= in string filters."""
+    import warnings
+
+    # Test < maps to <= and warns
+    with pytest.warns(UserWarning, match="'<' operator.*mapped to '<='"):
+        result1 = expr_to_filters("a < 5")
+    assert result1.filters[0].filters[0].op == "<="
+
+    # Test > maps to >= and warns
+    with pytest.warns(UserWarning, match="'>' operator.*mapped to '>='"):
+        result2 = expr_to_filters("b > 10")
+    assert result2.filters[0].filters[0].op == ">="
+
+    # Test that <= stays <= without warning
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        result3 = expr_to_filters("c <= 5")
+        assert result3.filters[0].filters[0].op == "<="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    # Test that >= stays >= without warning
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        result4 = expr_to_filters("d >= 10")
+        assert result4.filters[0].filters[0].op == ">="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    # Test combined expression with multiple operators
+    with pytest.warns(UserWarning, match="'<' and/or '>' operators"):
+        result5 = expr_to_filters("a < 5 and b > 10")
+    assert result5.filters[0].filters[0].op == "<="
+    assert result5.filters[0].filters[1].op == ">="
+
+    # Test with function calls like Config()
+    with pytest.warns(UserWarning, match="'<' operator.*mapped to '<='"):
+        result6 = expr_to_filters("Config('learning_rate') < 0.01")
+    assert result6.filters[0].filters[0].op == "<="
+    assert result6.filters[0].filters[0].key.section == "config"
+    assert result6.filters[0].filters[0].key.name == "learning_rate"
+    assert result6.filters[0].filters[0].value == 0.01
+
+    with pytest.warns(UserWarning, match="'>' operator.*mapped to '>='"):
+        result7 = expr_to_filters("SummaryMetric('accuracy') > 0.95")
+    assert result7.filters[0].filters[0].op == ">="
+    assert result7.filters[0].filters[0].key.section == "summary"
+
+    # Test that = and == both map to = without warnings about operators
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        result8 = expr_to_filters("e = 5")
+        assert result8.filters[0].filters[0].op == "="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        result9 = expr_to_filters("f == 5")
+        assert result9.filters[0].filters[0].op == "="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+
+def test_operator_mapping_in_filterexpr():
+    """Test that < maps to <= and > maps to >= in FilterExpr objects."""
+    import wandb_workspaces.expr as expr
+    import warnings
+
+    # Test < maps to <= and warns
+    with pytest.warns(UserWarning, match="Using '<' operator.*mapped to '<='"):
+        filter1 = expr.Config("learning_rate") < 0.01
+    assert filter1.op == "<="
+
+    # Test > maps to >= and warns
+    with pytest.warns(UserWarning, match="Using '>' operator.*mapped to '>='"):
+        filter2 = expr.Summary("accuracy") > 0.95
+    assert filter2.op == ">="
+
+    # Test that <= stays <= without warning
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        filter3 = expr.Config("batch_size") <= 32
+        assert filter3.op == "<="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    # Test that >= stays >= without warning
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        filter4 = expr.Summary("loss") >= 0.1
+        assert filter4.op == ">="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    # Test with Metric
+    with pytest.warns(UserWarning, match="Using '<' operator.*mapped to '<='"):
+        filter5 = expr.Metric("Runtime") < 3600
+    assert filter5.op == "<="
+
+    with pytest.warns(UserWarning, match="Using '>' operator.*mapped to '>='"):
+        filter6 = expr.Metric("CreatedTimestamp") > 1000000
+    assert filter6.op == ">="
+
+    # Test that equality operators work correctly without warning
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        filter7 = expr.Config("optimizer") == "adam"
+        assert filter7.op == "="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+    # Test with FilterExpr in a runset
+    with pytest.warns(UserWarning):
+        runset = wr.Runset(
+            entity="test-entity",
+            project="test-project",
+            filters=[
+                expr.Config("learning_rate") < 0.01,
+                expr.Summary("accuracy") > 0.95,
+            ],
+        )
+    # After conversion to string and back, operators should be <=, >=
+    # No warning when parsing string since it already contains <=, >=
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
+        parsed_filters = expr_to_filters(runset.filters)
+        assert parsed_filters.filters[0].filters[0].op == "<="
+        assert parsed_filters.filters[0].filters[1].op == ">="
+        # Filter to only our operator mapping warnings
+        operator_warnings = [
+            w
+            for w in warning_list
+            if "operator" in str(w.message) and "mapped to" in str(w.message)
+        ]
+        assert len(operator_warnings) == 0
+
+
+def test_string_filters_summary_alias():
+    """Test that string filters work with both SummaryMetric (old) and Summary (new) aliases"""
+    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+
+    # Test SummaryMetric (old name)
+    result_old = expr_to_filters("SummaryMetric('loss') <= 0.5")
+    assert result_old.filters[0].filters[0].key.section == "summary"
+    assert result_old.filters[0].filters[0].key.name == "loss"
+    assert result_old.filters[0].filters[0].op == "<="
+    assert result_old.filters[0].filters[0].value == 0.5
+
+    # Test Summary (new alias)
+    result_new = expr_to_filters("Summary('loss') <= 0.5")
+    assert result_new.filters[0].filters[0].key.section == "summary"
+    assert result_new.filters[0].filters[0].key.name == "loss"
+    assert result_new.filters[0].filters[0].op == "<="
+    assert result_new.filters[0].filters[0].value == 0.5
+
+    # Test mixed usage in complex expression
+    result_mixed = expr_to_filters(
+        "SummaryMetric('loss') <= 0.5 and Summary('accuracy') >= 0.85"
+    )
+    assert len(result_mixed.filters[0].filters) == 2
+    assert result_mixed.filters[0].filters[0].key.section == "summary"
+    assert result_mixed.filters[0].filters[0].key.name == "loss"
+    assert result_mixed.filters[0].filters[0].op == "<="
+    assert result_mixed.filters[0].filters[1].key.section == "summary"
+    assert result_mixed.filters[0].filters[1].key.name == "accuracy"
+    assert result_mixed.filters[0].filters[1].op == ">="
+
+    # Test in Runset with both names
+    runset1 = wr.Runset(
+        entity="test",
+        project="test",
+        filters="SummaryMetric('loss') <= 0.5",
+    )
+    assert "SummaryMetric" in runset1.filters or "Summary" in runset1.filters
+
+    runset2 = wr.Runset(
+        entity="test",
+        project="test",
+        filters="Summary('loss') <= 0.5",
+    )
+    assert "Summary" in runset2.filters or "SummaryMetric" in runset2.filters
+
+
 def test_layout_config():
     DEFAULT_LAYOUT = {
         "x": wr.Layout.x,

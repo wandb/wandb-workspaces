@@ -26,7 +26,7 @@ workspace.save()
 """
 
 import os
-from typing import Dict, Iterable, Literal, Optional
+from typing import Dict, Iterable, Literal, Optional, Union
 from typing import List as LList
 from urllib.parse import parse_qs, urlparse, urlunparse
 
@@ -40,6 +40,7 @@ from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
+from ..reports.v2 import expr_parsing
 from . import internal
 
 __all__ = [
@@ -323,8 +324,10 @@ class RunsetSettings(Base):
     Attributes:
         query (str): A query to filter the runset (can be a regex expr, see next param).
         regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
-        filters (LList[expr.FilterExpr]): A list of filters to apply to the runset.
-            Filters are AND'd together. See FilterExpr for more information on creating filters.
+        filters (Union[str, LList[expr.FilterExpr]]): A list of filters to apply to the runset or a string expression.
+            - As a list: Filters are AND'd together. See FilterExpr for more information on creating filters.
+            - As a string: Use Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in
         groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
             `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
@@ -337,9 +340,15 @@ class RunsetSettings(Base):
 
     Example:
         ```python
-        # Specify columns to pin
-        # Note: run:displayName is automatically added and pinned first
+        # Using string filters (new)
         RunsetSettings(
+            filters="Config('learning_rate') = 0.001 and State = 'finished'",
+            pinned_columns=["summary:accuracy", "summary:loss"],
+        )
+
+        # Using FilterExpr list (original way)
+        RunsetSettings(
+            filters=[expr.Config("learning_rate") == 0.001],
             pinned_columns=["summary:accuracy", "summary:loss"],
         )
         ```
@@ -347,7 +356,7 @@ class RunsetSettings(Base):
 
     query: str = ""
     regex_query: bool = False
-    filters: LList[expr.FilterExpr] = Field(default_factory=list)
+    filters: Union[str, LList[expr.FilterExpr]] = ""
     groupby: LList[expr.MetricType] = Field(default_factory=list)
     "A list of metrics to group by in the runset."
 
@@ -394,6 +403,22 @@ class RunsetSettings(Base):
             object.__setattr__(self, "_visible_columns", list(self.pinned_columns))
             object.__setattr__(self, "_column_order", list(self.pinned_columns))
 
+        return self
+
+    @model_validator(mode="after")
+    def convert_filterexpr_list_to_string(self):
+        """Convert FilterExpr list to string expression (unified internal format)."""
+        # Inline the normalization logic to avoid circular import with expr module
+        if isinstance(self.filters, list):
+            # Import locally to avoid circular import at module level
+            from ..reports.v2 import expr_parsing
+
+            # Convert FilterExpr list to internal Filters tree
+            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
+            # Convert Filters tree to string expression
+            filter_string = expr_parsing.filters_to_expr(filters_tree)
+            # Update the filters field
+            object.__setattr__(self, "filters", filter_string)
         return self
 
 
@@ -551,7 +576,7 @@ class Workspace(Base):
             runset_settings=RunsetSettings(
                 query=model.spec.section.run_sets[0].search.query,
                 regex_query=regex_query,
-                filters=expr.filters_tree_to_filter_expr(
+                filters=expr_parsing.filters_to_expr(
                     model.spec.section.run_sets[0].filters
                 ),
                 groupby=[
@@ -652,8 +677,8 @@ class Workspace(Base):
                                 query=self.runset_settings.query,
                                 is_regex=is_regex,
                             ),
-                            filters=expr.filter_expr_to_filters_tree(
-                                self.runset_settings.filters
+                            filters=expr_parsing.expr_to_filters(
+                                self.runset_settings.filters  # type: ignore[arg-type]  # validator ensures this is always str
                             ),
                             grouping=[g.to_key() for g in self.runset_settings.groupby],
                             sort=internal.Sort(

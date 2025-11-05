@@ -29,7 +29,7 @@ report.save()
 import base64
 import os
 from datetime import datetime
-from typing import Dict, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterable, Optional, Tuple, Union
 from typing import List as LList
 
 from annotated_types import Annotated, Ge, Le
@@ -42,10 +42,13 @@ except ImportError:
 from urllib.parse import urlparse, urlunparse
 
 import wandb
-from pydantic import ConfigDict, Field, validator
+from pydantic import ConfigDict, Field, model_validator, validator
 from pydantic.dataclasses import dataclass
 
 from . import expr_parsing, gql, internal
+
+if TYPE_CHECKING:
+    from ... import expr
 from .internal import (
     CodeCompareDiff,
     FontSize,
@@ -906,20 +909,40 @@ class Runset(Base):
         project (str): The name of the project were the runs are stored.
         name (str): The name of the run set. Set to `Run set` by default.
         query (str): A query string to filter runs.
-        filters (Optional[str]): A filter string to filter runs.
+        filters (Union[str, LList[expr.FilterExpr]]): Filters to apply to runs. Can be:
+            - A string expression: e.g., "Config('lr') = 0.001 and State = 'finished'"
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in
+            - A list of FilterExpr objects: e.g., [expr.Config('lr') == 0.001]
         groupby (LList[str]): A list of metric names to group by. Supported formats are:
             - "group" or "run.group" to group by a run attribute
             - "config.param" to group by a config parameter
             - "summary.metric" to group by a summary metric
         order (LList[OrderBy]): A list of `OrderBy` objects to order by.
         custom_run_colors (LList[OrderBy]): A dictionary mapping run IDs to colors.
+
+    Example:
+        ```python
+        # Using string filters
+        wr.Runset(
+            entity="my-entity",
+            project="my-project",
+            filters="Config('learning_rate') = 0.001 and State = 'finished'"
+        )
+
+        # Using FilterExpr list
+        wr.Runset(
+            entity="my-entity",
+            project="my-project",
+            filters=[expr.Config("learning_rate") == 0.001]
+        )
+        ```
     """
 
     entity: str = ""
     project: str = ""
     name: str = "Run set"
     query: str = ""
-    filters: Optional[str] = ""
+    filters: Union[str, LList["expr.FilterExpr"]] = ""
     groupby: LList[str] = Field(default_factory=list)
     order: LList[OrderBy] = Field(
         default_factory=lambda: [OrderBy("CreatedTimestamp", ascending=False)]
@@ -931,6 +954,22 @@ class Runset(Base):
     )
 
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
+
+    @model_validator(mode="after")
+    def convert_filterexpr_list_to_string(self):
+        """Convert FilterExpr list to string expression for internal processing."""
+        # Inline the normalization logic to avoid circular import with expr module
+        if isinstance(self.filters, list):
+            # Import locally to avoid circular import at module level
+            from ... import expr
+
+            # Convert FilterExpr list to internal Filters tree
+            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
+            # Convert Filters tree to string expression
+            filter_string = expr_parsing.filters_to_expr(filters_tree)
+            # Update the filters field
+            object.__setattr__(self, "filters", filter_string)
+        return self
 
     def _to_model(self):
         project = None

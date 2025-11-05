@@ -59,7 +59,6 @@ build-backend = "hatchling.build"
 minversion = "6.0"
 console_output_style = "count"
 addopts = "-vvv --cov-config=pyproject.toml --cov=wandb-workspaces --cov-report=xml --cov-report=term"
-timeout = 60
 log_format = "%(asctime)s %(levelname)s %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"
 testpaths = "tests"

@@ -3,13 +3,26 @@
 In a future version, Reports will migrate to this expression syntax.
 """
 
+import warnings
 from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
 
 from wandb_workspaces.reports.v2.internal import Filters, Key, SortKey, SortKeyKey
 from wandb_workspaces.utils.invertable_dict import InvertableDict
 
-__all__ = ["Config", "Metric", "Ordering", "Summary", "Tags"]
+__all__ = [
+    # Core classes for creating filters and orderings
+    "Config",
+    "Metric",
+    "Summary",
+    "Tags",
+    "Ordering",
+    # Filter expression type (needed for type hints)
+    "FilterExpr",
+    # Convenience conversion utilities
+    "string_to_filterexpr_list",
+    "filterexpr_list_to_string",
+]
 
 Expression = Dict[str, Any]
 
@@ -66,13 +79,27 @@ class BaseMetric:
         return FilterExpr.create("!=", self, other)
 
     def __lt__(self, other: Any) -> "FilterExpr":
-        return FilterExpr.create("<", self, other)
+        # Map < to <= for consistency with backend behavior
+        warnings.warn(
+            f"Using '<' operator with {self.__class__.__name__} is being mapped to '<=' for platform consistency. "
+            "Consider using '<=' explicitly in your filters.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return FilterExpr.create("<=", self, other)
 
     def __le__(self, other: Any) -> "FilterExpr":
         return FilterExpr.create("<=", self, other)
 
     def __gt__(self, other: Any) -> "FilterExpr":
-        return FilterExpr.create(">", self, other)
+        # Map > to >= for consistency with backend behavior
+        warnings.warn(
+            f"Using '>' operator with {self.__class__.__name__} is being mapped to '>=' for platform consistency. "
+            "Consider using '>=' explicitly in your filters.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return FilterExpr.create(">=", self, other)
 
     def __ge__(self, other: Any) -> "FilterExpr":
         return FilterExpr.create(">=", self, other)
@@ -254,6 +281,92 @@ def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
             )
         ],
     )
+
+
+def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
+    """Convert a string filter expression to a list of FilterExpr objects.
+
+    This is a convenience function that combines expr_parsing.expr_to_filters()
+    and filters_tree_to_filter_expr() to provide a direct string → FilterExpr list conversion.
+
+    Args:
+        filter_string: A Python-like filter expression string, e.g.,
+            "Config('learning_rate') = 0.001 and State = 'finished'"
+
+    Returns:
+        A list of FilterExpr objects
+
+    Example:
+        >>> filters = string_to_filterexpr_list("Config('lr') = 0.001")
+        >>> len(filters)
+        1
+        >>> filters[0].key.section
+        'config'
+    """
+    from .reports.v2 import expr_parsing
+
+    if not filter_string:
+        return []
+
+    # Convert string expression to internal Filters tree
+    filters_tree = expr_parsing.expr_to_filters(filter_string)
+    # Convert Filters tree to FilterExpr list
+    return filters_tree_to_filter_expr(filters_tree)
+
+
+def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
+    """Convert a list of FilterExpr objects to a string filter expression.
+
+    This is a convenience function that combines filter_expr_to_filters_tree()
+    and expr_parsing.filters_to_expr() to provide a direct FilterExpr list → string conversion.
+
+    Args:
+        filters: A list of FilterExpr objects
+
+    Returns:
+        A Python-like filter expression string
+
+    Example:
+        >>> from wandb_workspaces import expr
+        >>> filters = [expr.Config("learning_rate") == 0.001]
+        >>> filterexpr_list_to_string(filters)
+        'Config("learning_rate") == 0.001'
+    """
+    from .reports.v2 import expr_parsing
+
+    if not filters:
+        return ""
+
+    # Convert FilterExpr list to internal Filters tree
+    filters_tree = filter_expr_to_filters_tree(filters)
+    # Convert Filters tree to string expression
+    return expr_parsing.filters_to_expr(filters_tree)
+
+
+def normalize_filters_to_string(instance):
+    """Shared model validator that normalizes filters to string format.
+
+    Converts List[FilterExpr] → str while preserving string inputs.
+    This creates a unified internal representation across Workspaces and Reports.
+
+    Args:
+        instance: The model instance with a 'filters' attribute
+
+    Returns:
+        The instance with normalized filters
+
+    Usage:
+        @model_validator(mode="after")
+        def convert_filterexpr_list_to_string(self):
+            return normalize_filters_to_string(self)
+    """
+    if isinstance(instance.filters, list):
+        # Convert FilterExpr list to string
+        # This unifies internal representation as string
+        filter_string = filterexpr_list_to_string(instance.filters)
+        # Update the filters field
+        object.__setattr__(instance, "filters", filter_string)
+    return instance
 
 
 def _convert_fe_to_be_metric_name(name: str) -> str:

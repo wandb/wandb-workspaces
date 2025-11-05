@@ -1,6 +1,7 @@
 import ast
 import re
 import sys
+import warnings
 from typing import Any
 
 from .internal import Filters, Key
@@ -8,11 +9,19 @@ from .internal import Filters, Key
 section_map = {
     "Config": "config",
     "SummaryMetric": "summary",
+    "Summary": "summary",  # Alias for SummaryMetric
     "KeysInfo": "keys_info",
     "Tags": "tags",
     "Metric": "run",
 }
-section_map_reversed = {v: k for k, v in section_map.items()}
+# Reversed map uses SummaryMetric as canonical name for 'summary'
+section_map_reversed = {
+    "config": "Config",
+    "summary": "SummaryMetric",
+    "keys_info": "KeysInfo",
+    "tags": "Tags",
+    "run": "Metric",
+}
 
 fe_name_map = {
     "ID": "name",
@@ -52,6 +61,54 @@ def _preprocess_equality_operators(expr: str) -> str:
     return result
 
 
+def _preprocess_comparison_operators(expr: str) -> str:
+    """
+    Preprocess expression to convert '<' to '<=' and '>' to '>=' for consistency.
+    This allows users to write 'x < 5' which will be mapped to '<=' in the backend.
+
+    We need to be careful not to replace '<' or '>' in '<=', '>=', '!=', or '=='.
+    """
+    original_expr = expr
+
+    # Replace '<' with '<=' only when not already part of '<='
+    # Look ahead: not followed by =
+    expr = re.sub(r"<(?!=)", "<=", expr)
+
+    # Replace '>' with '>=' only when not already part of '>='
+    # Look ahead: not followed by =
+    expr = re.sub(r">(?!=)", ">=", expr)
+
+    # Warn if any operators were changed
+    if expr != original_expr:
+        # Check which operators were mapped
+        had_lt = bool(re.search(r"<(?!=)", original_expr))
+        had_gt = bool(re.search(r">(?!=)", original_expr))
+
+        if had_lt and had_gt:
+            warnings.warn(
+                "Filter expression contains '<' and/or '>' operators which are being mapped to '<=' and '>=' respectively for platform consistency. "
+                "Consider using '<=' and '>=' explicitly in your filters.",
+                UserWarning,
+                stacklevel=4,
+            )
+        elif had_lt:
+            warnings.warn(
+                "Filter expression contains '<' operator which is being mapped to '<=' for platform consistency. "
+                "Consider using '<=' explicitly in your filters.",
+                UserWarning,
+                stacklevel=4,
+            )
+        elif had_gt:
+            warnings.warn(
+                "Filter expression contains '>' operator which is being mapped to '>=' for platform consistency. "
+                "Consider using '>=' explicitly in your filters.",
+                UserWarning,
+                stacklevel=4,
+            )
+
+    return expr
+
+
 def expr_to_filters(expr: str) -> Filters:
     if not expr:
         filters = []
@@ -59,6 +116,9 @@ def expr_to_filters(expr: str) -> Filters:
         # Preprocess: Replace single '=' with '==' for Python AST parsing
         # But avoid replacing '==', '!=', '<=', '>='
         expr = _preprocess_equality_operators(expr)
+
+        # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
+        expr = _preprocess_comparison_operators(expr)
 
         parsed_expr = ast.parse(expr, mode="eval")
         root_filter = _parse_node(parsed_expr.body)
@@ -140,9 +200,25 @@ def _handle_comparison(node) -> Filters:
 def _handle_function_call(node) -> dict:
     if isinstance(node.func, ast.Name):
         func_name = node.func.id
-        if func_name in ["Config", "SummaryMetric", "KeysInfo", "Tags", "Metric"]:
-            if len(node.args) == 1 and isinstance(node.args[0], ast.Str):
-                arg_value = node.args[0].s
+        if func_name in [
+            "Config",
+            "SummaryMetric",
+            "Summary",
+            "KeysInfo",
+            "Tags",
+            "Metric",
+        ]:
+            if len(node.args) == 1:
+                # Handle both ast.Str (Python < 3.8) and ast.Constant (Python 3.8+)
+                arg = node.args[0]
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    arg_value = arg.value
+                elif hasattr(ast, "Str") and isinstance(arg, ast.Str):
+                    arg_value = arg.s
+                else:
+                    raise ValueError(
+                        f"Invalid arguments for {func_name}: expected string literal"
+                    )
                 return {"type": func_name, "value": arg_value}
             else:
                 raise ValueError(f"Invalid arguments for {func_name}")
@@ -154,7 +230,7 @@ def _extract_value(node) -> Any:
     if sys.version_info < (3, 8) and isinstance(node, ast.Num):
         return node.n
     if isinstance(node, ast.Constant):
-        return node.n
+        return node.value  # Use .value not .n for ast.Constant
     if isinstance(node, ast.List) or isinstance(node, ast.Tuple):
         return [_extract_value(element) for element in node.elts]
     if isinstance(node, ast.Name):
@@ -263,9 +339,23 @@ class CustomNodeVisitor(ast.NodeVisitor):
     def handle_expression(self, node):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             func_name = node.func.id
-            if func_name in ["Config", "SummaryMetric", "KeysInfo", "Tags", "Metric"]:
-                if len(node.args) == 1 and isinstance(node.args[0], ast.Str):
-                    arg_value = node.args[0].s
+            if func_name in [
+                "Config",
+                "SummaryMetric",
+                "Summary",
+                "KeysInfo",
+                "Tags",
+                "Metric",
+            ]:
+                if len(node.args) == 1:
+                    # Handle both ast.Str (Python < 3.8) and ast.Constant (Python 3.8+)
+                    arg = node.args[0]
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        arg_value = arg.value
+                    elif hasattr(ast, "Str") and isinstance(arg, ast.Str):
+                        arg_value = arg.s
+                    else:
+                        return self.get_full_expression(node)
                     return func_name, arg_value
         return self.get_full_expression(node)
 
