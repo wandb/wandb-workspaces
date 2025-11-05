@@ -1,0 +1,102 @@
+name: Auto Release on Version Change
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-version-and-release:
+    name: Detect Version Change and Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 2  # Need HEAD and HEAD~1
+          
+      - name: Check if version changed
+        id: version-check
+        run: |
+          # Function to extract version from pyproject.toml at a specific commit
+          get_version() {
+            local commit=$1
+            git show "${commit}:pyproject.toml" 2>/dev/null | \
+              grep -E '^version = ' | \
+              head -1 | \
+              sed -E 's/version = "(.*)"/\1/'
+          }
+          
+          # Get versions at HEAD and HEAD~1
+          CURRENT_VERSION=$(get_version HEAD)
+          PREVIOUS_VERSION=$(get_version HEAD~1)
+          
+          echo "Current version (HEAD): ${CURRENT_VERSION}"
+          echo "Previous version (HEAD~1): ${PREVIOUS_VERSION}"
+          
+          # Check if we could read current version
+          if [ -z "$CURRENT_VERSION" ]; then
+            echo "Could not read version from pyproject.toml at HEAD"
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if version changed
+          if [ -z "$PREVIOUS_VERSION" ]; then
+            echo "No previous commit (initial commit?), proceeding with release"
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+          elif [ "$CURRENT_VERSION" = "$PREVIOUS_VERSION" ]; then
+            echo "Version unchanged (${CURRENT_VERSION}), skipping release"
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "Version changed: ${PREVIOUS_VERSION} -> ${CURRENT_VERSION}"
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Install uv
+        if: steps.version-check.outputs.version_changed == 'true'
+        uses: astral-sh/setup-uv@5f42d5af6c403a722299fda36d451c39f302a433 # v4.1.0
+          
+      - name: Build package
+        if: steps.version-check.outputs.version_changed == 'true'
+        run: uv build
+        
+      - name: Create or update GitHub Release
+        if: steps.version-check.outputs.version_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version-check.outputs.version }}"
+          
+          # Check if release already exists
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, updating it..."
+            
+            # Upload the distribution files
+            gh release upload "$TAG" dist/*.whl dist/*.tar.gz --clobber
+            
+            # Regenerate release notes
+            echo "Regenerating release notes..."
+            gh release edit "$TAG" --generate-notes
+          else
+            echo "Creating new release $TAG..."
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              dist/*.whl \
+              dist/*.tar.gz
+          fi
+          
+      - name: Publish to PyPI
+        if: steps.version-check.outputs.version_changed == 'true'
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1
+        with:
+          print-hash: true
+
