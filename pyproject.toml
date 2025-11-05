@@ -1,6 +1,6 @@
 [project]
 name = "wandb-workspaces"
-version = "0.2.0"
+version = "0.2.1"
 description = "A library for programatically working with the Weights & Biases UI."
 authors = [{ name = "Weights & Biases", email = "support@wandb.com" }]
 requires-python = "~=3.9"
