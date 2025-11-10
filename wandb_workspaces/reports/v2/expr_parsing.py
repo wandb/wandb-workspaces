@@ -1,4 +1,5 @@
 import ast
+import re
 import sys
 from typing import Any
 
@@ -36,10 +37,29 @@ fe_name_map = {
 fe_name_map_reversed = {v: k for k, v in fe_name_map.items()}
 
 
+def _preprocess_equality_operators(expr: str) -> str:
+    """
+    Preprocess expression to convert single '=' to '==' for Python AST parsing.
+    This allows users to write 'Config("x") = 5' or 'Config("x") == 5'.
+    Both will be mapped to '=' in the backend.
+
+    We need to be careful not to replace '=' in '==', '!=', '<=', or '>='.
+    """
+    # Replace '=' with '==' only when it's not part of '==', '!=', '<=', or '>='
+    # Look behind: not preceded by !, <, >, or =
+    # Look ahead: not followed by =
+    result = re.sub(r"(?<![!<>=])=(?!=)", "==", expr)
+    return result
+
+
 def expr_to_filters(expr: str) -> Filters:
     if not expr:
         filters = []
     else:
+        # Preprocess: Replace single '=' with '==' for Python AST parsing
+        # But avoid replacing '==', '!=', '<=', '>='
+        expr = _preprocess_equality_operators(expr)
+
         parsed_expr = ast.parse(expr, mode="eval")
         root_filter = _parse_node(parsed_expr.body)
 
@@ -76,10 +96,11 @@ def _parse_node(node) -> Filters:
 
 def _map_op(op_node) -> str:
     # Map the AST operation node to a string repr
+    # Note: ast.Eq maps to "=" for backend (both "=" and "==" in expressions map to "=")
     op_map = {
         ast.Gt: ">",
         ast.Lt: "<",
-        ast.Eq: "==",
+        ast.Eq: "=",
         ast.NotEq: "!=",
         ast.GtE: ">=",
         ast.LtE: "<=",
@@ -90,10 +111,12 @@ def _map_op(op_node) -> str:
 
 
 def _handle_comparison(node) -> Filters:
+    # Map operation names to their string representation
+    # Note: "Eq" maps to "=" for backend (both "=" and "==" in expressions map to "=")
     op_map = {
         "Gt": ">",
         "Lt": "<",
-        "Eq": "==",
+        "Eq": "=",
         "NotEq": "!=",
         "GtE": ">=",
         "LtE": "<=",

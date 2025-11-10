@@ -333,14 +333,33 @@ def test_fix_panel_collisions():
             "b == 1 and c == 2",
             [
                 Filters(
-                    op="==",
+                    op="=",
                     key=Key(section="run", name="b"),
                     filters=None,
                     value=1,
                     disabled=False,
                 ),
                 Filters(
-                    op="==",
+                    op="=",
+                    key=Key(section="run", name="c"),
+                    filters=None,
+                    value=2,
+                    disabled=False,
+                ),
+            ],
+        ],
+        [
+            "b = 1 and c = 2",
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="run", name="b"),
+                    filters=None,
+                    value=1,
+                    disabled=False,
+                ),
+                Filters(
+                    op="=",
                     key=Key(section="run", name="c"),
                     filters=None,
                     value=2,
@@ -392,6 +411,30 @@ def test_fix_panel_collisions():
                     key=Key(section="config", name="a"),
                     filters=None,
                     value=1,
+                    disabled=False,
+                )
+            ],
+        ],
+        [
+            "Config('param') = 'value'",
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="config", name="param"),
+                    filters=None,
+                    value="value",
+                    disabled=False,
+                )
+            ],
+        ],
+        [
+            "SummaryMetric('accuracy') = 0.95",
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="summary", name="accuracy"),
+                    filters=None,
+                    value=0.95,
                     disabled=False,
                 )
             ],
@@ -531,27 +574,27 @@ def test_runset_project_lookup(monkeypatch):
 def test_runset_query_parameter():
     """Test that Runset query parameter is properly passed through to internal model"""
     from wandb_workspaces.reports.v2 import internal
-    
+
     # Test _to_model() - query parameter should be passed to internal model
     runset = wr.Runset(query="test-run-name")
     model = runset._to_model()
     assert model.search is not None
     assert model.search.query == "test-run-name"
-    
+
     # Test empty query string
     runset_empty = wr.Runset(query="")
     model_empty = runset_empty._to_model()
     assert model_empty.search is not None
     assert model_empty.search.query == ""
-    
+
     # Test _from_model() - query parameter should be reconstructed from internal model
     # Create a mock internal runset with search
     mock_search = internal.RunsetSearch(query="reconstructed-query")
     mock_runset = internal.Runset(name="test", search=mock_search)
-    
+
     reconstructed = wr.Runset._from_model(mock_runset)
     assert reconstructed.query == "reconstructed-query"
-    
+
     # Test _from_model() with empty search object
     mock_empty_search = internal.RunsetSearch(query="")
     mock_runset_empty_search = internal.Runset(name="test", search=mock_empty_search)
