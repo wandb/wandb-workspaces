@@ -3841,3 +3841,32 @@ def _from_color_dict(d, runsets):
             new_key = k
         d2[new_key] = v
     return d2
+
+
+# Rebuild dataclasses with forward references to resolve Pydantic type issues
+# This allows dataclasses with forward refs to be instantiated properly
+# (needed for both direct usage and test factories like polyfactory)
+def _rebuild_dataclasses_with_forward_refs():
+    """Rebuild dataclasses after all types are defined to resolve forward references."""
+    try:
+        # Import expr module so forward references to it can be resolved
+        from ... import expr  # noqa: F401
+        from pydantic.dataclasses import rebuild_dataclass
+
+        # Rebuild H1, H2, H3 which have forward refs to BlockTypes (which includes Link)
+        rebuild_dataclass(H1, force=True, raise_errors=False)
+        rebuild_dataclass(H2, force=True, raise_errors=False)
+        rebuild_dataclass(H3, force=True, raise_errors=False)
+
+        # Rebuild Runset which has forward ref to expr.FilterExpr
+        rebuild_dataclass(Runset, force=True, raise_errors=False)
+
+        # Rebuild PanelGrid which has forward refs to Runset and PanelTypes
+        rebuild_dataclass(PanelGrid, force=True, raise_errors=False)
+    except Exception:
+        # If rebuild fails, it's okay - forward references will be resolved on first use
+        pass
+
+
+# Run the rebuild when the module is imported
+_rebuild_dataclasses_with_forward_refs()
