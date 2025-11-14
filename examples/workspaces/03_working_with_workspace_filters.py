@@ -11,13 +11,14 @@ project = os.getenv("WANDB_PROJECT")
 # - Use ws.Summary() for summary values (gets converted correctly)
 # - Use ws.Metric() for run-level fields
 # - Use ws.Config() for hyperparameters
-# - Use ws.Tags() for tags
+# - Use ws.Tags() for filtering by tags (no parameter needed)
 
 # When using string expressions:
 # - Use SummaryMetric() or Summary() for summary values
 # - Use Metric() for run-level fields and logged metrics
 # - Use Config() for hyperparameters
-# - Use Tags for tag filtering
+# - Use Tags() for filtering by tags (no parameter needed)
+#   Note: Metric('tags') still works for backwards compatibility
 
 # ============================================================================
 # METHOD 1: Using FilterExpr objects
@@ -26,7 +27,7 @@ project = os.getenv("WANDB_PROJECT")
 # You can create filters using basic metrics and python expressions
 val_loss_filter = ws.Metric("val_loss") < 1
 
-# You can also reference filters as they appear in the UI, like `Name`, `Tags`, or `ID`
+# You can also reference filters as they appear in the UI, like `Name` or `ID`
 run_name_filter = ws.Metric("Name") == "smooth-star-4"
 run_id_filter = ws.Metric("ID").isin(["1mbku38n", "2u1g3j1c"])
 
@@ -34,8 +35,10 @@ run_id_filter = ws.Metric("ID").isin(["1mbku38n", "2u1g3j1c"])
 # - ws.Metric(): run-level metadata fields (Name, State, CreatedTimestamp, etc.)
 # - ws.Summary(): summary metrics (from wandb.log())
 # - ws.Config(): hyperparameters from wandb.config
+# - ws.Tags(): for filtering by tags (equivalent to ws.Metric("tags") but cleaner)
 summary_filter = ws.Summary("accuracy") > 0.95
 config_filter = ws.Config("learning_rate") == 0.001
+tags_filter = ws.Tags().isin(["experiment-1", "baseline"])
 
 # Create a workspace with FilterExpr list
 workspace = ws.Workspace(

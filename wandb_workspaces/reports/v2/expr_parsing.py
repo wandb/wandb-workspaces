@@ -140,7 +140,14 @@ def _parse_node(node) -> Filters:
             # Process the function call data
             if func_call_data:
                 section = section_map.get(func_call_data["type"], "default_section")
-                key = Key(section=section, name=func_call_data["value"])
+                name = func_call_data["value"]
+
+                # Handle Tags() which should map to section=run, name=tags
+                if func_call_data["type"] == "Tags" and name == "":
+                    section = "run"
+                    name = "tags"
+
+                key = Key(section=section, name=name)
                 # Construct the Filters object
                 op = _map_op(node.ops[0])
                 right_operand = _extract_value(node.comparators[0])
@@ -208,7 +215,10 @@ def _handle_function_call(node) -> dict:
             "Tags",
             "Metric",
         ]:
-            if len(node.args) == 1:
+            # Tags() can be called with no arguments
+            if func_name == "Tags" and len(node.args) == 0:
+                return {"type": "Tags", "value": ""}
+            elif len(node.args) == 1:
                 # Handle both ast.Str (Python < 3.8) and ast.Constant (Python 3.8+)
                 arg = node.args[0]
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
@@ -347,7 +357,10 @@ class CustomNodeVisitor(ast.NodeVisitor):
                 "Tags",
                 "Metric",
             ]:
-                if len(node.args) == 1:
+                # Tags() can be called with no arguments
+                if func_name == "Tags" and len(node.args) == 0:
+                    return func_name, ""
+                elif len(node.args) == 1:
                     # Handle both ast.Str (Python < 3.8) and ast.Constant (Python 3.8+)
                     arg = node.args[0]
                     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):

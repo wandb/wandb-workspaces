@@ -152,9 +152,15 @@ class Config(BaseMetric):
 
 @dataclass(eq=False, frozen=True)
 class Tags(BaseMetric):
-    """The values when setting `wandb.run.tags`."""
+    """The values when setting `wandb.run.tags`.
 
-    section: ClassVar[Literal["tags"]] = "tags"
+    Usage: ws.Tags().isin(['tag1', 'tag2'])
+
+    Note: Tags doesn't take a name parameter - it always refers to 'tags' in the run section.
+    """
+
+    name: str = "tags"  # Fixed name, always "tags"
+    section: ClassVar[Literal["run"]] = "run"  # Tags are in the run section
 
 
 @dataclass(eq=False, frozen=True)
@@ -172,8 +178,9 @@ METRIC_TYPE_MAP = InvertableDict(
         "run": Metric,
         "summary": Summary,
         "config": Config,
-        "tags": Tags,
         "keys_info": KeysInfo,
+        # Note: Tags is not in this map because it uses section="run"
+        # Use Tags() directly or Metric("tags") to filter by tags
     }
 )
 

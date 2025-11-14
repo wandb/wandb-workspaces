@@ -11,13 +11,14 @@ project = os.getenv("WANDB_PROJECT")
 # - Use ws.Summary() for summary values (gets converted correctly)
 # - Use ws.Metric() for run-level fields
 # - Use ws.Config() for hyperparameters
-# - Use ws.Tags() for tags
+# - Use ws.Tags() for filtering by tags (no parameter needed)
 
 # When using string expressions:
 # - Use SummaryMetric() or Summary() for summary values
 # - Use Metric() for run-level fields and logged metrics
 # - Use Config() for hyperparameters
-# - Use Tags for tag filtering
+# - Use Tags() for filtering by tags (no parameter needed)
+#   Note: Metric('tags') still works for backwards compatibility
 
 # ============================================================================
 # METHOD 1: Using FilterExpr objects
