@@ -13,9 +13,51 @@ import sys
 import warnings
 from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
+from typing import List as LList
 
-from wandb_workspaces.reports.v2.internal import Filters, Key, SortKey, SortKeyKey
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
+
 from wandb_workspaces.utils.invertable_dict import InvertableDict
+
+# Type aliases
+Ops = Literal["OR", "AND", "=", "!=", "<=", ">=", "<", ">", "IN", "NIN", "=="]
+
+
+class ReportAPIBaseModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        use_enum_values=True,
+        validate_assignment=True,
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+    )
+
+
+# Core data models for filters and sorting (hoisted from reports.v2.internal to avoid circular imports)
+class Key(ReportAPIBaseModel):
+    section: str = "summary"
+    name: str = ""
+
+
+class Filters(ReportAPIBaseModel):
+    op: Ops = "OR"
+    key: Optional[Key] = None
+    filters: Optional[LList["Filters"]] = None
+    value: Optional[Any] = None
+    disabled: Optional[bool] = None
+    current: Optional["Filters"] = None
+
+
+class SortKeyKey(ReportAPIBaseModel):
+    section: str = "run"
+    name: str = "createdAt"
+
+
+class SortKey(ReportAPIBaseModel):
+    key: SortKeyKey = Field(default_factory=SortKeyKey)
+    ascending: bool = False
+
 
 __all__ = [
     # Core classes for creating filters and orderings
@@ -26,12 +68,6 @@ __all__ = [
     "Ordering",
     # Filter expression type (needed for type hints)
     "FilterExpr",
-    # Convenience conversion utilities
-    "string_to_filterexpr_list",
-    "filterexpr_list_to_string",
-    # String parsing utilities (now exposed directly)
-    "expr_to_filters",
-    "filters_to_expr",
 ]
 
 Expression = Dict[str, Any]

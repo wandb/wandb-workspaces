@@ -7,8 +7,7 @@ from polyfactory.factories import DataclassFactory
 from polyfactory.pytest_plugin import register_fixture
 
 import wandb_workspaces.reports.v2 as wr
-from wandb_workspaces.expr import expr_to_filters
-from wandb_workspaces.reports.v2.internal import Filters, Key
+from wandb_workspaces.expr import expr_to_filters, Filters, Key
 
 T = TypeVar("T")
 
