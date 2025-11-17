@@ -465,7 +465,7 @@ def test_runset_filters_accept_filterexpr_list():
     assert "learning_rate" in runset1.filters
     assert "0.001" in runset1.filters
     # Note: "State" gets converted to "state" by the name mapping
-    assert "state" in runset1.filters.lower()
+    assert "state" in runset1.filters  # Should contain lowercase "state", not "State"
     assert "finished" in runset1.filters
 
     # Test with string (original way still works)
