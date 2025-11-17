@@ -7,7 +7,7 @@ from polyfactory.factories import DataclassFactory
 from polyfactory.pytest_plugin import register_fixture
 
 import wandb_workspaces.reports.v2 as wr
-from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+from wandb_workspaces.expr import expr_to_filters
 from wandb_workspaces.reports.v2.internal import Filters, Key
 
 T = TypeVar("T")
@@ -662,7 +662,7 @@ def test_operator_mapping_in_filterexpr():
 
 def test_string_filters_summary_alias():
     """Test that string filters work with both SummaryMetric (old) and Summary (new) aliases"""
-    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+    from wandb_workspaces.expr import expr_to_filters
 
     # Test SummaryMetric (old name)
     result_old = expr_to_filters("SummaryMetric('loss') <= 0.5")

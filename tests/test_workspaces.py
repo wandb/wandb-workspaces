@@ -213,7 +213,7 @@ def test_runset_settings_string_filters():
 
 def test_workspace_operator_mapping():
     """Test that < maps to <= and > maps to >= in workspace filters."""
-    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+    from wandb_workspaces.expr import expr_to_filters
     import wandb_workspaces.expr as expr
     import warnings
 
@@ -292,7 +292,7 @@ def test_workspace_operator_mapping():
 
 def test_workspace_string_filters_summary_alias():
     """Test that workspace string filters work with both SummaryMetric (old) and Summary (new) aliases"""
-    from wandb_workspaces.reports.v2.expr_parsing import expr_to_filters
+    from wandb_workspaces.expr import expr_to_filters
 
     # Test SummaryMetric (old name) in workspace
     settings1 = ws.RunsetSettings(filters="SummaryMetric('loss') <= 0.5")

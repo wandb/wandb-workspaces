@@ -45,10 +45,8 @@ import wandb
 from pydantic import ConfigDict, Field, model_validator, validator
 from pydantic.dataclasses import dataclass
 
-from . import expr_parsing, gql, internal
-
-if TYPE_CHECKING:
-    from ... import expr
+from . import gql, internal
+from ... import expr
 from .internal import (
     CodeCompareDiff,
     FontSize,
@@ -960,13 +958,10 @@ class Runset(Base):
         """Convert FilterExpr list to string expression for internal processing."""
         # Inline the normalization logic to avoid circular import with expr module
         if isinstance(self.filters, list):
-            # Import locally to avoid circular import at module level
-            from ... import expr
-
             # Convert FilterExpr list to internal Filters tree
             filters_tree = expr.filter_expr_to_filters_tree(self.filters)
             # Convert Filters tree to string expression
-            filter_string = expr_parsing.filters_to_expr(filters_tree)
+            filter_string = expr.filters_to_expr(filters_tree)
             # Update the filters field
             object.__setattr__(self, "filters", filter_string)
         return self
@@ -999,8 +994,8 @@ class Runset(Base):
             project=project,
             name=self.name,
             search=internal.RunsetSearch(query=self.query),
-            filters=expr_parsing.expr_to_filters(self.filters),
-            grouping=[expr_parsing.groupby_str_to_key(g) for g in self.groupby],
+            filters=expr.expr_to_filters(self.filters),
+            grouping=[expr.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
         )
         obj.id = self._id
@@ -1023,8 +1018,8 @@ class Runset(Base):
             project=project,
             name=model.name,
             query=model.search.query if model.search else "",
-            filters=expr_parsing.filters_to_expr(model.filters),
-            groupby=[expr_parsing.to_frontend_name(k.name) for k in model.grouping],
+            filters=expr.filters_to_expr(model.filters),
+            groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
         )
         obj._id = model.id
@@ -3629,10 +3624,10 @@ def _metric_to_backend(x: Optional[MetricType]):
     if x is None:
         return x
     if isinstance(x, str):  # Same as Metric
-        return expr_parsing.to_backend_name(x)
+        return expr.to_backend_name(x)
     if isinstance(x, Metric):
         name = x.name
-        return expr_parsing.to_backend_name(name)
+        return expr.to_backend_name(name)
     if isinstance(x, Config):
         name, *rest = x.name.split(".")
         rest = "." + ".".join(rest) if rest else ""
@@ -3656,7 +3651,7 @@ def _metric_to_frontend(x: str):
             name = x.replace(k, "")
             return SummaryMetric(name)
 
-    name = expr_parsing.to_frontend_name(x)
+    name = expr.to_frontend_name(x)
     return Metric(name)
 
 
@@ -3669,7 +3664,7 @@ def _metric_to_backend_pc(x: Optional[SummaryOrConfigOnlyMetric]):
         # strip the prefix and map the name to its backend representation.
         if x.startswith("run."):
             name = x.split("run.", 1)[1]
-            backend_name = expr_parsing.to_backend_name(name)
+            backend_name = expr.to_backend_name(name)
             return f"run:{backend_name}"
         # Otherwise, assume summary metric (legacy behaviour)
         name = x
@@ -3677,7 +3672,7 @@ def _metric_to_backend_pc(x: Optional[SummaryOrConfigOnlyMetric]):
     if isinstance(x, Metric):
         # Run-level metric – convert to backend name (handles FE ⇄ BE mapping, e.g. "CreatedTimestamp" → "createdAt")
         name = x.name
-        backend_name = expr_parsing.to_backend_name(name)
+        backend_name = expr.to_backend_name(name)
         return f"run:{backend_name}"
     if isinstance(x, Config):
         name, *rest = x.name.split(".")
@@ -3708,10 +3703,10 @@ def _metric_to_frontend_pc(x: str):
         return SummaryMetric(name)
     if x.startswith("run:"):
         name = x.replace("run:", "")
-        backend_name = expr_parsing.to_frontend_name(name)
+        backend_name = expr.to_frontend_name(name)
         return Metric(backend_name)
 
-    name = expr_parsing.to_frontend_name(x)
+    name = expr.to_frontend_name(x)
     return Metric(name)
 
 
@@ -3841,32 +3836,3 @@ def _from_color_dict(d, runsets):
             new_key = k
         d2[new_key] = v
     return d2
-
-
-# Rebuild dataclasses with forward references to resolve Pydantic type issues
-# This allows dataclasses with forward refs to be instantiated properly
-# (needed for both direct usage and test factories like polyfactory)
-def _rebuild_dataclasses_with_forward_refs():
-    """Rebuild dataclasses after all types are defined to resolve forward references."""
-    try:
-        # Import expr module so forward references to it can be resolved
-        from ... import expr  # noqa: F401
-        from pydantic.dataclasses import rebuild_dataclass
-
-        # Rebuild H1, H2, H3 which have forward refs to BlockTypes (which includes Link)
-        rebuild_dataclass(H1, force=True, raise_errors=False)
-        rebuild_dataclass(H2, force=True, raise_errors=False)
-        rebuild_dataclass(H3, force=True, raise_errors=False)
-
-        # Rebuild Runset which has forward ref to expr.FilterExpr
-        rebuild_dataclass(Runset, force=True, raise_errors=False)
-
-        # Rebuild PanelGrid which has forward refs to Runset and PanelTypes
-        rebuild_dataclass(PanelGrid, force=True, raise_errors=False)
-    except Exception:
-        # If rebuild fails, it's okay - forward references will be resolved on first use
-        pass
-
-
-# Run the rebuild when the module is imported
-_rebuild_dataclasses_with_forward_refs()

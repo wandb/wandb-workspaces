@@ -7,32 +7,17 @@ import wandb_workspaces.workspaces as ws
 entity = os.getenv("WANDB_ENTITY")
 project = os.getenv("WANDB_PROJECT")
 
-# When using FilterExpr objects:
-# - Use ws.Summary() for summary values (gets converted correctly)
-# - Use ws.Metric() for run-level fields
-# - Use ws.Config() for hyperparameters
-# - Use ws.Tags() for filtering by tags (no parameter needed)
-
-# When using string expressions:
-# - Use SummaryMetric() or Summary() for summary values
-# - Use Metric() for run-level fields and logged metrics
-# - Use Config() for hyperparameters
-# - Use Tags() for filtering by tags (no parameter needed)
-#   Note: Metric('tags') still works for backwards compatibility
+# Different field types:
+# - Metrics: run-level metadata fields (Name, State, CreatedTimestamp, etc.)
+# - Summary Metrics: summary metrics (from wandb.log())
+# - Config: hyperparameters from wandb.config
+# - Tags: Passed in via the tags param during init
 
 # ============================================================================
 # METHOD 1: Using FilterExpr objects
 # ============================================================================
-
-# Different metric types:
-# - ws.Metric(): run-level metadata fields (Name, State, CreatedTimestamp, etc.)
-# - ws.Summary(): summary metrics (from wandb.log())
-# - ws.Config(): hyperparameters from wandb.config
-
-# Examples of individual filters:
-finished_runs = ws.Metric("State") == "finished"
-high_accuracy = ws.Summary("accuracy") > 0.95
-specific_learning_rate = ws.Config("learning_rate") == 0.001
+# Use the following accordingly: ws.Metric('example'), ws.Summary('example'),
+# ws.Config('example'), ws.Tags() (no parameter needed)
 
 # 1. Create a report with FilterExpr list
 report_with_filterexpr = wr.Report(
@@ -83,6 +68,9 @@ report_with_filterexpr.save()
 # ============================================================================
 # METHOD 2: Using string expressions
 # ============================================================================
+# Use the following accordingly: Metric('example'), Summary('example'),
+# Config('example'), Tags() (no parameter needed)
+# Note: Metric('tags') still works for backwards compatibility
 
 report_with_string_filters = wr.Report(
     entity=entity,
@@ -96,9 +84,9 @@ report_with_string_filters = wr.Report(
                 wr.Runset(
                     entity=entity,
                     project=project,
-                    # String filters use "and" to combine conditions
+                    # String filters use "and" to combine conditions as there is no "or" available
                     # Supported operators: ==, =, !=, <, <=, >, >=
-                    # Note: < maps to <=, > maps to >=, and = maps to == internally
+                    # Note: < maps to <=, > maps to >=, and = maps to == internally to match existing UX behavior
                     filters="SummaryMetric('loss') < 0.1 and Metric('State') == 'finished'",
                 )
             ],
@@ -126,7 +114,6 @@ report_with_string_filters.save()
 # ============================================================================
 # METHOD 3: Comparing multiple runsets with different filters
 # ============================================================================
-
 report_with_comparison = wr.Report(
     entity=entity,
     project=project,

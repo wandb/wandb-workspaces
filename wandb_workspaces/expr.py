@@ -1,8 +1,15 @@
 """This is a rewrite of the expression system currently used in Reports.
 
 In a future version, Reports will migrate to this expression syntax.
+
+This module provides both:
+1. Object-oriented filter API (FilterExpr, Config, Metric, etc.)
+2. String expression parsing for Python-like filter syntax
 """
 
+import ast
+import re
+import sys
 import warnings
 from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
@@ -22,11 +29,33 @@ __all__ = [
     # Convenience conversion utilities
     "string_to_filterexpr_list",
     "filterexpr_list_to_string",
+    # String parsing utilities (now exposed directly)
+    "expr_to_filters",
+    "filters_to_expr",
 ]
 
 Expression = Dict[str, Any]
 
 
+# Mapping section/function names between string expressions and internal format
+section_map = {
+    "Config": "config",
+    "SummaryMetric": "summary",
+    "Summary": "summary",  # Alias for SummaryMetric
+    "KeysInfo": "keys_info",
+    "Tags": "tags",
+    "Metric": "run",
+}
+# Reversed map uses SummaryMetric as canonical name for 'summary'
+section_map_reversed = {
+    "config": "Config",
+    "summary": "SummaryMetric",
+    "keys_info": "KeysInfo",
+    "tags": "Tags",
+    "run": "Metric",
+}
+
+# Mapping metric names between frontend (user-facing) and backend (internal) format
 FE_METRIC_NAME_MAP = InvertableDict(
     {
         "ID": "name",
@@ -49,6 +78,10 @@ FE_METRIC_NAME_MAP = InvertableDict(
     }
 )
 
+# Legacy name mappings (kept for compatibility)
+fe_name_map = dict(FE_METRIC_NAME_MAP)
+fe_name_map_reversed = {v: k for k, v in fe_name_map.items()}
+
 
 # Mapping custom operators to Python operators
 OPERATOR_MAP = InvertableDict(
@@ -65,6 +98,424 @@ OPERATOR_MAP = InvertableDict(
         "NIN": "not in",
     }
 )
+
+
+# ============================================================================
+# String Expression Parsing Functions
+# ============================================================================
+
+
+def _preprocess_equality_operators(expr: str) -> str:
+    """
+    Preprocess expression to convert single '=' to '==' for Python AST parsing.
+    This allows users to write 'Config("x") = 5' or 'Config("x") == 5'.
+    Both will be mapped to '=' in the backend.
+
+    We need to be careful not to replace '=' in '==', '!=', '<=', or '>='.
+    """
+    # Replace '=' with '==' only when it's not part of '==', '!=', '<=', or '>='
+    # Look behind: not preceded by !, <, >, or =
+    # Look ahead: not followed by =
+    result = re.sub(r"(?<![!<>=])=(?!=)", "==", expr)
+    return result
+
+
+def _preprocess_comparison_operators(expr: str) -> str:
+    """
+    Preprocess expression to convert '<' to '<=' and '>' to '>=' for consistency.
+    This allows users to write 'x < 5' which will be mapped to '<=' in the backend.
+
+    We need to be careful not to replace '<' or '>' in '<=', '>=', '!=', or '=='.
+    """
+    original_expr = expr
+
+    # Replace '<' with '<=' only when not already part of '<='
+    # Look ahead: not followed by =
+    expr = re.sub(r"<(?!=)", "<=", expr)
+
+    # Replace '>' with '>=' only when not already part of '>='
+    # Look ahead: not followed by =
+    expr = re.sub(r">(?!=)", ">=", expr)
+
+    # Warn if any operators were changed
+    if expr != original_expr:
+        # Check which operators were mapped
+        had_lt = bool(re.search(r"<(?!=)", original_expr))
+        had_gt = bool(re.search(r">(?!=)", original_expr))
+
+        if had_lt and had_gt:
+            warnings.warn(
+                "Filter expression contains '<' and/or '>' operators which are being mapped to '<=' and '>=' respectively for platform consistency. "
+                "Consider using '<=' and '>=' explicitly in your filters.",
+                UserWarning,
+                stacklevel=4,
+            )
+        elif had_lt:
+            warnings.warn(
+                "Filter expression contains '<' operator which is being mapped to '<=' for platform consistency. "
+                "Consider using '<=' explicitly in your filters.",
+                UserWarning,
+                stacklevel=4,
+            )
+        elif had_gt:
+            warnings.warn(
+                "Filter expression contains '>' operator which is being mapped to '>=' for platform consistency. "
+                "Consider using '>=' explicitly in your filters.",
+                UserWarning,
+                stacklevel=4,
+            )
+
+    return expr
+
+
+def expr_to_filters(expr: str) -> Filters:
+    """Parse a string filter expression into an internal Filters tree.
+
+    Args:
+        expr: A Python-like filter expression string, e.g.,
+            "Config('learning_rate') == 0.001 and State == 'finished'"
+
+    Returns:
+        An internal Filters tree structure
+    """
+    if not expr:
+        filters = []
+    else:
+        # Preprocess: Replace single '=' with '==' for Python AST parsing
+        # But avoid replacing '==', '!=', '<=', '>='
+        expr = _preprocess_equality_operators(expr)
+
+        # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
+        expr = _preprocess_comparison_operators(expr)
+
+        parsed_expr = ast.parse(expr, mode="eval")
+        root_filter = _parse_node(parsed_expr.body)
+
+        # If the root operation is an AND, unpack its child filters
+        if root_filter.op == "AND" and root_filter.filters:
+            filters = root_filter.filters
+        else:
+            filters = [root_filter]
+
+    return Filters(op="OR", filters=[Filters(op="AND", filters=filters)])
+
+
+def _parse_node(node) -> Filters:
+    if isinstance(node, ast.Compare):
+        # Check if left side is a function call
+        if isinstance(node.left, ast.Call):
+            func_call_data = _handle_function_call(node.left)
+            # Process the function call data
+            if func_call_data:
+                section = section_map.get(func_call_data["type"], "default_section")
+                name = func_call_data["value"]
+
+                # Handle Tags() which should map to section=run, name=tags
+                if func_call_data["type"] == "Tags" and name == "":
+                    section = "run"
+                    name = "tags"
+
+                key = Key(section=section, name=name)
+                # Construct the Filters object
+                op = _map_op(node.ops[0])
+                right_operand = _extract_value(node.comparators[0])
+                return Filters(op=op, key=key, value=right_operand, disabled=False)
+            # If func_call_data is falsy, fall back to standard comparison handling
+            return _handle_comparison(node)
+        else:
+            # Handle other cases, e.g., when left side is not a function call
+            return _handle_comparison(node)
+    elif isinstance(node, ast.BoolOp):
+        return _handle_logical_op(node)
+    else:
+        raise ValueError(f"Unsupported expression type: {type(node)}")
+
+
+def _map_op(op_node) -> str:
+    # Map the AST operation node to a string repr
+    # Note: ast.Eq maps to "=" for backend (both "=" and "==" in expressions map to "=")
+    op_map = {
+        ast.Gt: ">",
+        ast.Lt: "<",
+        ast.Eq: "=",
+        ast.NotEq: "!=",
+        ast.GtE: ">=",
+        ast.LtE: "<=",
+        ast.In: "IN",
+        ast.NotIn: "NIN",
+    }
+    return op_map[type(op_node)]
+
+
+def _handle_comparison(node) -> Filters:
+    # Map operation names to their string representation
+    # Note: "Eq" maps to "=" for backend (both "=" and "==" in expressions map to "=")
+    op_map = {
+        "Gt": ">",
+        "Lt": "<",
+        "Eq": "=",
+        "NotEq": "!=",
+        "GtE": ">=",
+        "LtE": "<=",
+        "In": "IN",
+        "NotIn": "NIN",
+    }
+
+    left_operand = node.left.id if isinstance(node.left, ast.Name) else None
+    left_operand_mapped = to_frontend_name(left_operand)
+    right_operand = _extract_value(node.comparators[0])
+    operation = type(node.ops[0]).__name__
+
+    return Filters(
+        op=op_map.get(operation),
+        key=_server_path_to_key(left_operand) if left_operand_mapped else None,
+        value=right_operand,
+        disabled=False,
+    )
+
+
+def _handle_function_call(node) -> dict:
+    if isinstance(node.func, ast.Name):
+        func_name = node.func.id
+        if func_name in [
+            "Config",
+            "SummaryMetric",
+            "Summary",
+            "KeysInfo",
+            "Tags",
+            "Metric",
+        ]:
+            # Tags() can be called with no arguments
+            if func_name == "Tags" and len(node.args) == 0:
+                return {"type": "Tags", "value": ""}
+            elif len(node.args) == 1:
+                # Handle both ast.Str (Python < 3.8) and ast.Constant (Python 3.8+)
+                arg = node.args[0]
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    arg_value = arg.value
+                elif hasattr(ast, "Str") and isinstance(arg, ast.Str):
+                    arg_value = arg.s
+                else:
+                    raise ValueError(
+                        f"Invalid arguments for {func_name}: expected string literal"
+                    )
+                return {"type": func_name, "value": arg_value}
+            else:
+                raise ValueError(f"Invalid arguments for {func_name}")
+        else:
+            raise ValueError(f"Unsupported function name: {func_name}")
+    else:
+        raise ValueError("Unsupported function call")
+
+
+def _extract_value(node) -> Any:
+    if sys.version_info < (3, 8) and isinstance(node, ast.Num):
+        return node.n
+    if isinstance(node, ast.Constant):
+        return node.value  # Use .value not .n for ast.Constant
+    if isinstance(node, ast.List) or isinstance(node, ast.Tuple):
+        return [_extract_value(element) for element in node.elts]
+    if isinstance(node, ast.Name):
+        return node.id
+    raise ValueError(f"Unsupported value type: {type(node)}")
+
+
+def _handle_logical_op(node) -> Filters:
+    op = "AND" if isinstance(node.op, ast.And) else "OR"
+    filters = [_parse_node(n) for n in node.values]
+
+    return Filters(op=op, filters=filters)
+
+
+def filters_to_expr(filter_obj: Any, is_root=True) -> str:
+    """Convert an internal Filters tree back to a string expression.
+
+    Args:
+        filter_obj: An internal Filters tree structure
+        is_root: Whether this is the root of the tree (used internally)
+
+    Returns:
+        A Python-like filter expression string
+    """
+    op_map = {
+        ">": ">",
+        "<": "<",
+        "=": "==",
+        "==": "==",
+        "!=": "!=",
+        ">=": ">=",
+        "<=": "<=",
+        "IN": "in",
+        "NIN": "not in",
+        "AND": "and",
+        "OR": "or",
+    }
+
+    def _convert_filter(filter: Any, is_root: bool) -> str:
+        if hasattr(filter, "filters") and filter.filters is not None:
+            sub_expressions = [
+                _convert_filter(f, False)
+                for f in filter.filters
+                if f.filters is not None or (f.key and f.key.name)
+            ]
+            if not sub_expressions:
+                return ""
+
+            joint = " and " if filter.op == "AND" else " or "
+            expr = joint.join(sub_expressions)
+            return f"({expr})" if not is_root and sub_expressions else expr
+        else:
+            if not filter.key or not filter.key.name:
+                # Skip filters with empty key names
+                return ""
+
+            key_name = filter.key.name
+            section = filter.key.section
+
+            # Prepend the function name if the section matches
+            if section in section_map_reversed:
+                function_name = section_map_reversed[section]
+                key_name = f'{function_name}("{key_name}")'
+
+            value = filter.value
+            if value is None:
+                value = "None"
+            elif isinstance(value, list):
+                value = f"[{', '.join(map(str, value))}]"
+            elif isinstance(value, str):
+                value = f"'{value}'"
+
+            return f"{key_name} {op_map[filter.op]} {value}"
+
+    return _convert_filter(filter_obj, is_root)
+
+
+def _key_to_server_path(key: Key):
+    name = key.name
+    section = key.section
+    if section == "config":
+        return f"config.{name}"
+    elif section == "summary":
+        return f"summary_metrics.{name}"
+    elif section == "keys_info":
+        return f"keys_info.keys.{name}"
+    elif section == "tags":
+        return f"tags.{name}"
+    elif section == "runs":
+        return name
+    raise ValueError(f"Invalid key ({key})")
+
+
+def _server_path_to_key(path):
+    if path.startswith("config."):
+        return Key(section="config", name=path.split("config.", 1)[1])
+    elif path.startswith("summary_metrics."):
+        return Key(section="summary", name=path.split("summary_metrics.", 1)[1])
+    elif path.startswith("keys_info.keys."):
+        return Key(section="keys_info", name=path.split("keys_info.keys.", 1)[1])
+    elif path.startswith("tags."):
+        return Key(section="tags", name=path.split("tags.", 1)[1])
+    else:
+        return Key(section="run", name=path)
+
+
+class CustomNodeVisitor(ast.NodeVisitor):
+    def visit_Compare(self, node):  # noqa: N802
+        left = self.handle_expression(node.left)
+        print(f"Expression type: {left}")
+        # Continue to handle the comparison operators and right side as needed
+        self.generic_visit(node)
+
+    def handle_expression(self, node):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            func_name = node.func.id
+            if func_name in [
+                "Config",
+                "SummaryMetric",
+                "Summary",
+                "KeysInfo",
+                "Tags",
+                "Metric",
+            ]:
+                # Tags() can be called with no arguments
+                if func_name == "Tags" and len(node.args) == 0:
+                    return func_name, ""
+                elif len(node.args) == 1:
+                    # Handle both ast.Str (Python < 3.8) and ast.Constant (Python 3.8+)
+                    arg = node.args[0]
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        arg_value = arg.value
+                    elif hasattr(ast, "Str") and isinstance(arg, ast.Str):
+                        arg_value = arg.s
+                    else:
+                        return self.get_full_expression(node)
+                    return func_name, arg_value
+        return self.get_full_expression(node)
+
+    def get_full_expression(self, node):
+        if isinstance(node, ast.Attribute):
+            return self.get_full_expression(node.value) + "." + node.attr
+        elif isinstance(node, ast.Name):
+            return node.id
+        else:
+            return "ArbitraryExpression"
+
+
+def to_frontend_name(name):
+    return fe_name_map_reversed.get(name, name)
+
+
+def to_backend_name(name):
+    return fe_name_map.get(name, name)
+
+
+def groupby_str_to_key(group_str: str) -> Key:
+    """
+    Converts a groupby string into an internal Key object.
+
+    If the input string is in the form "section.metric", it splits it into section and metric.
+    Otherwise, it defaults the section to "run".
+
+    To simplify usage, if the section is "config", this function ensures that the backend key
+    ends with ".value" (unless already provided).
+
+    Examples:
+        "group"              -> Key(section="run", name=to_backend_name("group"))
+        "run.group"          -> Key(section="run", name=to_backend_name("group"))
+        "config.param"       -> Key(section="config", name=to_backend_name("param") + ".value")
+        "config.param.value" -> Key(section="config", name=to_backend_name("param.value"))
+        "config.nested.x"    -> Key(section="config", name=to_backend_name("nested.value.x"))
+        "summary.metric"     -> Key(section="summary", name=to_backend_name("metric"))
+    """
+    # Split once to separate the leading section (e.g. "config") from the rest of the path
+    parts = group_str.split(".", 1)
+
+    if len(parts) == 2:
+        section, key_name = parts
+    else:
+        section, key_name = "run", parts[0]
+
+    # Convert to backend name first in case the user passed a frontend alias
+    key_name = to_backend_name(key_name)
+
+    # Special-case: config parameters require the token ".value" **after the first segment**
+    # so that, e.g.  "config.nested.x" -> "config.nested.value.x"
+    # The existing logic incorrectly appended the suffix resulting in "nested.x.value".
+    # We replicate the behaviour used elsewhere in the codebase (see _metric_to_backend).
+    if section == "config":
+        segments = key_name.split(".")
+
+        # If the path already contains "value" as the second segment, keep as-is.
+        if not (len(segments) >= 2 and segments[1] == "value"):
+            first, *rest = segments
+            key_name = first + ".value" + ("." + ".".join(rest) if rest else "")
+
+    return Key(section=section, name=key_name)
+
+
+# ============================================================================
+# Object-Oriented Filter API
+# ============================================================================
 
 
 @dataclass(eq=False, frozen=True)
@@ -293,7 +744,7 @@ def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
 def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
     """Convert a string filter expression to a list of FilterExpr objects.
 
-    This is a convenience function that combines expr_parsing.expr_to_filters()
+    This is a convenience function that combines expr_to_filters()
     and filters_tree_to_filter_expr() to provide a direct string → FilterExpr list conversion.
 
     Args:
@@ -310,13 +761,11 @@ def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
         >>> filters[0].key.section
         'config'
     """
-    from .reports.v2 import expr_parsing
-
     if not filter_string:
         return []
 
     # Convert string expression to internal Filters tree
-    filters_tree = expr_parsing.expr_to_filters(filter_string)
+    filters_tree = expr_to_filters(filter_string)
     # Convert Filters tree to FilterExpr list
     return filters_tree_to_filter_expr(filters_tree)
 
@@ -325,7 +774,7 @@ def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
     """Convert a list of FilterExpr objects to a string filter expression.
 
     This is a convenience function that combines filter_expr_to_filters_tree()
-    and expr_parsing.filters_to_expr() to provide a direct FilterExpr list → string conversion.
+    and filters_to_expr() to provide a direct FilterExpr list → string conversion.
 
     Args:
         filters: A list of FilterExpr objects
@@ -339,15 +788,13 @@ def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
         >>> filterexpr_list_to_string(filters)
         'Config("learning_rate") == 0.001'
     """
-    from .reports.v2 import expr_parsing
-
     if not filters:
         return ""
 
     # Convert FilterExpr list to internal Filters tree
     filters_tree = filter_expr_to_filters_tree(filters)
     # Convert Filters tree to string expression
-    return expr_parsing.filters_to_expr(filters_tree)
+    return filters_to_expr(filters_tree)
 
 
 def normalize_filters_to_string(instance):

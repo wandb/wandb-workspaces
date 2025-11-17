@@ -40,7 +40,6 @@ from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
-from ..reports.v2 import expr_parsing
 from . import internal
 
 __all__ = [
@@ -411,12 +410,10 @@ class RunsetSettings(Base):
         # Inline the normalization logic to avoid circular import with expr module
         if isinstance(self.filters, list):
             # Import locally to avoid circular import at module level
-            from ..reports.v2 import expr_parsing
-
             # Convert FilterExpr list to internal Filters tree
             filters_tree = expr.filter_expr_to_filters_tree(self.filters)
             # Convert Filters tree to string expression
-            filter_string = expr_parsing.filters_to_expr(filters_tree)
+            filter_string = expr.filters_to_expr(filters_tree)
             # Update the filters field
             object.__setattr__(self, "filters", filter_string)
         return self
@@ -576,9 +573,7 @@ class Workspace(Base):
             runset_settings=RunsetSettings(
                 query=model.spec.section.run_sets[0].search.query,
                 regex_query=regex_query,
-                filters=expr_parsing.filters_to_expr(
-                    model.spec.section.run_sets[0].filters
-                ),
+                filters=expr.filters_to_expr(model.spec.section.run_sets[0].filters),
                 groupby=[
                     expr.BaseMetric.from_key(v)
                     for v in model.spec.section.run_sets[0].grouping
@@ -677,7 +672,7 @@ class Workspace(Base):
                                 query=self.runset_settings.query,
                                 is_regex=is_regex,
                             ),
-                            filters=expr_parsing.expr_to_filters(
+                            filters=expr.expr_to_filters(
                                 self.runset_settings.filters  # type: ignore[arg-type]  # validator ensures this is always str
                             ),
                             grouping=[g.to_key() for g in self.runset_settings.groupby],
