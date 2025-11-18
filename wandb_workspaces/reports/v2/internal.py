@@ -25,6 +25,8 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 
+from ...expr import Filters, Key, SortKey, SortKeyKey
+
 
 def _generate_name(length: int = 12) -> str:
     """Generate a random name.
@@ -321,30 +323,6 @@ class RunFeed(ReportAPIBaseModel):
     column_order: LList[str] = Field(default_factory=list)
     page_size: int = 10
     only_show_selected: bool = False
-
-
-class Key(ReportAPIBaseModel):
-    section: str = "summary"
-    name: str = ""
-
-
-class Filters(ReportAPIBaseModel):
-    op: Ops = "OR"
-    key: Optional[Key] = None
-    filters: Optional[LList["Filters"]] = None
-    value: Optional[Any] = None
-    disabled: Optional[bool] = None
-    current: Optional["Filters"] = None
-
-
-class SortKeyKey(ReportAPIBaseModel):
-    section: str = "run"
-    name: str = "createdAt"
-
-
-class SortKey(ReportAPIBaseModel):
-    key: SortKeyKey = Field(default_factory=SortKeyKey)
-    ascending: bool = False
 
 
 class Sort(ReportAPIBaseModel):

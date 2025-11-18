@@ -7,16 +7,20 @@ import wandb_workspaces.workspaces as ws
 entity = os.getenv("WANDB_ENTITY")
 project = os.getenv("WANDB_PROJECT")
 
-# 1a. You can create filters using basic metrics and python expressions
-val_loss_filter = ws.Metric("val_loss") < 1
+# Different field types:
+# - Metrics: run-level metadata fields (Name, State, CreatedTimestamp, etc.)
+# - Summary Metrics: summary metrics (from wandb.log())
+# - Config: hyperparameters from wandb.config
+# - Tags: Passed in via the tags param during init
 
-# 1b. You can also reference filters as they appear in the UI, like `Name`, `Tags`, or `ID`
-run_name_filter = ws.Metric("Name") == "smooth-star-4"
-run_id_filter = ws.Metric("ID").isin(["1mbku38n", "2u1g3j1c"])
+# ============================================================================
+# METHOD 1: Using FilterExpr objects
+# ============================================================================
+# Use the following accordingly: ws.Metric('example'), ws.Summary('example'),
+# ws.Config('example'), ws.Tags() (no parameter needed)
 
-# 2. Create a workspace with filters
 workspace = ws.Workspace(
-    name="An example workspace using filters",
+    name="Example workspace using FilterExpr filters",
     entity=entity,
     project=project,
     sections=[
@@ -32,10 +36,41 @@ workspace = ws.Workspace(
     runset_settings=ws.RunsetSettings(
         # Passing in a list of filter expressions "AND"s them together.
         filters=[
-            ws.Metric("Name") == "smooth-star-4",
-            ws.Metric("ID").isin(["1mbku38n", "2u1g3j1c"]),
+            ws.Summary("accuracy") > 0.95,
+            ws.Config("learning_rate") == 0.001,
+            ws.Metric("State") == "finished",
         ]
     ),
 )
 
 workspace.save()
+
+# ============================================================================
+# METHOD 2: Using string expressions
+# ============================================================================
+# Use the following accordingly: Metric('example'), Summary('example'),
+# Config('example'), Tags() (no parameter needed)
+# Note: Metric('tags') still works for backwards compatibility
+
+workspace_with_string_filters = ws.Workspace(
+    name="Example workspace using string filters",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Best Runs",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # String filters use "and" to combine conditions as there is no "or" available
+        # Supported operators: ==, =, !=, <, <=, >, >=
+        # Note: < maps to <=, > maps to >=, and = maps to == internally due to match existing UX behavior
+        filters="SummaryMetric('accuracy') > 0.95 and Config('learning_rate') = 0.001 and Metric('State') == 'finished'"
+    ),
+)
+
+workspace_with_string_filters.save()

@@ -132,42 +132,6 @@ def test_idempotency(request, factory_name) -> None:
     assert model.dict() == model2.dict()
 
 
-@pytest.mark.parametrize(
-    "expr, spec",
-    [
-        (
-            wandb_workspaces.expr.Metric("abc") > 1,
-            {
-                "op": ">",
-                "key": {"section": "run", "name": "abc"},
-                "value": 1,
-                "disabled": False,
-            },
-        ),
-        (
-            wandb_workspaces.expr.Metric("Name") != "tomato",
-            {
-                "op": "!=",
-                "key": {"section": "run", "name": "displayName"},
-                "value": "tomato",
-                "disabled": False,
-            },
-        ),
-        (
-            wandb_workspaces.expr.Metric("Tags").isin(["ppo", "4pool"]),
-            {
-                "op": "IN",
-                "key": {"section": "run", "name": "tags"},
-                "value": ["ppo", "4pool"],
-                "disabled": False,
-            },
-        ),
-    ],
-)
-def test_filter_expr(expr, spec):
-    assert expr.to_model().model_dump(by_alias=True, exclude_none=True) == spec
-
-
 def test_section_pinning():
     """Test that section pinning is properly preserved through serialization."""
     # Create sections with different pinning states

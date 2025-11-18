@@ -29,7 +29,7 @@ report.save()
 import base64
 import os
 from datetime import datetime
-from typing import Dict, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterable, Optional, Tuple, Union
 from typing import List as LList
 
 from annotated_types import Annotated, Ge, Le
@@ -42,10 +42,11 @@ except ImportError:
 from urllib.parse import urlparse, urlunparse
 
 import wandb
-from pydantic import ConfigDict, Field, validator
+from pydantic import ConfigDict, Field, model_validator, validator
 from pydantic.dataclasses import dataclass
 
-from . import expr_parsing, gql, internal
+from . import gql, internal
+from ... import expr
 from .internal import (
     CodeCompareDiff,
     FontSize,
@@ -906,20 +907,40 @@ class Runset(Base):
         project (str): The name of the project were the runs are stored.
         name (str): The name of the run set. Set to `Run set` by default.
         query (str): A query string to filter runs.
-        filters (Optional[str]): A filter string to filter runs.
+        filters (Union[str, LList[expr.FilterExpr]]): Filters to apply to runs. Can be:
+            - A string expression: e.g., "Config('lr') = 0.001 and State = 'finished'"
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in
+            - A list of FilterExpr objects: e.g., [expr.Config('lr') == 0.001]
         groupby (LList[str]): A list of metric names to group by. Supported formats are:
             - "group" or "run.group" to group by a run attribute
             - "config.param" to group by a config parameter
             - "summary.metric" to group by a summary metric
         order (LList[OrderBy]): A list of `OrderBy` objects to order by.
         custom_run_colors (LList[OrderBy]): A dictionary mapping run IDs to colors.
+
+    Example:
+        ```python
+        # Using string filters
+        wr.Runset(
+            entity="my-entity",
+            project="my-project",
+            filters="Config('learning_rate') = 0.001 and State = 'finished'"
+        )
+
+        # Using FilterExpr list
+        wr.Runset(
+            entity="my-entity",
+            project="my-project",
+            filters=[expr.Config("learning_rate") == 0.001]
+        )
+        ```
     """
 
     entity: str = ""
     project: str = ""
     name: str = "Run set"
     query: str = ""
-    filters: Optional[str] = ""
+    filters: Union[str, LList["expr.FilterExpr"]] = ""
     groupby: LList[str] = Field(default_factory=list)
     order: LList[OrderBy] = Field(
         default_factory=lambda: [OrderBy("CreatedTimestamp", ascending=False)]
@@ -931,6 +952,19 @@ class Runset(Base):
     )
 
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
+
+    @model_validator(mode="after")
+    def convert_filterexpr_list_to_string(self):
+        """Convert FilterExpr list to string expression for internal processing."""
+        # Inline the normalization logic to avoid circular import with expr module
+        if isinstance(self.filters, list):
+            # Convert FilterExpr list to internal Filters tree
+            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
+            # Convert Filters tree to string expression
+            filter_string = expr.filters_to_expr(filters_tree)
+            # Update the filters field
+            object.__setattr__(self, "filters", filter_string)
+        return self
 
     def _to_model(self):
         project = None
@@ -960,8 +994,8 @@ class Runset(Base):
             project=project,
             name=self.name,
             search=internal.RunsetSearch(query=self.query),
-            filters=expr_parsing.expr_to_filters(self.filters),
-            grouping=[expr_parsing.groupby_str_to_key(g) for g in self.groupby],
+            filters=expr.expr_to_filters(self.filters),
+            grouping=[expr.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
         )
         obj.id = self._id
@@ -984,8 +1018,8 @@ class Runset(Base):
             project=project,
             name=model.name,
             query=model.search.query if model.search else "",
-            filters=expr_parsing.filters_to_expr(model.filters),
-            groupby=[expr_parsing.to_frontend_name(k.name) for k in model.grouping],
+            filters=expr.filters_to_expr(model.filters),
+            groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
         )
         obj._id = model.id
@@ -3590,10 +3624,10 @@ def _metric_to_backend(x: Optional[MetricType]):
     if x is None:
         return x
     if isinstance(x, str):  # Same as Metric
-        return expr_parsing.to_backend_name(x)
+        return expr.to_backend_name(x)
     if isinstance(x, Metric):
         name = x.name
-        return expr_parsing.to_backend_name(name)
+        return expr.to_backend_name(name)
     if isinstance(x, Config):
         name, *rest = x.name.split(".")
         rest = "." + ".".join(rest) if rest else ""
@@ -3617,7 +3651,7 @@ def _metric_to_frontend(x: str):
             name = x.replace(k, "")
             return SummaryMetric(name)
 
-    name = expr_parsing.to_frontend_name(x)
+    name = expr.to_frontend_name(x)
     return Metric(name)
 
 
@@ -3630,7 +3664,7 @@ def _metric_to_backend_pc(x: Optional[SummaryOrConfigOnlyMetric]):
         # strip the prefix and map the name to its backend representation.
         if x.startswith("run."):
             name = x.split("run.", 1)[1]
-            backend_name = expr_parsing.to_backend_name(name)
+            backend_name = expr.to_backend_name(name)
             return f"run:{backend_name}"
         # Otherwise, assume summary metric (legacy behaviour)
         name = x
@@ -3638,7 +3672,7 @@ def _metric_to_backend_pc(x: Optional[SummaryOrConfigOnlyMetric]):
     if isinstance(x, Metric):
         # Run-level metric – convert to backend name (handles FE ⇄ BE mapping, e.g. "CreatedTimestamp" → "createdAt")
         name = x.name
-        backend_name = expr_parsing.to_backend_name(name)
+        backend_name = expr.to_backend_name(name)
         return f"run:{backend_name}"
     if isinstance(x, Config):
         name, *rest = x.name.split(".")
@@ -3669,10 +3703,10 @@ def _metric_to_frontend_pc(x: str):
         return SummaryMetric(name)
     if x.startswith("run:"):
         name = x.replace("run:", "")
-        backend_name = expr_parsing.to_frontend_name(name)
+        backend_name = expr.to_frontend_name(name)
         return Metric(backend_name)
 
-    name = expr_parsing.to_frontend_name(x)
+    name = expr.to_frontend_name(x)
     return Metric(name)
 
 
