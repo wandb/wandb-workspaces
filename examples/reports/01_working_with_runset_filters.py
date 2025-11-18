@@ -145,3 +145,69 @@ report_with_comparison = wr.Report(
 )
 
 report_with_comparison.save()
+
+# ============================================================================
+# METHOD 4: Time-based filtering with "within last"
+# ============================================================================
+
+report_with_recent_runs = wr.Report(
+    entity=entity,
+    project=project,
+    title="Recent Activity Report",
+    blocks=[
+        wr.H1("Recent Runs (Last 7 Days)"),
+        wr.P("This report shows runs created within the last 7 days."),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    # Using FilterExpr with within_last method
+                    filters=[
+                        ws.Metric("CreatedTimestamp").within_last(7, "days"),
+                    ],
+                )
+            ],
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+                wr.ScalarChart(metric="loss", groupby_aggfunc="min"),
+            ],
+        ),
+        wr.H2("Very Recent Activity (Last 24 Hours)"),
+        wr.P(
+            "Runs from the last day using string filters (the format you'll see when loading from_url)."
+        ),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    filters="Metric('CreatedTimestamp') within_last 24 hours",
+                )
+            ],
+            panels=[
+                wr.LinePlot(x="Step", y=["loss"]),
+            ],
+        ),
+        wr.H2("Recent Successful Runs"),
+        wr.P(
+            "Combining time-based filters with other conditions using string filters."
+        ),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    # Combine within_last with other string filters
+                    filters="Metric('CreatedTimestamp') within_last 5 days and State == 'finished' and Summary('accuracy') > 0.9",
+                )
+            ],
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+                wr.ParallelCoordinatesPlot(),
+            ],
+        ),
+    ],
+)
+
+report_with_recent_runs.save()
