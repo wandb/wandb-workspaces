@@ -82,7 +82,9 @@ SmoothingType = Literal[
 CodeCompareDiff = Literal["split", "unified"]
 Range = Tuple[Optional[float], Optional[float]]
 Language = Literal["javascript", "python", "css", "json", "html", "markdown", "yaml"]
-Ops = Literal["OR", "AND", "=", "!=", "<=", ">=", "<", ">", "IN", "NIN", "=="]
+Ops = Literal[
+    "OR", "AND", "=", "!=", "<=", ">=", "<", ">", "IN", "NIN", "==", "WITHINSECONDS"
+]
 TextLikeInternal = Union["InlineLatex", "InlineLink", "Paragraph", "Text"]
 GalleryLink = Union["GalleryLinkReport", "GalleryLinkURL"]
 ReportWidth = Literal["readable", "fixed", "fluid"]

@@ -21,7 +21,9 @@ from pydantic.alias_generators import to_camel
 from wandb_workspaces.utils.invertable_dict import InvertableDict
 
 # Type aliases
-Ops = Literal["OR", "AND", "=", "!=", "<=", ">=", "<", ">", "IN", "NIN", "=="]
+Ops = Literal[
+    "OR", "AND", "=", "!=", "<=", ">=", "<", ">", "IN", "NIN", "==", "WITHINSECONDS"
+]
 
 
 class ReportAPIBaseModel(BaseModel):
@@ -132,13 +134,145 @@ OPERATOR_MAP = InvertableDict(
         ">=": ">=",
         "IN": "in",
         "NIN": "not in",
+        "WITHINSECONDS": "within_last",
     }
 )
 
 
 # ============================================================================
+# Time Conversion Utilities
+# ============================================================================
+
+
+def _validate_within_last_field(key: Key) -> None:
+    """Validate that within_last is only used with CreatedTimestamp.
+
+    Args:
+        key: The Key object representing the field
+
+    Raises:
+        ValueError: If the field is not CreatedTimestamp
+    """
+    # Check both backend and frontend names
+    is_created_timestamp = (
+        key.name == "createdAt"  # Backend name
+        or _convert_be_to_fe_metric_name(key.name)
+        == "CreatedTimestamp"  # Frontend name
+    )
+
+    if not is_created_timestamp:
+        frontend_name = _convert_be_to_fe_metric_name(key.name)
+        raise ValueError(
+            f"The 'within_last' operator is only available for CreatedTimestamp. "
+            f"Cannot use with '{frontend_name}'."
+        )
+
+
+def _convert_time_to_seconds(amount: Union[int, float], unit: str) -> int:
+    """Convert a time duration to seconds.
+
+    Args:
+        amount: The numeric amount of time
+        unit: The time unit - 'minutes', 'hours', or 'days'
+
+    Returns:
+        The duration in seconds
+
+    Raises:
+        ValueError: If the unit is not recognized
+    """
+    unit_lower = unit.lower()
+    if unit_lower in ("minute", "minutes"):
+        return int(amount * 60)
+    elif unit_lower in ("hour", "hours"):
+        return int(amount * 3600)
+    elif unit_lower in ("day", "days"):
+        return int(amount * 86400)
+    else:
+        raise ValueError(
+            f"Invalid time unit '{unit}'. Must be 'minutes', 'hours', or 'days'."
+        )
+
+
+def _convert_seconds_to_time(
+    seconds: Union[int, float],
+) -> tuple[Union[int, float], str]:
+    """Convert seconds to the most appropriate time unit.
+
+    Args:
+        seconds: The duration in seconds
+
+    Returns:
+        A tuple of (amount, unit) where unit is 'minutes', 'hours', or 'days'
+    """
+    seconds = int(seconds)
+
+    # Choose the largest unit that divides evenly
+    if seconds % 86400 == 0:
+        return (seconds // 86400, "days")
+    elif seconds % 3600 == 0:
+        return (seconds // 3600, "hours")
+    elif seconds % 60 == 0:
+        return (seconds // 60, "minutes")
+    else:
+        # If no clean division, prefer minutes for small values, hours for medium, days for large
+        if seconds < 3600:  # Less than 1 hour
+            return (seconds / 60, "minutes")
+        elif seconds < 86400:  # Less than 1 day
+            return (seconds / 3600, "hours")
+        else:
+            return (seconds / 86400, "days")
+
+
+# ============================================================================
 # String Expression Parsing Functions
 # ============================================================================
+
+
+def _preprocess_within_last_syntax(expr: str) -> str:
+    """
+    Preprocess expression to convert within_last operator syntax to function syntax.
+
+    Converts: Metric('CreatedTimestamp') within_last 5 days
+    To: WithinLast(Metric('CreatedTimestamp'), 5, 'days')
+
+    This allows users to write more natural-looking time filters.
+
+    Args:
+        expr: A filter expression string that may contain within_last operators
+
+    Returns:
+        The expression with within_last operators converted to WithinLast() calls
+    """
+    # Pattern to match: <function_call> within_last <number> <unit>
+    # Where function_call is like Metric('...') or Config('...')
+    # and unit is minutes, hours, or days (with or without quotes)
+
+    pattern = r"""
+        ((?:Metric|Summary|SummaryMetric|Config|KeysInfo|Tags)\s*\([^)]*\))  # Capture the metric call
+        \s+within_last\s+                                                      # Match 'within_last' keyword
+        (\d+(?:\.\d+)?)                                                        # Capture the number (int or float)
+        \s+                                                                     # Whitespace
+        (['"]?)                                                                # Optional quote
+        (minutes?|hours?|days?)                                                # Capture the unit
+        \3                                                                     # Matching quote if present
+    """
+
+    def replace_within_last(match):
+        metric_call = match.group(1)
+        amount = match.group(2)
+        unit = match.group(4)
+
+        # Normalize unit to plural form
+        if not unit.endswith("s"):
+            unit = unit + "s"
+
+        return f"WithinLast({metric_call}, {amount}, '{unit}')"
+
+    result = re.sub(
+        pattern, replace_within_last, expr, flags=re.VERBOSE | re.IGNORECASE
+    )
+    return result
 
 
 def _preprocess_equality_operators(expr: str) -> str:
@@ -210,6 +344,7 @@ def expr_to_filters(expr: str) -> Filters:
     Args:
         expr: A Python-like filter expression string, e.g.,
             "Config('learning_rate') == 0.001 and State == 'finished'"
+            or "Metric('CreatedTimestamp') within_last 5 days"
 
     Returns:
         An internal Filters tree structure
@@ -217,6 +352,10 @@ def expr_to_filters(expr: str) -> Filters:
     if not expr:
         filters = []
     else:
+        # Preprocess: Convert within_last operator syntax to function syntax
+        # This must happen first, before other transformations
+        expr = _preprocess_within_last_syntax(expr)
+
         # Preprocess: Replace single '=' with '==' for Python AST parsing
         # But avoid replacing '==', '!=', '<=', '>='
         expr = _preprocess_equality_operators(expr)
@@ -237,6 +376,12 @@ def expr_to_filters(expr: str) -> Filters:
 
 
 def _parse_node(node) -> Filters:
+    # Check if this is a WithinLast function call (not inside a comparison)
+    if isinstance(node, ast.Call):
+        within_last_filter = _handle_within_last_call(node)
+        if within_last_filter:
+            return within_last_filter
+
     if isinstance(node, ast.Compare):
         # Check if left side is a function call
         if isinstance(node.left, ast.Call):
@@ -344,6 +489,69 @@ def _handle_function_call(node) -> dict:
         raise ValueError("Unsupported function call")
 
 
+def _handle_within_last_call(node) -> Optional[Filters]:
+    """Handle WithinLast(metric_call, amount, unit) function calls.
+
+    Args:
+        node: An AST Call node that might be a WithinLast call
+
+    Returns:
+        A Filters object with WITHINSECONDS operator, or None if not a WithinLast call
+    """
+    if not isinstance(node.func, ast.Name) or node.func.id != "WithinLast":
+        return None
+
+    if len(node.args) != 3:
+        raise ValueError(
+            f"WithinLast requires exactly 3 arguments (metric, amount, unit), got {len(node.args)}"
+        )
+
+    # First argument should be a metric function call
+    metric_call = node.args[0]
+    if not isinstance(metric_call, ast.Call):
+        raise ValueError(
+            "First argument to WithinLast must be a metric function call (e.g., Metric('CreatedTimestamp'))"
+        )
+
+    func_call_data = _handle_function_call(metric_call)
+    if not func_call_data:
+        raise ValueError(
+            "First argument to WithinLast must be a valid metric function (Config, Metric, Summary, etc.)"
+        )
+
+    section = section_map.get(func_call_data["type"], "default_section")
+    name = func_call_data["value"]
+
+    # Handle Tags() which should map to section=run, name=tags
+    if func_call_data["type"] == "Tags" and name == "":
+        section = "run"
+        name = "tags"
+
+    key = Key(section=section, name=name)
+
+    # Validate that this field supports within_last
+    _validate_within_last_field(key)
+
+    # Second argument is the amount (numeric)
+    amount = _extract_value(node.args[1])
+    if not isinstance(amount, (int, float)):
+        raise ValueError(
+            f"Second argument to WithinLast must be a number, got {type(amount).__name__}"
+        )
+
+    # Third argument is the unit (string)
+    unit = _extract_value(node.args[2])
+    if not isinstance(unit, str):
+        raise ValueError(
+            f"Third argument to WithinLast must be a string ('minutes', 'hours', or 'days'), got {type(unit).__name__}"
+        )
+
+    # Convert to seconds
+    seconds = _convert_time_to_seconds(amount, unit)
+
+    return Filters(op="WITHINSECONDS", key=key, value=seconds, disabled=False)
+
+
 def _extract_value(node) -> Any:
     if sys.version_info < (3, 8) and isinstance(node, ast.Num):
         return node.n
@@ -405,13 +613,42 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
                 # Skip filters with empty key names
                 return ""
 
+            # Special handling for WITHINSECONDS operator
+            if filter.op == "WITHINSECONDS":
+                key_name = filter.key.name
+                section = filter.key.section
+
+                # Convert backend metric name to frontend name
+                frontend_key_name = _convert_be_to_fe_metric_name(key_name)
+
+                # Prepend the function name if the section matches
+                if section in section_map_reversed:
+                    function_name = section_map_reversed[section]
+                    metric_expr = f'{function_name}("{frontend_key_name}")'
+                else:
+                    metric_expr = frontend_key_name
+
+                # Convert seconds back to human-readable format
+                amount, unit = _convert_seconds_to_time(filter.value)
+                # Format amount as int if it's a whole number, otherwise as float
+                if isinstance(amount, float) and amount.is_integer():
+                    amount = int(amount)
+
+                # Use operator syntax for output (more readable)
+                return f"{metric_expr} within_last {amount} {unit}"
+
             key_name = filter.key.name
             section = filter.key.section
+
+            # Convert backend metric name to frontend name
+            frontend_key_name = _convert_be_to_fe_metric_name(key_name)
 
             # Prepend the function name if the section matches
             if section in section_map_reversed:
                 function_name = section_map_reversed[section]
-                key_name = f'{function_name}("{key_name}")'
+                key_name = f'{function_name}("{frontend_key_name}")'
+            else:
+                key_name = frontend_key_name
 
             value = filter.value
             if value is None:
@@ -596,6 +833,36 @@ class BaseMetric:
 
     def notin(self, other: List[Any]) -> "FilterExpr":
         return FilterExpr.create("NIN", self, other)
+
+    def within_last(
+        self, amount: Union[int, float], unit: Literal["minutes", "hours", "days"]
+    ) -> "FilterExpr":
+        """Filter for runs created within the last N time units.
+
+        This method is only available for CreatedTimestamp.
+
+        Args:
+            amount: The numeric amount of time to look back
+            unit: The time unit - 'minutes', 'hours', or 'days'
+
+        Returns:
+            A FilterExpr using the WITHINSECONDS operator
+
+        Raises:
+            ValueError: If used with a field other than CreatedTimestamp
+
+        Example:
+            >>> # Filter runs created in the last 5 days
+            >>> ws.Metric("CreatedTimestamp").within_last(5, "days")
+            >>> # Filter runs created in the last 24 hours
+            >>> ws.Metric("CreatedTimestamp").within_last(24, "hours")
+        """
+        # Validate the field before creating the filter
+        key = self.to_key()
+        _validate_within_last_field(key)
+
+        seconds = _convert_time_to_seconds(amount, unit)
+        return FilterExpr.create("WITHINSECONDS", self, seconds)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self.name}')"

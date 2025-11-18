@@ -14,11 +14,16 @@ from .filter_test_helpers import (
     create_runset_settings,
     test_expression_parsing,
     test_filter_expr_to_model,
+    test_within_last_round_trip,
+    test_within_last_time_conversion,
     verify_filterexpr_list_acceptance,
     verify_operator_mapping_filterexpr,
     verify_operator_mapping_string_filters,
     verify_string_filter_acceptance,
     verify_summary_alias_support,
+    verify_within_last_filterexpr,
+    verify_within_last_operator_syntax,
+    verify_within_last_string_filters,
 )
 
 # Parameterize tests to run against both workspace and report filter containers
@@ -72,3 +77,41 @@ def test_core_expression_parsing():
 def test_core_filter_expr_to_model():
     """Test FilterExpr.to_model() for various filter expressions."""
     test_filter_expr_to_model()
+
+
+# ===== Within Last filter tests =====
+
+
+@pytest.mark.parametrize("container_factory", FILTER_CONTAINERS)
+def test_unified_within_last_filterexpr(container_factory):
+    """Test that within_last method works with FilterExpr objects in both workspaces and reports."""
+    verify_within_last_filterexpr(container_factory)
+
+
+@pytest.mark.parametrize("container_factory", FILTER_CONTAINERS)
+def test_unified_within_last_string_filters(container_factory):
+    """Test that WithinLast works in string filter expressions in both workspaces and reports."""
+    verify_within_last_string_filters(container_factory)
+
+
+@pytest.mark.parametrize("container_factory", FILTER_CONTAINERS)
+def test_unified_within_last_operator_syntax(container_factory):
+    """Test that within_last operator syntax works in string filters in both workspaces and reports."""
+    verify_within_last_operator_syntax(container_factory)
+
+
+def test_core_within_last_time_conversion():
+    """Test the time conversion utilities for within_last."""
+    test_within_last_time_conversion()
+
+
+def test_core_within_last_round_trip():
+    """Test that FilterExpr → string → FilterExpr preserves semantics for within_last."""
+    test_within_last_round_trip()
+
+
+def test_core_within_last_validation():
+    """Test that within_last validation works correctly."""
+    from .filter_test_helpers import test_within_last_validation
+
+    test_within_last_validation()
