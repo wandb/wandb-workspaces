@@ -35,7 +35,12 @@ from annotated_types import Annotated, Ge
 from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, model_validator
 from pydantic.dataclasses import dataclass
 
-from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
+from wandb_workspaces.reports.v2.interface import (
+    LinePlot,
+    PanelTypes,
+    _fetch_metrics_with_regex,
+    _lookup_panel,
+)
 from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
@@ -712,6 +717,37 @@ class Workspace(Base):
         view = internal.View.from_name(entity, project, internal_view_name)
         return cls._from_model(view)
 
+    def _auto_populate_metrics_from_regex(self):
+        """Auto-populate y metrics from regex for all LinePlot panels before saving."""
+        entity = self.entity
+        project = self.project
+
+        for section in self.sections:
+            for panel in section.panels:
+                if isinstance(panel, LinePlot):
+                    # Check if regex-based auto-population is needed
+                    if panel.use_metric_regex and panel.metric_regex:
+                        # Pass regex to backend's metricSearch and use returned results
+                        max_matches = panel.metric_regex_max_num_matches or 100
+                        wandb.termlog(
+                            f"Auto-populating metrics for pattern '{panel.metric_regex}' "
+                            f"from {entity}/{project}..."
+                        )
+                        matched_metrics = _fetch_metrics_with_regex(
+                            entity, project, panel.metric_regex, max_matches
+                        )
+
+                        # Populate y field with backend's matched metrics
+                        if matched_metrics:
+                            panel.y = matched_metrics
+                            wandb.termlog(
+                                f"  → Found {len(matched_metrics)} matching metrics"
+                            )
+                        else:
+                            wandb.termwarn(
+                                f"  → No metrics found matching pattern '{panel.metric_regex}'"
+                            )
+
     def save(self):
         """
         Save the current workspace to W&B.
@@ -719,6 +755,9 @@ class Workspace(Base):
         Returns:
             Workspace: The updated workspace with the saved internal name and ID.
         """
+        # Auto-populate y metrics from regex before saving
+        self._auto_populate_metrics_from_regex()
+
         view = self._to_model()
 
         # If creating a new view with `ws.Workspace(...)`
@@ -739,6 +778,9 @@ class Workspace(Base):
         Returns:
             Workspace: The updated workspace with the saved internal name and ID.
         """
+        # Auto-populate y metrics from regex before saving
+        self._auto_populate_metrics_from_regex()
+
         view = self._to_model()
 
         # Generate a new view name and ID
