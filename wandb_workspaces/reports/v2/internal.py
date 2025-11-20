@@ -623,6 +623,10 @@ class LinePlotConfig(ReportAPIBaseModel):
     override_series_titles: Optional[dict] = None
     legend_fields: Optional[LList[str]] = None
 
+    metric_regex: Optional[str] = None
+    use_metric_regex: Optional[bool] = None
+    metric_regex_max_num_matches: Optional[int] = None
+
     # there are more here...
 
 
