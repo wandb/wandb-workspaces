@@ -436,6 +436,131 @@ def test_runset_project_lookup(monkeypatch):
     assert "project 'bad-entity/bad-project' not found" in str(exc_info.value)
 
 
+def test_media_browser_grid_axes():
+    """Test that MediaBrowser correctly handles grid axis configuration."""
+    # Test creating MediaBrowser with grid axes
+    panel = wr.MediaBrowser(
+        title="Test Media",
+        media_keys=["images"],
+        grid_x_axis="step",
+        grid_y_axis="run",
+    )
+
+    # Convert to model
+    model = panel._to_model()
+
+    # Verify the config has grid_settings and mode is set to "grid"
+    assert model.config.grid_settings is not None
+    assert model.config.grid_settings.x_axis == "step"
+    assert model.config.grid_settings.y_axis == "run"
+    assert model.config.mode == "grid"
+
+    # Test round-trip conversion
+    restored = wr.MediaBrowser._from_model(model)
+    assert restored.grid_x_axis == "step"
+    assert restored.grid_y_axis == "run"
+    assert restored.media_keys == ["images"]
+
+
+def test_media_browser_grid_axes_none():
+    """Test that MediaBrowser works when grid axes are not specified."""
+    panel = wr.MediaBrowser(title="Test Media", media_keys=["image"])
+
+    # Convert to model
+    model = panel._to_model()
+
+    # Verify no grid_settings when axes are None and mode is not set
+    assert model.config.grid_settings is None
+    assert model.config.mode is None
+
+    # Test round-trip conversion
+    restored = wr.MediaBrowser._from_model(model)
+    assert restored.grid_x_axis is None
+    assert restored.grid_y_axis is None
+
+
+def test_media_browser_grid_axes_partial():
+    """Test that MediaBrowser handles partial grid axis configuration."""
+    panel = wr.MediaBrowser(
+        title="Test Media", media_keys=["video"], grid_x_axis="index"
+    )
+
+    # Convert to model
+    model = panel._to_model()
+
+    # Verify grid_settings is created even with partial config and mode is set to "grid"
+    assert model.config.grid_settings is not None
+    assert model.config.grid_settings.x_axis == "index"
+    assert model.config.grid_settings.y_axis is None
+    assert model.config.mode == "grid"
+
+    # Test round-trip conversion
+    restored = wr.MediaBrowser._from_model(model)
+    assert restored.grid_x_axis == "index"
+    assert restored.grid_y_axis is None
+
+
+def test_media_browser_gallery_axis():
+    """Test that MediaBrowser correctly handles gallery axis configuration."""
+    panel = wr.MediaBrowser(
+        title="Test Media Gallery",
+        media_keys=["images"],
+        gallery_axis="step",
+    )
+
+    # Convert to model
+    model = panel._to_model()
+
+    # Verify the config has gallery_settings and mode is auto-set to "gallery"
+    assert model.config.gallery_settings is not None
+    assert model.config.gallery_settings.axis == "step"
+    assert model.config.mode == "gallery"
+
+    # Test round-trip conversion preserves mode
+    restored = wr.MediaBrowser._from_model(model)
+    assert restored.gallery_axis == "step"
+    assert restored.mode == "gallery"
+    assert restored.grid_x_axis is None
+    assert restored.grid_y_axis is None
+
+
+def test_media_browser_mode_conflict():
+    """Test that MediaBrowser raises error when both gallery and grid axes are set without mode."""
+    with pytest.raises(ValueError, match="Must specify 'mode' parameter"):
+        panel = wr.MediaBrowser(
+            title="Test Media",
+            media_keys=["images"],
+            gallery_axis="step",
+            grid_x_axis="step",
+            grid_y_axis="run",
+        )
+        panel._to_model()
+
+
+def test_media_browser_explicit_mode_with_both_axes():
+    """Test that MediaBrowser works when mode is explicitly set with both axes."""
+    # Use grid mode even though gallery_axis is also set
+    panel = wr.MediaBrowser(
+        title="Test Media",
+        media_keys=["images"],
+        mode="grid",
+        gallery_axis="step",
+        grid_x_axis="step",
+        grid_y_axis="run",
+    )
+
+    model = panel._to_model()
+
+    # Verify grid mode is used
+    assert model.config.mode == "grid"
+    assert model.config.grid_settings is not None
+    assert model.config.gallery_settings is not None
+
+    # Test round-trip
+    restored = wr.MediaBrowser._from_model(model)
+    assert restored.mode == "grid"
+
+
 def test_runset_query_parameter():
     """Test that Runset query parameter is properly passed through to internal model"""
     from wandb_workspaces.reports.v2 import internal

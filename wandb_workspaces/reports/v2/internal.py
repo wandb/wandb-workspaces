@@ -80,6 +80,7 @@ SmoothingType = Literal[
     "exponentialTimeWeighted", "exponential", "gaussian", "average", "none"
 ]
 CodeCompareDiff = Literal["split", "unified"]
+MediaBrowserAxis = Literal["step", "index", "run"]
 Range = Tuple[Optional[float], Optional[float]]
 Language = Literal["javascript", "python", "css", "json", "html", "markdown", "yaml"]
 Ops = Literal["OR", "AND", "=", "!=", "<=", ">=", "<", ">", "IN", "NIN", "=="]
@@ -569,10 +570,22 @@ class Panel(ReportAPIBaseModel):
     layout: Layout = Field(default_factory=Layout)
 
 
+class GridSettings(ReportAPIBaseModel):
+    x_axis: Optional[MediaBrowserAxis] = None
+    y_axis: Optional[MediaBrowserAxis] = None
+
+
+class GallerySettings(ReportAPIBaseModel):
+    axis: Optional[MediaBrowserAxis] = None
+
+
 class MediaBrowserConfig(ReportAPIBaseModel):
     chart_title: Optional[str] = None
     column_count: Optional[int] = None
     media_keys: LList[str] = Field(default_factory=list)
+    mode: Optional[Literal["gallery", "grid"]] = None
+    gallery_settings: Optional[GallerySettings] = None
+    grid_settings: Optional[GridSettings] = None
 
 
 class MediaBrowser(Panel):

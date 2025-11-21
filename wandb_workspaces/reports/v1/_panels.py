@@ -653,6 +653,10 @@ class RunComparer(Panel):
 class MediaBrowser(Panel):
     num_columns: Optional[int] = Attr(json_path="spec.config.columnCount")
     media_keys: Optional[str] = Attr(json_path="spec.config.mediaKeys")
+    mode: Optional[str] = Attr(json_path="spec.config.mode")
+    gallery_axis: Optional[str] = Attr(json_path="spec.config.gallerySettings.axis")
+    grid_x_axis: Optional[str] = Attr(json_path="spec.config.gridSettings.xAxis")
+    grid_y_axis: Optional[str] = Attr(json_path="spec.config.gridSettings.yAxis")
     # Attr(json_path="spec.config.chartTitle")
     # Attr(json_path="spec.config.stepIndex")
     # Attr(json_path="spec.config.mediaIndex")
@@ -661,7 +665,6 @@ class MediaBrowser(Panel):
     # Attr(json_path="spec.config.pixelated")
     # Attr(json_path="spec.config.mode")
     # Attr(json_path="spec.config.gallerySettings")
-    # Attr(json_path="spec.config.gridSettings")
     # Attr(json_path="spec.config.selection")
     # Attr(json_path="spec.config.page")
     # Attr(json_path="spec.config.tileLayout")
@@ -673,10 +676,24 @@ class MediaBrowser(Panel):
     # Attr(json_path="spec.config.segmentationMaskConfig")
     # Attr(json_path="spec.config.boundingBoxConfig")
 
-    def __init__(self, num_columns=None, media_keys=None, *args, **kwargs):
+    def __init__(
+        self,
+        num_columns=None,
+        media_keys=None,
+        mode=None,
+        gallery_axis=None,
+        grid_x_axis=None,
+        grid_y_axis=None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.num_columns = num_columns
         self.media_keys = media_keys
+        self.mode = mode
+        self.gallery_axis = gallery_axis
+        self.grid_x_axis = grid_x_axis
+        self.grid_y_axis = grid_y_axis
 
     @property
     def view_type(self) -> str:

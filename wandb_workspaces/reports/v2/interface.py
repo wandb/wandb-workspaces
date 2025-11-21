@@ -2382,24 +2382,67 @@ class RunComparer(Panel):
 @dataclass(config=dataclass_config, repr=False)
 class MediaBrowser(Panel):
     """
-    A panel that displays media files in a grid layout.
+    A panel that displays media files in a gallery or grid layout.
 
     Attributes:
         title (Optional[str]): The title of the panel.
         num_columns (Optional[int]): The number of columns in the grid.
         media_keys (LList[str]): A list of media keys that correspond to the media files.
+        mode (Optional[Literal["gallery", "grid"]]): The display mode for the panel.
+            If not specified, will be inferred from the axes provided. Required if both
+            gallery_axis and grid axes are specified.
+        gallery_axis (Optional[Literal["step", "index", "run"]]): The axis to use in gallery mode.
+            Options are 'step', 'index', or 'run'. Only applies when the panel is in gallery mode.
+        grid_x_axis (Optional[Literal["step", "index", "run"]]): The axis to use for the x-axis in grid mode.
+            Options are 'step', 'index', or 'run'. Only applies when the panel is in grid mode.
+        grid_y_axis (Optional[Literal["step", "index", "run"]]): The axis to use for the y-axis in grid mode.
+            Options are 'step', 'index', or 'run'. Only applies when the panel is in grid mode.
     """
 
     title: Optional[str] = None
     num_columns: Optional[int] = None
     media_keys: LList[str] = Field(default_factory=list)
+    mode: Optional[Literal["gallery", "grid"]] = None
+    gallery_axis: Optional[Literal["step", "index", "run"]] = None
+    grid_x_axis: Optional[Literal["step", "index", "run"]] = None
+    grid_y_axis: Optional[Literal["step", "index", "run"]] = None
 
     def _to_model(self):
+        gallery_settings = None
+        grid_settings = None
+        mode = self.mode
+
+        has_gallery_axis = self.gallery_axis is not None
+        has_grid_axis = self.grid_x_axis is not None or self.grid_y_axis is not None
+
+        # Validate that mode is specified if both gallery and grid axes are provided
+        if has_gallery_axis and has_grid_axis and mode is None:
+            raise ValueError(
+                "Must specify 'mode' parameter when both gallery_axis and grid axes "
+                "(grid_x_axis/grid_y_axis) are provided. Set mode='gallery' or mode='grid'."
+            )
+
+        if self.gallery_axis is not None:
+            gallery_settings = internal.GallerySettings(axis=self.gallery_axis)
+            if mode is None:
+                mode = "gallery"
+
+        if self.grid_x_axis is not None or self.grid_y_axis is not None:
+            grid_settings = internal.GridSettings(
+                x_axis=self.grid_x_axis,
+                y_axis=self.grid_y_axis,
+            )
+            if mode is None:
+                mode = "grid"
+
         return internal.MediaBrowser(
             config=internal.MediaBrowserConfig(
                 chart_title=self.title,
                 column_count=self.num_columns,
                 media_keys=self.media_keys,
+                mode=mode,
+                gallery_settings=gallery_settings,
+                grid_settings=grid_settings,
             ),
             layout=self.layout._to_model(),
             id=self._id,
@@ -2407,10 +2450,25 @@ class MediaBrowser(Panel):
 
     @classmethod
     def _from_model(cls, model: internal.MediaBrowser):
+        gallery_axis = None
+        grid_x_axis = None
+        grid_y_axis = None
+
+        if model.config.gallery_settings:
+            gallery_axis = model.config.gallery_settings.axis
+
+        if model.config.grid_settings:
+            grid_x_axis = model.config.grid_settings.x_axis
+            grid_y_axis = model.config.grid_settings.y_axis
+
         obj = cls(
             title=model.config.chart_title,
             num_columns=model.config.column_count,
             media_keys=model.config.media_keys,
+            mode=model.config.mode,
+            gallery_axis=gallery_axis,
+            grid_x_axis=grid_x_axis,
+            grid_y_axis=grid_y_axis,
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
