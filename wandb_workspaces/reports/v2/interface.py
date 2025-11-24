@@ -2392,11 +2392,8 @@ class MediaBrowser(Panel):
             If not specified, will be inferred from the axes provided. Required if both
             gallery_axis and grid axes are specified.
         gallery_axis (Optional[Literal["step", "index", "run"]]): The axis to use in gallery mode.
-            Options are 'step', 'index', or 'run'. Only applies when the panel is in gallery mode.
         grid_x_axis (Optional[Literal["step", "index", "run"]]): The axis to use for the x-axis in grid mode.
-            Options are 'step', 'index', or 'run'. Only applies when the panel is in grid mode.
         grid_y_axis (Optional[Literal["step", "index", "run"]]): The axis to use for the y-axis in grid mode.
-            Options are 'step', 'index', or 'run'. Only applies when the panel is in grid mode.
     """
 
     title: Optional[str] = None
