@@ -201,6 +201,21 @@ class MarkdownPanelFactory(CustomDataclassFactory[wr.MarkdownPanel]):
 class MediaBrowserFactory(CustomDataclassFactory[wr.MediaBrowser]):
     __model__ = wr.MediaBrowser
 
+    @classmethod
+    def gallery_axis(cls):
+        # Don't generate gallery_axis to avoid conflict with grid axes
+        return None
+
+    @classmethod
+    def grid_x_axis(cls):
+        # Don't generate grid axes to avoid conflict with gallery_axis
+        return None
+
+    @classmethod
+    def grid_y_axis(cls):
+        # Don't generate grid axes to avoid conflict with gallery_axis
+        return None
+
 
 @register_fixture
 class ParallelCoordinatesPlotFactory(
