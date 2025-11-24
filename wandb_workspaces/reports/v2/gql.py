@@ -92,33 +92,3 @@ projectInternalId = gql(
     }
     """
 )
-
-metric_search = gql(
-    """
-    query MetricSearch(
-        $projectName: String!
-        $entityName: String!
-        $metricNamePattern: String
-        $pageSize: Int = 100
-        $cursor: String
-    ) {
-        project(name: $projectName, entityName: $entityName) {
-            id
-            runs(first: 100) {
-                metricSearch(
-                    pageSize: $pageSize
-                    cursor: $cursor
-                    metricNamePattern: $metricNamePattern
-                ) {
-                    results {
-                        key
-                        types
-                    }
-                    cursor
-                    hasMore
-                }
-            }
-        }
-    }
-    """
-)

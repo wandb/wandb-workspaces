@@ -709,30 +709,25 @@ def test_lineplot_metric_regex():
         y=["loss"],
         metric_regex="system/.*",
         use_metric_regex=True,
-        metric_regex_max_num_matches=50,
     )
     assert lp._to_model().config.metric_regex == "system/.*"
     assert lp._to_model().config.use_metric_regex is True
-    assert lp._to_model().config.metric_regex_max_num_matches == 50
 
     # Test with only metric_regex set
     lp2 = wr.LinePlot(metric_regex="train/.*")
     assert lp2._to_model().config.metric_regex == "train/.*"
     assert lp2._to_model().config.use_metric_regex is None
-    assert lp2._to_model().config.metric_regex_max_num_matches is None
 
     # Test None case (default)
     lp3 = wr.LinePlot(y=["loss"])
     assert lp3._to_model().config.metric_regex is None
     assert lp3._to_model().config.use_metric_regex is None
-    assert lp3._to_model().config.metric_regex_max_num_matches is None
 
     # Test round-trip serialization
     model = lp._to_model()
     reconstructed = wr.LinePlot._from_model(model)
     assert reconstructed.metric_regex == "system/.*"
     assert reconstructed.use_metric_regex is True
-    assert reconstructed.metric_regex_max_num_matches == 50
 
     # Test with use_metric_regex=False
     lp4 = wr.LinePlot(

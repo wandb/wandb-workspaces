@@ -434,7 +434,6 @@ def test_workspace_lineplot_metric_regex():
                         title="Train Metrics",
                         metric_regex="train/.*",
                         use_metric_regex=True,
-                        metric_regex_max_num_matches=50,
                     ),
                 ],
             ),
@@ -445,18 +444,15 @@ def test_workspace_lineplot_metric_regex():
     panel = workspace.sections[0].panels[0]
     assert panel.metric_regex == "train/.*"
     assert panel.use_metric_regex is True
-    assert panel.metric_regex_max_num_matches == 50
 
     # Test serialization to internal model
     model = workspace._to_model()
     panel_config = model.spec.section.panel_bank_config.sections[0].panels[0].config
     assert panel_config.metric_regex == "train/.*"
     assert panel_config.use_metric_regex is True
-    assert panel_config.metric_regex_max_num_matches == 50
 
     # Test round-trip serialization
     workspace2 = ws.Workspace._from_model(model)
     panel2 = workspace2.sections[0].panels[0]
     assert panel2.metric_regex == "train/.*"
     assert panel2.use_metric_regex is True
-    assert panel2.metric_regex_max_num_matches == 50

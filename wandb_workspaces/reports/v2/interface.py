@@ -1826,8 +1826,8 @@ class LinePlot(Panel):
         xaxis_expression (Optional[str]): The expression for the x-axis.
         legend_fields (Optional[LList[str]]): The fields to include in the legend.
         metric_regex (Optional[str]): Regular expression pattern to match y-axis metrics.
-        use_metric_regex (Optional[bool]): If set to `True`, use regex to select y-axis metrics.
-        metric_regex_max_num_matches (Optional[int]): Maximum number of metrics to match when using regex.
+            The backend will use this pattern to select matching metrics.
+        use_metric_regex (Optional[bool]): If set to `True`, enable regex-based metric selection.
     """
 
     title: Optional[str] = None
@@ -1858,7 +1858,6 @@ class LinePlot(Panel):
     legend_fields: Optional[LList[str]] = None
     metric_regex: Optional[str] = None
     use_metric_regex: Optional[bool] = None
-    metric_regex_max_num_matches: Optional[int] = None
 
     def _to_model(self):
         return internal.LinePlot(
@@ -1893,7 +1892,6 @@ class LinePlot(Panel):
                 legend_fields=self.legend_fields,
                 metric_regex=self.metric_regex,
                 use_metric_regex=self.use_metric_regex,
-                metric_regex_max_num_matches=self.metric_regex_max_num_matches,
             ),
             id=self._id,
             layout=self.layout._to_model(),
@@ -1931,7 +1929,6 @@ class LinePlot(Panel):
             legend_fields=model.config.legend_fields,
             metric_regex=model.config.metric_regex,
             use_metric_regex=model.config.use_metric_regex,
-            metric_regex_max_num_matches=model.config.metric_regex_max_num_matches,
         )
         obj._id = model.id
         return obj
@@ -3182,52 +3179,8 @@ class Report(Base):
 
         return urlunparse((scheme, netloc, path, params, query, fragment))
 
-    def _auto_populate_metrics_from_regex(self):
-        """Auto-populate y metrics from regex for all LinePlot panels before saving."""
-        for block in self.blocks:
-            if isinstance(block, PanelGrid):
-                # Extract entity/project from the first runset
-                entity = self.entity
-                project = self.project
-
-                if block.runsets and len(block.runsets) > 0:
-                    runset = block.runsets[0]
-                    if runset.entity:
-                        entity = runset.entity
-                    if runset.project:
-                        project = runset.project
-
-                # Process each LinePlot panel
-                for panel in block.panels:
-                    if isinstance(panel, LinePlot):
-                        # Check if regex-based auto-population is needed
-                        if panel.use_metric_regex and panel.metric_regex:
-                            # Pass regex to backend's metricSearch and use returned results
-                            max_matches = panel.metric_regex_max_num_matches or 100
-                            wandb.termlog(
-                                f"Auto-populating metrics for pattern '{panel.metric_regex}' "
-                                f"from {entity}/{project}..."
-                            )
-                            matched_metrics = _fetch_metrics_with_regex(
-                                entity, project, panel.metric_regex, max_matches
-                            )
-
-                            # Populate y field with backend's matched metrics
-                            if matched_metrics:
-                                panel.y = matched_metrics
-                                wandb.termlog(
-                                    f"  → Found {len(matched_metrics)} matching metrics"
-                                )
-                            else:
-                                wandb.termwarn(
-                                    f"  → No metrics found matching pattern '{panel.metric_regex}'"
-                                )
-
     def save(self, draft: bool = False, clone: bool = False):
         """Persists changes made to a report object."""
-        # Auto-populate y metrics from regex before saving
-        self._auto_populate_metrics_from_regex()
-
         model = self._to_model()
 
         # create project if not exists
@@ -3343,80 +3296,6 @@ def _get_api():
         return wandb.Api()
     except wandb.errors.UsageError as e:
         raise Exception("not logged in to W&B, try `wandb login --relogin`") from e
-
-
-def _fetch_metrics_with_regex(
-    entity: str,
-    project: str,
-    metric_regex: str,
-    max_matches: Optional[int] = None,
-) -> LList[str]:
-    """
-    Fetch metrics using the metricSearch GraphQL query with a regex pattern.
-
-    The regex pattern is passed directly to the backend's metricNamePattern parameter.
-    The backend performs the matching and returns the results.
-
-    Args:
-        entity: The W&B entity name
-        project: The W&B project name
-        metric_regex: Regular expression pattern for metricNamePattern
-        max_matches: Maximum number of metrics to return (default: 100)
-
-    Returns:
-        List of matched metric names from the backend
-    """
-    if not metric_regex:
-        return []
-
-    if max_matches is None:
-        max_matches = 100
-
-    try:
-        api = _get_api()
-
-        result = api.client.execute(
-            gql.metric_search,
-            variable_values={
-                "entityName": entity,
-                "projectName": project,
-                "metricNamePattern": metric_regex,
-                "pageSize": max_matches,
-                "cursor": None,
-            },
-        )
-
-        if not result.get("project"):
-            wandb.termwarn(
-                f"Project {entity}/{project} not found in metricSearch query"
-            )
-            return []
-
-        if not result["project"].get("runs"):
-            wandb.termwarn(f"No runs found in project {entity}/{project}")
-            return []
-
-        metric_search_results = result["project"]["runs"].get("metricSearch")
-        if not metric_search_results:
-            wandb.termwarn(
-                f"metricSearch returned no results for pattern '{metric_regex}'"
-            )
-            return []
-
-        # Extract and return metric keys from backend results
-        matched_metrics = []
-        for metric_info in metric_search_results.get("results", []):
-            key = metric_info.get("key")
-            if key and not key.startswith("_"):
-                matched_metrics.append(key)
-
-        return matched_metrics[:max_matches]
-
-    except Exception as e:
-        wandb.termwarn(
-            f"Could not fetch metrics matching '{metric_regex}' from {entity}/{project}: {e}"
-        )
-        return []
 
 
 def _url_to_viewspec(url):

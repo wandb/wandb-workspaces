@@ -34,7 +34,7 @@ workspace.sections = [
             wr.LinePlot(x="Step", y=["train_accuracy"]),
         ],
     ),
-    # You can also use regex to automatically select multiple metrics
+    # You can also use regex to select multiple metrics dynamically
     ws.Section(
         name="System Metrics",
         panels=[
@@ -42,7 +42,6 @@ workspace.sections = [
                 title="All System Metrics",
                 metric_regex="system/.*",  # Matches all metrics starting with "system/"
                 use_metric_regex=True,
-                metric_regex_max_num_matches=20,  # Limit to first 20 matches
             ),
         ],
     ),

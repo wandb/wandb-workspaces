@@ -625,7 +625,6 @@ class LinePlotConfig(ReportAPIBaseModel):
 
     metric_regex: Optional[str] = None
     use_metric_regex: Optional[bool] = None
-    metric_regex_max_num_matches: Optional[int] = None
 
     # there are more here...
 

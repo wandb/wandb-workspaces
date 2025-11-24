@@ -20,7 +20,6 @@ report = wr.Report(
                     title="All Training Metrics",
                     metric_regex="train/.*",  # Match all metrics starting with "train/"
                     use_metric_regex=True,  # Enable regex mode
-                    metric_regex_max_num_matches=50,  # Limit to 50 metrics
                 ),
             ]
         ),
@@ -65,7 +64,6 @@ report3 = wr.Report(
                     title="System Resources",
                     metric_regex="system/.*",
                     use_metric_regex=True,
-                    metric_regex_max_num_matches=20,  # Limit to 20 metrics
                 ),
                 # Select metrics ending with "loss"
                 wr.LinePlot(
@@ -78,10 +76,5 @@ report3 = wr.Report(
     ],
 )
 
-# When you call save(), the SDK will automatically populate the y field
-# with metrics matching the regex pattern
+# Save the report - the regex patterns will be used by the backend
 # report.save()  # Uncomment to save
-
-print("Report created with regex-based metric selection!")
-print("When saved, the LinePlot panels will automatically populate")
-print("their y fields with matching metrics from your project.")
