@@ -1827,7 +1827,6 @@ class LinePlot(Panel):
         legend_fields (Optional[LList[str]]): The fields to include in the legend.
         metric_regex (Optional[str]): Regular expression pattern to match y-axis metrics.
             The backend will use this pattern to select matching metrics.
-        use_metric_regex (Optional[bool]): If set to `True`, enable regex-based metric selection.
     """
 
     title: Optional[str] = None
@@ -1857,7 +1856,6 @@ class LinePlot(Panel):
     xaxis_format: Optional[str] = None
     legend_fields: Optional[LList[str]] = None
     metric_regex: Optional[str] = None
-    use_metric_regex: Optional[bool] = None
 
     def _to_model(self):
         return internal.LinePlot(
@@ -1891,7 +1889,7 @@ class LinePlot(Panel):
                 x_axis_format=self.xaxis_format,
                 legend_fields=self.legend_fields,
                 metric_regex=self.metric_regex,
-                use_metric_regex=self.use_metric_regex,
+                use_metric_regex=True if self.metric_regex else None,
             ),
             id=self._id,
             layout=self.layout._to_model(),
@@ -1899,38 +1897,48 @@ class LinePlot(Panel):
 
     @classmethod
     def _from_model(cls, model: internal.LinePlot):
-        obj = cls(
-            title=model.config.chart_title,
-            x=_metric_to_frontend(model.config.x_axis),
-            y=[_metric_to_frontend(name) for name in model.config.metrics],
-            range_x=(model.config.x_axis_min, model.config.x_axis_max),
-            range_y=(model.config.y_axis_min, model.config.y_axis_max),
-            log_x=model.config.x_log_scale,
-            log_y=model.config.y_log_scale,
-            title_x=model.config.x_axis_title,
-            title_y=model.config.y_axis_title,
-            ignore_outliers=model.config.ignore_outliers,
-            groupby=_metric_to_frontend_groupby(model.config.group_by),
-            groupby_aggfunc=model.config.group_agg,
-            groupby_rangefunc=model.config.group_area,
-            smoothing_factor=model.config.smoothing_weight,
-            smoothing_type=model.config.smoothing_type,
-            smoothing_show_original=model.config.show_original_after_smoothing,
-            max_runs_to_show=model.config.limit,
-            custom_expressions=model.config.expressions,
-            plot_type=model.config.plot_type,
-            font_size=model.config.font_size,
-            legend_position=model.config.legend_position,
-            legend_template=model.config.legend_template,
-            aggregate=model.config.aggregate,
-            xaxis_expression=model.config.x_expression,
-            xaxis_format=model.config.x_axis_format,
-            layout=Layout._from_model(model.layout),
-            legend_fields=model.config.legend_fields,
-            metric_regex=model.config.metric_regex,
-            use_metric_regex=model.config.use_metric_regex,
+        # Create object manually setting all attributes
+        obj = cls.__new__(cls)
+
+        object.__setattr__(obj, "title", model.config.chart_title)
+        object.__setattr__(obj, "x", _metric_to_frontend(model.config.x_axis))
+        object.__setattr__(
+            obj, "y", [_metric_to_frontend(name) for name in model.config.metrics]
         )
-        obj._id = model.id
+        object.__setattr__(
+            obj, "range_x", (model.config.x_axis_min, model.config.x_axis_max)
+        )
+        object.__setattr__(
+            obj, "range_y", (model.config.y_axis_min, model.config.y_axis_max)
+        )
+        object.__setattr__(obj, "log_x", model.config.x_log_scale)
+        object.__setattr__(obj, "log_y", model.config.y_log_scale)
+        object.__setattr__(obj, "title_x", model.config.x_axis_title)
+        object.__setattr__(obj, "title_y", model.config.y_axis_title)
+        object.__setattr__(obj, "ignore_outliers", model.config.ignore_outliers)
+        object.__setattr__(
+            obj, "groupby", _metric_to_frontend_groupby(model.config.group_by)
+        )
+        object.__setattr__(obj, "groupby_aggfunc", model.config.group_agg)
+        object.__setattr__(obj, "groupby_rangefunc", model.config.group_area)
+        object.__setattr__(obj, "smoothing_factor", model.config.smoothing_weight)
+        object.__setattr__(obj, "smoothing_type", model.config.smoothing_type)
+        object.__setattr__(
+            obj, "smoothing_show_original", model.config.show_original_after_smoothing
+        )
+        object.__setattr__(obj, "max_runs_to_show", model.config.limit)
+        object.__setattr__(obj, "custom_expressions", model.config.expressions)
+        object.__setattr__(obj, "plot_type", model.config.plot_type)
+        object.__setattr__(obj, "font_size", model.config.font_size)
+        object.__setattr__(obj, "legend_position", model.config.legend_position)
+        object.__setattr__(obj, "legend_template", model.config.legend_template)
+        object.__setattr__(obj, "aggregate", model.config.aggregate)
+        object.__setattr__(obj, "xaxis_expression", model.config.x_expression)
+        object.__setattr__(obj, "xaxis_format", model.config.x_axis_format)
+        object.__setattr__(obj, "layout", Layout._from_model(model.layout))
+        object.__setattr__(obj, "legend_fields", model.config.legend_fields)
+        object.__setattr__(obj, "metric_regex", model.config.metric_regex)
+        object.__setattr__(obj, "_id", model.id)
         return obj
 
 

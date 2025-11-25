@@ -41,7 +41,6 @@ workspace.sections = [
             wr.LinePlot(
                 title="All System Metrics",
                 metric_regex="system/.*",  # Matches all metrics starting with "system/"
-                use_metric_regex=True,
             ),
         ],
     ),

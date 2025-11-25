@@ -19,7 +19,6 @@ report = wr.Report(
                 wr.LinePlot(
                     title="All Training Metrics",
                     metric_regex="train/.*",  # Match all metrics starting with "train/"
-                    use_metric_regex=True,  # Enable regex mode
                 ),
             ]
         ),
@@ -38,13 +37,11 @@ report2 = wr.Report(
                 wr.LinePlot(
                     title="Validation Metrics",
                     metric_regex="val/.*",
-                    use_metric_regex=True,
                 ),
                 # Select all test metrics
                 wr.LinePlot(
                     title="Test Metrics",
                     metric_regex="test/.*",
-                    use_metric_regex=True,
                 ),
             ]
         ),
@@ -63,13 +60,11 @@ report3 = wr.Report(
                 wr.LinePlot(
                     title="System Resources",
                     metric_regex="system/.*",
-                    use_metric_regex=True,
                 ),
                 # Select metrics ending with "loss"
                 wr.LinePlot(
                     title="All Loss Metrics",
                     metric_regex=".*loss$",  # Match anything ending with "loss"
-                    use_metric_regex=True,
                 ),
             ]
         ),
