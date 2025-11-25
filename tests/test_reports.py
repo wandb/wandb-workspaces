@@ -840,3 +840,37 @@ def test_lineplot_xaxis_format():
     model = lp._to_model()
     reconstructed = wr.LinePlot._from_model(model)
     assert reconstructed.xaxis_format == "datetime"
+
+
+def test_lineplot_metric_regex():
+    """Test LinePlot metric_regex parameter for regex-based y-axis metric selection."""
+    # Test basic usage with metric_regex
+    lp = wr.LinePlot(
+        y=["loss"],
+        metric_regex="system/.*",
+    )
+    assert lp._to_model().config.metric_regex == "system/.*"
+    assert lp._to_model().config.use_metric_regex is True  # Auto-set internally
+
+    # Test with only metric_regex set
+    lp2 = wr.LinePlot(metric_regex="train/.*")
+    assert lp2._to_model().config.metric_regex == "train/.*"
+    assert lp2._to_model().config.use_metric_regex is True  # Auto-set internally
+
+    # Test None case (default)
+    lp3 = wr.LinePlot(y=["loss"])
+    assert lp3._to_model().config.metric_regex is None
+    assert lp3._to_model().config.use_metric_regex is None
+
+    # Test round-trip serialization
+    model = lp._to_model()
+    reconstructed = wr.LinePlot._from_model(model)
+    assert reconstructed.metric_regex == "system/.*"
+
+    # Verify that setting metric_regex results in use_metric_regex=True in the backend
+    lp4 = wr.LinePlot(
+        y=["loss"],
+        metric_regex="val/.*",
+    )
+    assert lp4._to_model().config.metric_regex == "val/.*"
+    assert lp4._to_model().config.use_metric_regex is True

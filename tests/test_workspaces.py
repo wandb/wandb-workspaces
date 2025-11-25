@@ -418,3 +418,37 @@ def test_run_display_name_auto_added_to_pinned():
     )
     # run:displayName is added and moved to first position during validation
     assert runset_settings.pinned_columns == ["run:displayName", "summary:accuracy"]
+
+
+def test_workspace_lineplot_metric_regex():
+    """Test LinePlot metric_regex field in workspace sections."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        sections=[
+            ws.Section(
+                name="Training Metrics",
+                panels=[
+                    wr.LinePlot(
+                        title="Train Metrics",
+                        metric_regex="train/.*",
+                    ),
+                ],
+            ),
+        ],
+    )
+
+    # Check field is set correctly
+    panel = workspace.sections[0].panels[0]
+    assert panel.metric_regex == "train/.*"
+
+    # Test serialization to internal model - use_metric_regex should be auto-set
+    model = workspace._to_model()
+    panel_config = model.spec.section.panel_bank_config.sections[0].panels[0].config
+    assert panel_config.metric_regex == "train/.*"
+    assert panel_config.use_metric_regex is True  # Auto-set internally
+
+    # Test round-trip serialization
+    workspace2 = ws.Workspace._from_model(model)
+    panel2 = workspace2.sections[0].panels[0]
+    assert panel2.metric_regex == "train/.*"
