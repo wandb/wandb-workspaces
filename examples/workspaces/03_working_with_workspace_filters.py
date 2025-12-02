@@ -173,3 +173,106 @@ workspace_recent_successful_operator = ws.Workspace(
 )
 
 workspace_recent_successful_operator.save()
+
+# ============================================================================
+# METHOD 4: Filtering by tags
+# ============================================================================
+# Filter runs by the tags set via wandb.init(tags=[...])
+# Use ws.Tags().isin([...]) to match runs with any of the specified tags
+# Use ws.Tags().notin([...]) to exclude runs with any of the specified tags
+
+# Using FilterExpr with Tags
+workspace_with_tags = ws.Workspace(
+    name="Production Runs (Tag Filter)",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Production Experiments",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # Filter for runs tagged with 'production' or 'release'
+        filters=[
+            ws.Tags().isin(["production", "release"]),
+        ]
+    ),
+)
+
+workspace_with_tags.save()
+
+# Excluding runs with certain tags
+workspace_excluding_tags = ws.Workspace(
+    name="Non-Debug Runs (Excluding Tags)",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Real Experiments",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # Exclude runs tagged with 'debug' or 'test'
+        filters=[
+            ws.Tags().notin(["debug", "test"]),
+        ]
+    ),
+)
+
+workspace_excluding_tags.save()
+
+# Combining tag filters with other filters
+workspace_tags_combined = ws.Workspace(
+    name="Best Production Runs",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Top Production Results",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # Combine tag filter with other conditions
+        filters=[
+            ws.Tags().isin(["production"]),
+            ws.Metric("State") == "finished",
+            ws.Summary("accuracy") > 0.9,
+        ]
+    ),
+)
+
+workspace_tags_combined.save()
+
+# Using string filters with tags
+workspace_tags_string = ws.Workspace(
+    name="Baseline Runs (String Tag Filter)",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Baseline Experiments",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # String filter syntax for tags
+        filters="Tags() in ['baseline', 'experiment-v1'] and State == 'finished'"
+    ),
+)
+
+workspace_tags_string.save()
