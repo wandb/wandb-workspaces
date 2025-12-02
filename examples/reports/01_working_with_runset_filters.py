@@ -211,3 +211,67 @@ report_with_recent_runs = wr.Report(
 )
 
 report_with_recent_runs.save()
+
+# ============================================================================
+# METHOD 5: Filtering by tags
+# ============================================================================
+# Filter runs by the tags set via wandb.init(tags=[...])
+# Use ws.Tags().isin([...]) to match runs with any of the specified tags
+# Use ws.Tags().notin([...]) to exclude runs with any of the specified tags
+
+report_with_tags = wr.Report(
+    entity=entity,
+    project=project,
+    title="Tag-Filtered Report",
+    blocks=[
+        wr.H1("Production Runs"),
+        wr.P("Showing only runs tagged as 'production' or 'release'."),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    # Filter for runs with specific tags using isin()
+                    filters=[
+                        ws.Tags().isin(["production", "release"]),
+                    ],
+                )
+            ],
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+                wr.ScalarChart(metric="accuracy", groupby_aggfunc="max"),
+            ],
+        ),
+        wr.H2("Excluding Debug Runs"),
+        wr.P("Filtering out runs tagged as 'debug' or 'test'."),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    # Exclude runs with certain tags using notin()
+                    filters=[
+                        ws.Tags().notin(["debug", "test"]),
+                        ws.Metric("State") == "finished",
+                    ],
+                )
+            ],
+            panels=[wr.LinePlot(x="Step", y=["loss"])],
+        ),
+        wr.H2("Tag Filters with String Syntax"),
+        wr.P("Using string filter syntax for tag-based filtering."),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    # String filter syntax for tags
+                    filters="Tags() in ['baseline', 'experiment-v1'] and State == 'finished'",
+                )
+            ],
+            panels=[wr.ParallelCoordinatesPlot()],
+        ),
+    ],
+)
+
+report_with_tags.save()
