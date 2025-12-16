@@ -247,6 +247,11 @@ class PanelBankConfigSectionsItem(ReportAPIBaseModel):
     panels: LList["PanelTypes"] = Field(default_factory=list)
     pinned: Optional[bool] = None
 
+    @validator("panels", pre=True, each_item=True)
+    def parse_panel(cls, v):  # noqa: N805
+        """Parse panels based on 'viewType' field to use correct class."""
+        return _validate_panel_from_dict(v)
+
 
 class PanelBankConfig(ReportAPIBaseModel):
     state: int = 0
@@ -278,6 +283,11 @@ class PanelBankSectionConfig(ReportAPIBaseModel):
     sorted: int = 0
     local_panel_settings: LocalPanelSettings = Field(default_factory=LocalPanelSettings)
     pinned: Optional[bool] = None
+
+    @validator("panels", pre=True, each_item=True)
+    def parse_panel(cls, v):  # noqa: N805
+        """Parse panels based on 'viewType' field to use correct class."""
+        return _validate_panel_from_dict(v)
 
 
 class PanelGridMetadataPanels(ReportAPIBaseModel):
@@ -538,6 +548,29 @@ class Spec(ReportAPIBaseModel):
     width: str = "readable"
     authors: list = Field(default_factory=list)
     discussion_threads: list = Field(default_factory=list)
+
+    @validator("blocks", pre=True, each_item=True)
+    def parse_block(cls, v):  # noqa: N805
+        """Parse blocks based on 'type' field to use correct class."""
+        if not isinstance(v, dict):
+            return v
+
+        block_type = v.get("type")
+        if not block_type:
+            return v
+
+        # Define mapping after classes are defined
+        type_mapping = block_type_mapping
+        block_class = type_mapping.get(block_type)
+
+        if block_class:
+            try:
+                return block_class.model_validate(v)
+            except Exception:
+                # If validation fails, fall through to default behavior
+                pass
+
+        return v
 
 
 class ReportViewspec(ReportAPIBaseModel):
@@ -871,19 +904,60 @@ block_type_mapping: Dict[str, BlockTypes] = {
     "paragraph": Paragraph,
     "code-block": CodeBlock,
     "markdown-block": MarkdownBlock,
-    "latex-block": LatexBlock,
+    "latex": LatexBlock,
     "image": Image,
     "list": List,
     "callout-block": CalloutBlock,
     "video": Video,
-    "horziontal-rule": HorizontalRule,
+    "horizontal-rule": HorizontalRule,
     "spotify": Spotify,
     "soundcloud": SoundCloud,
     "gallery": Gallery,
     "panel-grid": PanelGrid,
     "table-of-contents": TableOfContents,
     "block-quote": BlockQuote,
+    "weave-panel": WeaveBlock,
 }
+
+panel_type_mapping: Dict[str, PanelTypes] = {
+    "Run History Line Plot": LinePlot,
+    "Scatter Plot": ScatterPlot,
+    "Scalar Chart": ScalarChart,
+    "Bar Chart": BarPlot,
+    "Code Comparer": CodeComparer,
+    "Parallel Coordinates Plot": ParallelCoordinatesPlot,
+    "Parameter Importance": ParameterImportancePlot,
+    "Run Comparer": RunComparer,
+    "Media Browser": MediaBrowser,
+    "Markdown Panel": MarkdownPanel,
+    "Vega2": Vega2,
+    "Weave": WeavePanel,
+}
+
+
+def _validate_panel_from_dict(v: Any) -> Any:
+    """Helper function to parse panels based on 'viewType' field.
+
+    Used by validators in PanelBankConfigSectionsItem and PanelBankSectionConfig.
+    """
+    if not isinstance(v, dict):
+        return v
+
+    # Check both camelCase and snake_case
+    view_type = v.get("viewType") or v.get("view_type")
+    if not view_type:
+        return v
+
+    panel_class = panel_type_mapping.get(view_type)
+
+    if panel_class:
+        try:
+            return panel_class.model_validate(v)
+        except Exception:
+            # If validation fails, fall through to default behavior
+            pass
+
+    return v
 
 
 def _get_weave_block_inputs(config: dict) -> dict:

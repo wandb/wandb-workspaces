@@ -473,9 +473,9 @@ def _handle_function_call(node) -> dict:
                 # Handle both ast.Str (Python < 3.8) and ast.Constant (Python 3.8+)
                 arg = node.args[0]
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                    arg_value = arg.value
+                    arg_value = str(arg.value)
                 elif hasattr(ast, "Str") and isinstance(arg, ast.Str):
-                    arg_value = arg.s
+                    arg_value = str(arg.s)  # type: ignore[attr-defined]
                 else:
                     raise ValueError(
                         f"Invalid arguments for {func_name}: expected string literal"
@@ -561,6 +561,40 @@ def _extract_value(node) -> Any:
         return [_extract_value(element) for element in node.elts]
     if isinstance(node, ast.Name):
         return node.id
+    if isinstance(node, ast.BinOp):
+        # Handle binary operations (e.g., 5 + 3, 10 - 2, etc.)
+        # Evaluate the operation and return the result
+        left = _extract_value(node.left)
+        right = _extract_value(node.right)
+        bin_op = node.op
+
+        if isinstance(bin_op, ast.Add):
+            return left + right
+        elif isinstance(bin_op, ast.Sub):
+            return left - right
+        elif isinstance(bin_op, ast.Mult):
+            return left * right
+        elif isinstance(bin_op, ast.Div):
+            return left / right
+        elif isinstance(bin_op, ast.FloorDiv):
+            return left // right
+        elif isinstance(bin_op, ast.Mod):
+            return left % right
+        elif isinstance(bin_op, ast.Pow):
+            return left**right
+        else:
+            raise ValueError(f"Unsupported binary operation: {type(bin_op)}")
+    if isinstance(node, ast.UnaryOp):
+        # Handle unary operations (e.g., -5, +3)
+        operand = _extract_value(node.operand)
+        unary_op = node.op
+
+        if isinstance(unary_op, ast.UAdd):
+            return +operand
+        elif isinstance(unary_op, ast.USub):
+            return -operand
+        else:
+            raise ValueError(f"Unsupported unary operation: {type(unary_op)}")
     raise ValueError(f"Unsupported value type: {type(node)}")
 
 

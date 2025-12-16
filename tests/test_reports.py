@@ -874,3 +874,181 @@ def test_lineplot_metric_regex():
     )
     assert lp4._to_model().config.metric_regex == "val/.*"
     assert lp4._to_model().config.use_metric_regex is True
+
+
+def test_block_validation_no_unknown_blocks():
+    """Test that blocks are parsed correctly without creating UnknownBlock instances."""
+    from wandb_workspaces.reports.v2 import internal
+
+    # Simulate a report spec with various block types
+    test_spec_dict = {
+        "id": "test-report",
+        "name": "test-report",
+        "displayName": "Test Report",
+        "description": "A test report",
+        "project": {
+            "name": "test-project",
+            "entityName": "test-entity",
+        },
+        "spec": {
+            "version": 5,
+            "panelSettings": {},
+            "blocks": [
+                {
+                    "type": "heading",
+                    "level": 1,
+                    "children": [{"text": "Test Heading"}],
+                },
+                {
+                    "type": "paragraph",
+                    "children": [{"text": "This is a test paragraph."}],
+                },
+                {
+                    "type": "code-block",
+                    "language": "python",
+                    "children": [
+                        {
+                            "type": "code-line",
+                            "children": [{"text": "print('Hello, World!')"}],
+                        }
+                    ],
+                },
+            ],
+            "width": "readable",
+            "authors": [],
+            "discussionThreads": [],
+        },
+    }
+
+    model = internal.ReportViewspec.model_validate(test_spec_dict)
+    assert len(model.spec.blocks) == 3
+
+    # Ensure no blocks are UnknownBlock
+    for block in model.spec.blocks:
+        assert not isinstance(
+            block, internal.UnknownBlock
+        ), f"Block should not be UnknownBlock, got {type(block).__name__}"
+
+    # Verify specific block types
+    assert isinstance(model.spec.blocks[0], internal.Heading)
+    assert isinstance(model.spec.blocks[1], internal.Paragraph)
+    assert isinstance(model.spec.blocks[2], internal.CodeBlock)
+
+
+def test_unordered_list_complex_items():
+    """Test that UnorderedList can handle items with multiple text segments."""
+    from wandb_workspaces.reports.v2 import internal
+
+    test_spec_dict = {
+        "id": "test-report",
+        "name": "test-report",
+        "displayName": "Test Report",
+        "description": "A test report",
+        "project": {
+            "name": "test-project",
+            "entityName": "test-entity",
+        },
+        "spec": {
+            "version": 5,
+            "panelSettings": {},
+            "blocks": [
+                {
+                    "type": "list",
+                    "ordered": False,
+                    "children": [
+                        {
+                            "type": "list-item",
+                            "children": [
+                                {
+                                    "type": "paragraph",
+                                    "children": [{"text": "Simple item"}],
+                                }
+                            ],
+                        },
+                        {
+                            "type": "list-item",
+                            "children": [
+                                {
+                                    "type": "paragraph",
+                                    "children": [
+                                        {"text": "Base Model"},
+                                        {"text": ": OpenPipe/Qwen3-14B-Instruct"},
+                                    ],
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ],
+            "width": "readable",
+            "authors": [],
+            "discussionThreads": [],
+        },
+    }
+
+    # Should not raise validation error
+    model = internal.ReportViewspec.model_validate(test_spec_dict)
+    assert len(model.spec.blocks) == 1
+    assert isinstance(model.spec.blocks[0], internal.List)
+    assert len(model.spec.blocks[0].children) == 2
+
+
+def test_ordered_list_complex_items():
+    """Test that OrderedList can handle items with multiple text segments."""
+    from wandb_workspaces.reports.v2 import internal
+
+    test_spec_dict = {
+        "id": "test-report",
+        "name": "test-report",
+        "displayName": "Test Report",
+        "description": "A test report",
+        "project": {
+            "name": "test-project",
+            "entityName": "test-entity",
+        },
+        "spec": {
+            "version": 5,
+            "panelSettings": {},
+            "blocks": [
+                {
+                    "type": "list",
+                    "ordered": True,
+                    "children": [
+                        {
+                            "type": "list-item",
+                            "ordered": True,
+                            "children": [
+                                {
+                                    "type": "paragraph",
+                                    "children": [{"text": "First"}, {"text": " item"}],
+                                }
+                            ],
+                        },
+                        {
+                            "type": "list-item",
+                            "ordered": True,
+                            "children": [
+                                {
+                                    "type": "paragraph",
+                                    "children": [
+                                        {"text": "Second"},
+                                        {"text": " item"},
+                                        {"text": " with more"},
+                                    ],
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ],
+            "width": "readable",
+            "authors": [],
+            "discussionThreads": [],
+        },
+    }
+
+    # Should not raise validation error
+    model = internal.ReportViewspec.model_validate(test_spec_dict)
+    assert len(model.spec.blocks) == 1
+    assert isinstance(model.spec.blocks[0], internal.List)
+    assert len(model.spec.blocks[0].children) == 2

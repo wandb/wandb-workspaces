@@ -519,10 +519,11 @@ class OrderedList(List):
     """A list of items in a numbered list.
 
     Attributes:
-        items (LList[str]): A list of one or more `OrderedListItem` objects.
+        items (LList[TextLikeField]): A list of one or more `OrderedListItem` objects.
+            Each item can be a string or a list of TextLike objects.
     """
 
-    items: LList[str] = Field(default_factory=lambda: [""])
+    items: LList[TextLikeField] = Field(default_factory=lambda: [""])
 
     def _to_model(self):
         children = [OrderedListItem(li)._to_model() for li in self.items]
@@ -534,10 +535,11 @@ class UnorderedList(List):
     """A list of items in a bulleted list.
 
     Attributes:
-        items (LList[str]): A list of one or more `UnorderedListItem` objects.
+        items (LList[TextLikeField]): A list of one or more `UnorderedListItem` objects.
+            Each item can be a string or a list of TextLike objects.
     """
 
-    items: LList[str] = Field(default_factory=lambda: [""])
+    items: LList[TextLikeField] = Field(default_factory=lambda: [""])
 
     def _to_model(self):
         children = [UnorderedListItem(li)._to_model() for li in self.items]
