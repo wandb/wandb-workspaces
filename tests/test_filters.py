@@ -115,3 +115,43 @@ def test_core_within_last_validation():
     from .filter_test_helpers import test_within_last_validation
 
     test_within_last_validation()
+
+
+# ===== Binary and unary operation tests =====
+
+
+def test_binary_operations_in_filters():
+    """Test that binary operations in filter values are supported (e.g., 0.5 + 0.45)."""
+    from wandb_workspaces import expr
+
+    test_cases = [
+        "Summary('accuracy') > 0.5 + 0.45",  # Addition
+        "Config('epochs') == 100 - 10",  # Subtraction
+        "Summary('loss') < 0.5 * 2",  # Multiplication
+        "Config('batch_size') >= 64 / 2",  # Division
+        "Summary('floor') >= 100 // 3",  # Floor division
+        "Config('mod') == 10 % 3",  # Modulo
+        "Summary('power') > 2 ** 3",  # Power
+    ]
+
+    for test_expr in test_cases:
+        # Should not raise "Unsupported value type" error
+        result = expr.expr_to_filters(test_expr)
+        assert result is not None
+        assert isinstance(result, expr.Filters)
+
+
+def test_unary_operations_in_filters():
+    """Test that unary operations in filter values are supported (e.g., -5, +3)."""
+    from wandb_workspaces import expr
+
+    test_cases = [
+        "Summary('value') > -5",  # Unary minus
+        "Config('threshold') == +10",  # Unary plus (though less common)
+    ]
+
+    for test_expr in test_cases:
+        # Should not raise "Unsupported value type" error
+        result = expr.expr_to_filters(test_expr)
+        assert result is not None
+        assert isinstance(result, expr.Filters)
