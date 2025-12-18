@@ -519,10 +519,11 @@ class OrderedList(List):
     """A list of items in a numbered list.
 
     Attributes:
-        items (LList[str]): A list of one or more `OrderedListItem` objects.
+        items (LList[TextLikeField]): A list of one or more `OrderedListItem` objects.
+            Each item can be a string or a list of TextLike objects.
     """
 
-    items: LList[str] = Field(default_factory=lambda: [""])
+    items: LList[TextLikeField] = Field(default_factory=lambda: [""])
 
     def _to_model(self):
         children = [OrderedListItem(li)._to_model() for li in self.items]
@@ -534,10 +535,11 @@ class UnorderedList(List):
     """A list of items in a bulleted list.
 
     Attributes:
-        items (LList[str]): A list of one or more `UnorderedListItem` objects.
+        items (LList[TextLikeField]): A list of one or more `UnorderedListItem` objects.
+            Each item can be a string or a list of TextLike objects.
     """
 
-    items: LList[str] = Field(default_factory=lambda: [""])
+    items: LList[TextLikeField] = Field(default_factory=lambda: [""])
 
     def _to_model(self):
         children = [UnorderedListItem(li)._to_model() for li in self.items]
@@ -2632,6 +2634,7 @@ class CustomChart(Panel):
 
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
+@dataclass(config=ConfigDict(validate_assignment=True, extra="allow", slots=True))
 class UnknownPanel(Base):
     """
     INTERNAL: This class is not for public use.
@@ -2646,7 +2649,6 @@ class UnknownPanel(Base):
 
     def _to_model(self):
         d = self.__dict__
-        print(d)
         return internal.UnknownPanel.model_validate(d)
 
     @classmethod
@@ -3465,16 +3467,19 @@ def _lookup(block):
     cls = block_mapping.get(block.__class__, UnknownBlock)
 
     if cls is UnknownBlock:
-        wandb.termwarn(f"Unknown block type: {block.__class__}")
+        block_type = getattr(block, "type", "unknown")
+        wandb.termwarn(f"Unsupported block type: {block_type}")
+        return UnknownBlock._from_model(block)
 
     if cls is WeaveBlock:
-        for cls in defined_weave_blocks:
+        for weave_cls in defined_weave_blocks:
             try:
-                cls._from_model(block)
+                return weave_cls._from_model(block)
             except Exception:
                 continue
-            else:
-                break
+        # If none of the specific WeaveBlock types worked, treat as unknown
+        wandb.termwarn(f"Unsupported WeaveBlock configuration: {block.type}")
+        return UnknownBlock._from_model(block)
 
     return cls._from_model(block)
 
@@ -3504,7 +3509,11 @@ def _lookup_panel(panel):
     cls = panel_mapping.get(panel.__class__, UnknownPanel)
 
     if cls is UnknownPanel:
-        wandb.termwarn(f"Unknown panel type: {panel.__class__}")
+        # Try both camelCase (from API) and snake_case (from Pydantic)
+        panel_type = getattr(panel, "view_type", None) or getattr(
+            panel, "viewType", "unknown"
+        )
+        wandb.termwarn(f"Unsupported panel type: {panel_type}")
 
     if cls is WeavePanel:
         # TODO the more panels that get defined, the more of a need there is to either
@@ -3665,27 +3674,79 @@ def _resolve_collisions(panels: LList[Panel], x_max: int = 24):
             l1, l2 = p1.layout, p2.layout
 
             if _collides(p1, p2):
-                x = l1.x + l1.w - l2.x
-                y = l1.y + l1.h - l2.y
-
-                if l2.x + l2.w + x <= x_max:
-                    l2.x += x
-
+                # Handle layout that might be a dict (for UnknownPanel)
+                if isinstance(l1, dict):
+                    l1_x, l1_y, l1_w, l1_h = (
+                        l1.get("x", 0),
+                        l1.get("y", 0),
+                        l1.get("w", 0),
+                        l1.get("h", 0),
+                    )
                 else:
-                    l2.y += y
-                    l2.x = 0
+                    l1_x, l1_y, l1_w, l1_h = l1.x, l1.y, l1.w, l1.h
+
+                if isinstance(l2, dict):
+                    l2_x, l2_y, l2_w, _ = (
+                        l2.get("x", 0),
+                        l2.get("y", 0),
+                        l2.get("w", 0),
+                        l2.get("h", 0),
+                    )
+                else:
+                    l2_x, l2_y, l2_w, _ = l2.x, l2.y, l2.w, l2.h
+
+                x = l1_x + l1_w - l2_x
+                y = l1_y + l1_h - l2_y
+
+                if l2_x + l2_w + x <= x_max:
+                    if isinstance(l2, dict):
+                        l2["x"] = l2_x + x
+                    else:
+                        l2.x += x
+                else:
+                    if isinstance(l2, dict):
+                        l2["y"] = l2_y + y
+                        l2["x"] = 0
+                    else:
+                        l2.y += y
+                        l2.x = 0
     return panels
 
 
 def _collides(p1: Panel, p2: Panel) -> bool:
     l1, l2 = p1.layout, p2.layout
 
+    # Check if panels are the same by ID (if available)
+    p1_id = getattr(p1, "_id", None)
+    p2_id = getattr(p2, "_id", None)
+
+    # Handle layout that might be a dict (for UnknownPanel)
+    if isinstance(l1, dict):
+        l1_x, l1_y, l1_w, l1_h = (
+            l1.get("x", 0),
+            l1.get("y", 0),
+            l1.get("w", 0),
+            l1.get("h", 0),
+        )
+    else:
+        l1_x, l1_y, l1_w, l1_h = l1.x, l1.y, l1.w, l1.h
+
+    if isinstance(l2, dict):
+        l2_x, l2_y, l2_w, l2_h = (
+            l2.get("x", 0),
+            l2.get("y", 0),
+            l2.get("w", 0),
+            l2.get("h", 0),
+        )
+    else:
+        l2_x, l2_y, l2_w, l2_h = l2.x, l2.y, l2.w, l2.h
+
     if (
-        (p1._id == p2._id)
-        or (l1.x + l1.w <= l2.x)
-        or (l1.x >= l2.w + l2.x)
-        or (l1.y + l1.h <= l2.y)
-        or (l1.y >= l2.y + l2.h)
+        (p1_id is not None and p2_id is not None and p1_id == p2_id)
+        or (l1_x + l1_w <= l2_x)
+        or (l1_x >= l2_w + l2_x)
+        or (l1_y + l1_h <= l2_y)
+        or (l1_y >= l2_y + l2_h)
     ):
         return False
 
