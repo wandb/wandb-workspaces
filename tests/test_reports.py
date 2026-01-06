@@ -1052,3 +1052,76 @@ def test_ordered_list_complex_items():
     assert len(model.spec.blocks) == 1
     assert isinstance(model.spec.blocks[0], internal.List)
     assert len(model.spec.blocks[0].children) == 2
+
+
+# Tests for Runset.custom_run_colors being merged into PanelGrid
+class TestRunsetCustomRunColors:
+    """Tests for custom_run_colors on Runset being properly merged into PanelGrid."""
+
+    @pytest.fixture(autouse=True)
+    def mock_api(self, monkeypatch):
+        """Mock the wandb API to avoid network calls."""
+        mock_client = Mock()
+        mock_client.execute.return_value = {
+            "project": {"internalId": "test-project-id"}
+        }
+        monkeypatch.setattr(
+            "wandb_workspaces.reports.v2.interface._get_api",
+            lambda: type("MockApi", (), {"client": mock_client})(),
+        )
+
+    def test_runset_colors_applied_to_panel_grid(self):
+        """Colors defined on Runset should be included in PanelGrid._to_model()."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            custom_run_colors={"run-1": "#FF0000", "run-2": "#00FF00"},
+        )
+        panel_grid = wr.PanelGrid(runsets=[runset])
+
+        model = panel_grid._to_model()
+
+        assert model.metadata.custom_run_colors == {
+            "run-1": "#FF0000",
+            "run-2": "#00FF00",
+        }
+
+    def test_panel_grid_colors_override_runset_colors(self):
+        """PanelGrid colors should take precedence over Runset colors."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            custom_run_colors={"run-1": "#FF0000", "run-2": "#00FF00"},
+        )
+        panel_grid = wr.PanelGrid(
+            runsets=[runset],
+            custom_run_colors={"run-1": "#0000FF"},  # Override run-1
+        )
+
+        model = panel_grid._to_model()
+
+        assert model.metadata.custom_run_colors == {
+            "run-1": "#0000FF",  # PanelGrid color wins
+            "run-2": "#00FF00",  # Runset color preserved
+        }
+
+    def test_multiple_runsets_colors_merged(self):
+        """Colors from multiple runsets should all be merged."""
+        runset1 = wr.Runset(
+            entity="test",
+            project="test",
+            custom_run_colors={"run-1": "#FF0000"},
+        )
+        runset2 = wr.Runset(
+            entity="test",
+            project="test",
+            custom_run_colors={"run-2": "#00FF00"},
+        )
+        panel_grid = wr.PanelGrid(runsets=[runset1, runset2])
+
+        model = panel_grid._to_model()
+
+        assert model.metadata.custom_run_colors == {
+            "run-1": "#FF0000",
+            "run-2": "#00FF00",
+        }

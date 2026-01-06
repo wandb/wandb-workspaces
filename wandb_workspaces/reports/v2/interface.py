@@ -1078,6 +1078,12 @@ class PanelGrid(Block):
     )
 
     def _to_model(self):
+        # Merge custom_run_colors from runsets, with PanelGrid colors taking precedence
+        merged_colors = {}
+        for rs in self.runsets:
+            merged_colors.update(rs.custom_run_colors)
+        merged_colors.update(self.custom_run_colors)
+
         return internal.PanelGrid(
             metadata=internal.PanelGridMetadata(
                 run_sets=[rs._to_model() for rs in self.runsets],
@@ -1089,7 +1095,7 @@ class PanelGrid(Block):
                     panel_bank_config=internal.PanelBankConfig(),
                     open_viz=self._open_viz,
                 ),
-                custom_run_colors=_to_color_dict(self.custom_run_colors, self.runsets),
+                custom_run_colors=_to_color_dict(merged_colors, self.runsets),
             )
         )
 
