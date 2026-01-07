@@ -1125,3 +1125,48 @@ class TestRunsetCustomRunColors:
             "run-1": "#FF0000",
             "run-2": "#00FF00",
         }
+        
+# Tests for _from_color_dict edge cases (migration bug fixes)
+class TestFromColorDict:
+    """Tests for _from_color_dict handling of edge cases during report migration."""
+
+    def test_plain_run_id_with_dashes(self):
+        """Run IDs with dashes (e.g., 'abc-123') should not be parsed as RunsetGroup."""
+        from wandb_workspaces.reports.v2.interface import _from_color_dict
+
+        # Plain run ID with dashes - no colons means it's not a RunsetGroup
+        color_dict = {"abc-123-def": "#FF0000", "simple": "#00FF00"}
+        result = _from_color_dict(color_dict, runsets=[])
+
+        # Both keys should be preserved as-is (not parsed as RunsetGroup)
+        assert result == {"abc-123-def": "#FF0000", "simple": "#00FF00"}
+
+    def test_missing_runset_preserves_key(self):
+        """When runset ID not found, preserve original key instead of crashing."""
+        from wandb_workspaces.reports.v2.interface import _from_color_dict
+
+        # Valid RunsetGroup format but runset doesn't exist
+        color_dict = {"nonexistent-runset-config:value": "#FF0000"}
+        result = _from_color_dict(color_dict, runsets=[])
+
+        # Key should be preserved when runset lookup fails
+        assert result == {"nonexistent-runset-config:value": "#FF0000"}
+
+    def test_valid_runset_group_format(self):
+        """Valid RunsetGroup format with existing runset should parse correctly."""
+        from wandb_workspaces.reports.v2.interface import _from_color_dict
+
+        # Create a mock runset with matching _id
+        mock_runset = wr.Runset(entity="test", project="test", name="My Runset")
+        # Access private _id field
+        runset_id = mock_runset._id
+
+        color_dict = {f"{runset_id}-config:lr": "#FF0000"}
+        result = _from_color_dict(color_dict, runsets=[mock_runset])
+
+        # Should parse into RunsetGroup
+        assert len(result) == 1
+        key = list(result.keys())[0]
+        assert isinstance(key, wr.RunsetGroup)
+        assert key.runset_name == "My Runset"
+        assert result[key] == "#FF0000"
