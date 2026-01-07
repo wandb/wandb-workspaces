@@ -3955,7 +3955,9 @@ def _from_color_dict(d, runsets):
     for k, v in d.items():
         id, *backend_parts = k.split("-")
 
-        if backend_parts:
+        # Only treat as RunsetGroup format if all backend parts contain ':'
+        # Plain string keys (like run IDs) may contain dashes but won't have colons
+        if backend_parts and all(":" in part for part in backend_parts):
             groups = []
             for part in backend_parts:
                 key, value = part.rsplit(":", 1)
@@ -3963,8 +3965,12 @@ def _from_color_dict(d, runsets):
                 group = RunsetGroupKey(kkey, value)
                 groups.append(group)
             rs = _get_rs_by_id(runsets, id)
-            rg = RunsetGroup(runset_name=rs.name, keys=groups)
-            new_key = rg
+            # If runset not found (e.g., during migration), preserve the original key
+            if rs is None:
+                new_key = k
+            else:
+                rg = RunsetGroup(runset_name=rs.name, keys=groups)
+                new_key = rg
         else:
             new_key = k
         d2[new_key] = v
