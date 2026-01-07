@@ -155,3 +155,35 @@ def test_unary_operations_in_filters():
         result = expr.expr_to_filters(test_expr)
         assert result is not None
         assert isinstance(result, expr.Filters)
+
+
+def test_list_with_dashes_round_trip():
+    """Test that list values with dashes in strings survive round-trip conversion.
+
+    Regression test: strings with dashes like 'run-one' were not quoted when
+    converting filters to expressions, causing them to be parsed as subtraction.
+    """
+    from wandb_workspaces import expr
+
+    # Create a filter with list containing strings with dashes
+    filters = expr.Filters(
+        op="IN",
+        key=expr.Key(section="run", name="Name"),
+        value=["run-one", "two-three", "abc-123-def"],
+    )
+
+    # Convert to expression string
+    expr_string = expr.filters_to_expr(filters)
+
+    # The expression should properly quote the strings
+    assert "'run-one'" in expr_string
+    assert "'two-three'" in expr_string
+    assert "'abc-123-def'" in expr_string
+
+    # Parse it back - should not raise TypeError about string subtraction
+    parsed = expr.expr_to_filters(expr_string)
+    assert parsed is not None
+
+    # Verify the values survived the round-trip (nested in OR/AND structure)
+    inner_filter = parsed.filters[0].filters[0]
+    assert inner_filter.value == ["run-one", "two-three", "abc-123-def"]

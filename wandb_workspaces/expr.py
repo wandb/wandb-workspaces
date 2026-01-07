@@ -688,7 +688,14 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
             if value is None:
                 value = "None"
             elif isinstance(value, list):
-                value = f"[{', '.join(map(str, value))}]"
+                # Properly quote string elements in lists to avoid parse errors
+                formatted_elements = []
+                for v in value:
+                    if isinstance(v, str):
+                        formatted_elements.append(f"'{v}'")
+                    else:
+                        formatted_elements.append(str(v))
+                value = f"[{', '.join(formatted_elements)}]"
             elif isinstance(value, str):
                 value = f"'{value}'"
 
