@@ -1832,6 +1832,9 @@ class LinePlot(Panel):
         legend_template (Optional[str]): The template for the legend.
         aggregate (Optional[bool]): If set to `True`, aggregate the data.
         xaxis_expression (Optional[str]): The expression for the x-axis.
+        xaxis_format (Optional[str]): The format for the x-axis. This option
+            appears if you define a custom metric. For example,
+            you can specify 'datetime' to format the x-axis as a date and time.
         legend_fields (Optional[LList[str]]): The fields to include in the legend.
         metric_regex (Optional[str]): Regular expression pattern to match y-axis metrics.
             The backend will use this pattern to select matching metrics.
