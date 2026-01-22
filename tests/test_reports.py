@@ -313,6 +313,10 @@ def test_idempotency(request, factory_name) -> None:
 
     assert model.dict() == model2.dict()
 
+    # Panels must preserve their id through the round-trip
+    if factory_name in panel_factory_names:
+        assert model.id, f"{cls.__name__}: panel id should not be empty after _to_model()"
+
 
 def test_fix_panel_collisions():
     p1 = wr.interface.Panel(layout=wr.Layout(0, 0, 8, 6))
@@ -1125,7 +1129,7 @@ class TestRunsetCustomRunColors:
             "run-1": "#FF0000",
             "run-2": "#00FF00",
         }
-        
+
 # Tests for _from_color_dict edge cases (migration bug fixes)
 class TestFromColorDict:
     """Tests for _from_color_dict handling of edge cases during report migration."""

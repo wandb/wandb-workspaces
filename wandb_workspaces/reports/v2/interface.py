@@ -2609,6 +2609,7 @@ class CustomChart(Panel):
                 string_settings=self.chart_strings,
             ),
             layout=self.layout._to_model(),
+            id=self._id,
         )
 
     @classmethod
@@ -2633,13 +2634,15 @@ class CustomChart(Panel):
 
         query = fields_to_dict(model.config.user_query.query_fields)
 
-        return cls(
+        obj = cls(
             query=query,
             chart_name=model.config.panel_def_id,
             chart_fields=model.config.field_settings,
             chart_strings=model.config.string_settings,
             layout=Layout._from_model(model.layout),
         )
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
@@ -2678,11 +2681,17 @@ class WeavePanel(Panel):
     config: dict = Field(default_factory=dict)
 
     def _to_model(self):
-        return internal.WeavePanel(config=self.config, layout=self.layout._to_model())
+        return internal.WeavePanel(
+            config=self.config,
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
 
     @classmethod
     def _from_model(cls, model: internal.WeavePanel):
-        return cls(config=model.config)
+        obj = cls(config=model.config)
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=dataclass_config)
@@ -2881,13 +2890,16 @@ class WeavePanelSummaryTable(Panel):
                 }
             },
             layout=self.layout._to_model(),
+            id=self._id,
         )
 
     @classmethod
     def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         table_name = inputs["key"]["val"]
-        return cls(table_name=table_name)
+        obj = cls(table_name=table_name)
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=dataclass_config)
@@ -3015,6 +3027,7 @@ class WeavePanelArtifactVersionedFile(Panel):
                 }
             },
             layout=self.layout._to_model(),
+            id=self._id,
         )
 
     @classmethod
@@ -3025,7 +3038,9 @@ class WeavePanelArtifactVersionedFile(Panel):
             "val"
         ]
         file = inputs["path"]["val"]
-        return cls(artifact=artifact, version=version, file=file)
+        obj = cls(artifact=artifact, version=version, file=file)
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=dataclass_config)
@@ -3126,6 +3141,7 @@ class WeavePanelArtifact(WeavePanel):
                 }
             },
             layout=self.layout._to_model(),
+            id=self._id,
         )
 
     @classmethod
@@ -3135,7 +3151,9 @@ class WeavePanelArtifact(WeavePanel):
         tab = model.config["panel2Config"]["panelConfig"]["tabConfigs"]["overview"].get(
             "selectedTab", "overview"
         )
-        return cls(artifact=artifact, tab=tab)
+        obj = cls(artifact=artifact, tab=tab)
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=dataclass_config, repr=False)
