@@ -2681,11 +2681,17 @@ class WeavePanel(Panel):
     config: dict = Field(default_factory=dict)
 
     def _to_model(self):
-        return internal.WeavePanel(config=self.config, layout=self.layout._to_model())
+        return internal.WeavePanel(
+            config=self.config,
+            layout=self.layout._to_model(),
+            id=self._id,
+        )
 
     @classmethod
     def _from_model(cls, model: internal.WeavePanel):
-        return cls(config=model.config)
+        obj = cls(config=model.config)
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=dataclass_config)
@@ -2884,13 +2890,16 @@ class WeavePanelSummaryTable(Panel):
                 }
             },
             layout=self.layout._to_model(),
+            id=self._id,
         )
 
     @classmethod
     def _from_model(cls, model: internal.WeavePanel):
         inputs = internal._get_weave_panel_inputs(model.config)
         table_name = inputs["key"]["val"]
-        return cls(table_name=table_name)
+        obj = cls(table_name=table_name)
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=dataclass_config)
@@ -3018,6 +3027,7 @@ class WeavePanelArtifactVersionedFile(Panel):
                 }
             },
             layout=self.layout._to_model(),
+            id=self._id,
         )
 
     @classmethod
@@ -3028,7 +3038,9 @@ class WeavePanelArtifactVersionedFile(Panel):
             "val"
         ]
         file = inputs["path"]["val"]
-        return cls(artifact=artifact, version=version, file=file)
+        obj = cls(artifact=artifact, version=version, file=file)
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=dataclass_config)
@@ -3129,6 +3141,7 @@ class WeavePanelArtifact(WeavePanel):
                 }
             },
             layout=self.layout._to_model(),
+            id=self._id,
         )
 
     @classmethod
@@ -3138,7 +3151,9 @@ class WeavePanelArtifact(WeavePanel):
         tab = model.config["panel2Config"]["panelConfig"]["tabConfigs"]["overview"].get(
             "selectedTab", "overview"
         )
-        return cls(artifact=artifact, tab=tab)
+        obj = cls(artifact=artifact, tab=tab)
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=dataclass_config, repr=False)
