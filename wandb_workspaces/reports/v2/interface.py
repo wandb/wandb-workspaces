@@ -2609,6 +2609,7 @@ class CustomChart(Panel):
                 string_settings=self.chart_strings,
             ),
             layout=self.layout._to_model(),
+            id=self._id,
         )
 
     @classmethod
