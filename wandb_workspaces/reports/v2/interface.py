@@ -2634,13 +2634,15 @@ class CustomChart(Panel):
 
         query = fields_to_dict(model.config.user_query.query_fields)
 
-        return cls(
+        obj = cls(
             query=query,
             chart_name=model.config.panel_def_id,
             chart_fields=model.config.field_settings,
             chart_strings=model.config.string_settings,
             layout=Layout._from_model(model.layout),
         )
+        obj._id = model.id
+        return obj
 
 
 @dataclass(config=ConfigDict(validate_assignment=True, extra="forbid", slots=True))
