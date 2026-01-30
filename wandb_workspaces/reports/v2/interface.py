@@ -2709,6 +2709,41 @@ class WeavePanelSummaryTable(Panel):
 
     Attributes:
         table_name (str): The name of the table, DataFrame, plot, or value.
+        layout (Layout): The layout configuration for the panel, including position and size.
+            Inherited from the Panel base class. Use to adjust width (w) and height (h).
+
+    Example:
+        Create a report with a summary table panel that displays a table with custom dimensions:
+
+        ```python
+        import wandb_workspaces.reports as wr
+
+        report = wr.Report(
+            project="my-project",
+            entity="my-entity",
+            title="Summary Table Report"
+        )
+
+        report.blocks = [
+            wr.PanelGrid(
+                runsets=[wr.Runset(project="my-project")],
+                panels=[
+                    wr.WeavePanelSummaryTable(
+                        table_name="my-table-name",
+                        layout=wr.Layout(w=24, h=20)
+                    )
+                ]
+            )
+        ]
+
+        report.save()
+        ```
+
+        The layout parameters control panel dimensions:
+        - w (width): Width in grid units (default: 8, max: 24)
+        - h (height): Height in grid units (default: 6)
+        - x (x-position): Horizontal position in grid (default: 0)
+        - y (y-position): Vertical position in grid (default: 0)
 
     """
 
