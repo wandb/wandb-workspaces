@@ -1059,7 +1059,7 @@ class PanelGrid(Block):
         runsets (LList["Runset"]): A list of one or more `Runset` objects.
         hide_run_sets (bool): Whether to hide the run sets of the panel grid for report viewers.
         panels (LList["PanelTypes"]): A list of one or more `Panel` objects.
-        active_runset (int): The number of runs you want to display within a runset. By default, it is set to 0.
+        active_runset (Optional[int]): The index of the active runset tab. By default, it is set to 0.
         custom_run_colors (dict): Key-value pairs where the key is the name of a
             run and the value is a color specified by a hexadecimal value.
     """
@@ -1067,7 +1067,7 @@ class PanelGrid(Block):
     runsets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
     hide_run_sets: bool = False
     panels: LList["PanelTypes"] = Field(default_factory=list)
-    active_runset: int = 0
+    active_runset: Optional[int] = 0
     custom_run_colors: Dict[Union[RunId, RunsetGroup], Union[str, dict]] = Field(
         default_factory=dict
     )
@@ -2709,6 +2709,41 @@ class WeavePanelSummaryTable(Panel):
 
     Attributes:
         table_name (str): The name of the table, DataFrame, plot, or value.
+        layout (Layout): The layout configuration for the panel, including position and size.
+            Inherited from the Panel base class. Use to adjust width (w) and height (h).
+
+    Example:
+        Create a report with a summary table panel that displays a table with custom dimensions:
+
+        ```python
+        import wandb_workspaces.reports as wr
+
+        report = wr.Report(
+            project="my-project",
+            entity="my-entity",
+            title="Summary Table Report"
+        )
+
+        report.blocks = [
+            wr.PanelGrid(
+                runsets=[wr.Runset(project="my-project")],
+                panels=[
+                    wr.WeavePanelSummaryTable(
+                        table_name="my-table-name",
+                        layout=wr.Layout(w=24, h=20)
+                    )
+                ]
+            )
+        ]
+
+        report.save()
+        ```
+
+        The layout parameters control panel dimensions:
+        - w (width): Width in grid units (default: 8, max: 24)
+        - h (height): Height in grid units (default: 6)
+        - x (x-position): Horizontal position in grid (default: 0)
+        - y (y-position): Vertical position in grid (default: 0)
 
     """
 

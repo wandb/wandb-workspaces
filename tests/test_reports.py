@@ -315,7 +315,9 @@ def test_idempotency(request, factory_name) -> None:
 
     # Panels must preserve their id through the round-trip
     if factory_name in panel_factory_names:
-        assert model.id, f"{cls.__name__}: panel id should not be empty after _to_model()"
+        assert (
+            model.id
+        ), f"{cls.__name__}: panel id should not be empty after _to_model()"
 
 
 def test_fix_panel_collisions():
@@ -1130,7 +1132,10 @@ class TestRunsetCustomRunColors:
             "run-2": "#00FF00",
         }
 
+
 # Tests for _from_color_dict edge cases (migration bug fixes)
+
+
 class TestFromColorDict:
     """Tests for _from_color_dict handling of edge cases during report migration."""
 
@@ -1174,3 +1179,16 @@ class TestFromColorDict:
         assert isinstance(key, wr.RunsetGroup)
         assert key.runset_name == "My Runset"
         assert result[key] == "#FF0000"
+
+
+def test_panel_grid_active_runset_none():
+    """Test that PanelGrid handles active_runset=None"""
+    from wandb_workspaces.reports.v2 import internal
+
+    # Simulate an internal model with open_run_set=None (as returned by some reports)
+    metadata = internal.PanelGridMetadata(open_run_set=None)
+    model = internal.PanelGrid(metadata=metadata)
+
+    # This should not raise a ValidationError
+    panel_grid = wr.PanelGrid._from_model(model)
+    assert panel_grid.active_runset is None
