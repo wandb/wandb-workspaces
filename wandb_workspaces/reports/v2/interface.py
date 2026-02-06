@@ -1059,7 +1059,7 @@ class PanelGrid(Block):
         runsets (LList["Runset"]): A list of one or more `Runset` objects.
         hide_run_sets (bool): Whether to hide the run sets of the panel grid for report viewers.
         panels (LList["PanelTypes"]): A list of one or more `Panel` objects.
-        active_runset (int): The number of runs you want to display within a runset. By default, it is set to 0.
+        active_runset (Optional[int]): The index of the active runset tab. By default, it is set to 0.
         custom_run_colors (dict): Key-value pairs where the key is the name of a
             run and the value is a color specified by a hexadecimal value.
     """
@@ -1067,7 +1067,7 @@ class PanelGrid(Block):
     runsets: LList["Runset"] = Field(default_factory=lambda: [Runset()])
     hide_run_sets: bool = False
     panels: LList["PanelTypes"] = Field(default_factory=list)
-    active_runset: int = 0
+    active_runset: Optional[int] = 0
     custom_run_colors: Dict[Union[RunId, RunsetGroup], Union[str, dict]] = Field(
         default_factory=dict
     )
