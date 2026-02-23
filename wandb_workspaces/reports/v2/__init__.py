@@ -19,6 +19,7 @@ from .interface import (
     Runset,
     RunsetGroup,
     RunsetGroupKey,
+    RunSettings,
 )
 from .metrics import *  # noqa
 from .panels import *  # noqa

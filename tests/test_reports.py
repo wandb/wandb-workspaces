@@ -1181,6 +1181,180 @@ class TestFromColorDict:
         assert result[key] == "#FF0000"
 
 
+class TestRunsetRunSettings:
+    """Tests for per-run settings (color + visibility) on Runset."""
+
+    @pytest.fixture(autouse=True)
+    def mock_api(self, monkeypatch):
+        """Mock the wandb API to avoid network calls."""
+        mock_client = Mock()
+        mock_client.execute.return_value = {
+            "project": {"internalId": "test-project-id"}
+        }
+        monkeypatch.setattr(
+            "wandb_workspaces.reports.v2.interface._get_api",
+            lambda: type("MockApi", (), {"client": mock_client})(),
+        )
+
+    def test_disabled_runs_serialize_to_selections_tree(self):
+        """Disabled runs in run_settings should appear in selections.tree."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            run_settings={
+                "run-1": wr.RunSettings(disabled=True),
+                "run-2": wr.RunSettings(disabled=True),
+            },
+        )
+        model = runset._to_model()
+        assert sorted(model.selections.tree) == ["run-1", "run-2"]
+
+    def test_no_disabled_runs_empty_selections(self):
+        """When no runs are disabled, selections.tree should be empty."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            run_settings={
+                "run-1": wr.RunSettings(color="#FF0000"),
+            },
+        )
+        model = runset._to_model()
+        assert model.selections.tree == []
+
+    def test_disabled_runs_deserialize_from_selections_tree(self):
+        """Disabled runs should be reconstructed from selections.tree."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(
+            selections=internal.RunsetSelections(tree=["run-1", "run-2"]),
+        )
+        runset = wr.Runset._from_model(model)
+        assert "run-1" in runset.run_settings
+        assert runset.run_settings["run-1"].disabled is True
+        assert "run-2" in runset.run_settings
+        assert runset.run_settings["run-2"].disabled is True
+
+    def test_run_settings_colors_appear_in_panelgrid_model(self):
+        """Colors from run_settings should be serialized into PanelGrid custom_run_colors."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            run_settings={
+                "run-1": wr.RunSettings(color="#FF0000"),
+                "run-2": wr.RunSettings(color="#00FF00"),
+            },
+        )
+        panel_grid = wr.PanelGrid(runsets=[runset])
+        model = panel_grid._to_model()
+        assert model.metadata.custom_run_colors["run-1"] == "#FF0000"
+        assert model.metadata.custom_run_colors["run-2"] == "#00FF00"
+
+    def test_combined_color_and_disabled(self):
+        """A run can be both colored and disabled."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            run_settings={
+                "run-1": wr.RunSettings(color="#FF0000", disabled=True),
+            },
+        )
+        # Check disabled serialized
+        runset_model = runset._to_model()
+        assert "run-1" in runset_model.selections.tree
+
+        # Check color serialized
+        panel_grid = wr.PanelGrid(runsets=[runset])
+        pg_model = panel_grid._to_model()
+        assert pg_model.metadata.custom_run_colors["run-1"] == "#FF0000"
+
+    def test_backward_compat_custom_run_colors_still_works(self):
+        """Existing custom_run_colors usage should still work."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            custom_run_colors={"run-1": "#FF0000"},
+        )
+        panel_grid = wr.PanelGrid(runsets=[runset])
+        model = panel_grid._to_model()
+        assert model.metadata.custom_run_colors["run-1"] == "#FF0000"
+
+    def test_panelgrid_colors_override_run_settings_colors(self):
+        """PanelGrid-level custom_run_colors should override run_settings colors."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            run_settings={
+                "run-1": wr.RunSettings(color="#FF0000"),
+            },
+        )
+        panel_grid = wr.PanelGrid(
+            runsets=[runset],
+            custom_run_colors={"run-1": "#0000FF"},
+        )
+        model = panel_grid._to_model()
+        assert model.metadata.custom_run_colors["run-1"] == "#0000FF"
+
+    def test_selection_tree_node_deserialization(self):
+        """Grouped disabled runs (SelectionTreeNode) should deserialize correctly."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(
+            selections=internal.RunsetSelections(
+                tree=[
+                    internal.SelectionTreeNode(
+                        value="group-1", children=["run-1", "run-2"]
+                    )
+                ]
+            ),
+        )
+        runset = wr.Runset._from_model(model)
+        assert "run-1" in runset.run_settings
+        assert runset.run_settings["run-1"].disabled is True
+        assert "run-2" in runset.run_settings
+        assert runset.run_settings["run-2"].disabled is True
+
+    def test_from_model_merges_colors_into_disabled_run_settings(self):
+        """When deserializing PanelGrid, colors for disabled runs should merge into run_settings."""
+        from wandb_workspaces.reports.v2 import internal
+
+        rs_model = internal.Runset(
+            selections=internal.RunsetSelections(tree=["run-1"]),
+        )
+        metadata = internal.PanelGridMetadata(
+            run_sets=[rs_model],
+            custom_run_colors={"run-1": "#FF0000", "run-other": "#00FF00"},
+        )
+        model = internal.PanelGrid(metadata=metadata)
+        panel_grid = wr.PanelGrid._from_model(model)
+
+        # run-1 should be in the runset's run_settings with both color and disabled
+        rs = panel_grid.runsets[0]
+        assert rs.run_settings["run-1"].disabled is True
+        assert rs.run_settings["run-1"].color == "#FF0000"
+
+        # run-other should stay on PanelGrid custom_run_colors
+        assert panel_grid.custom_run_colors.get("run-other") == "#00FF00"
+
+    def test_custom_run_colors_merged_into_run_settings(self):
+        """Plain-string custom_run_colors should be merged into run_settings."""
+        runset = wr.Runset(
+            custom_run_colors={"run-1": "#FF0000"},
+        )
+        assert "run-1" in runset.run_settings
+        assert runset.run_settings["run-1"].color == "#FF0000"
+        assert runset.run_settings["run-1"].disabled is False
+
+    def test_custom_run_colors_no_override_existing_run_settings(self):
+        """custom_run_colors should not override existing run_settings entries."""
+        runset = wr.Runset(
+            run_settings={"run-1": wr.RunSettings(color="#0000FF", disabled=True)},
+            custom_run_colors={"run-1": "#FF0000"},
+        )
+        # run_settings entry should be preserved (not overwritten by custom_run_colors)
+        assert runset.run_settings["run-1"].color == "#0000FF"
+        assert runset.run_settings["run-1"].disabled is True
+
+
 def test_panel_grid_active_runset_none():
     """Test that PanelGrid handles active_runset=None"""
     from wandb_workspaces.reports.v2 import internal
