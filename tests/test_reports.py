@@ -1181,6 +1181,45 @@ class TestFromColorDict:
         assert result[key] == "#FF0000"
 
 
+def test_custom_chart_query_field_serialization():
+    """Verify id/name query fields serialize with value=[] (not fields=[])."""
+    from wandb_workspaces.reports.v2 import internal
+
+    chart = wr.CustomChart(
+        query={"summaryTable": {"tableKey": "test"}},
+        chart_name="wandb/line/v0",
+        chart_fields={"x": "Step", "y": "val"},
+        chart_strings={"title": "My Chart"},
+    )
+    model = chart._to_model()
+
+    # The top-level query field is "runSets"; dig into its fields
+    run_sets_field = model.config.user_query.query_fields[0]
+    field_map = {f.name: f for f in run_sets_field.fields}
+
+    # id and name should use value=[] (leaf), not fields=[] (container)
+    assert "id" in field_map
+    assert field_map["id"].value == []
+    assert "name" in field_map
+    assert field_map["name"].value == []
+
+    # chart_fields, chart_strings, and chart_name should be preserved
+    assert model.config.panel_def_id == "wandb/line/v0"
+    assert model.config.field_settings == {"x": "Step", "y": "val"}
+    assert model.config.string_settings == {"title": "My Chart"}
+
+
+def test_custom_chart_query_not_mutated():
+    """Verify _to_model() does not mutate the user's original query dict."""
+    query = {"summaryTable": {"tableKey": "test"}}
+    chart = wr.CustomChart(query=query, chart_name="wandb/line/v0")
+    chart._to_model()
+
+    # The original dict should not have id/name injected
+    assert "id" not in query
+    assert "name" not in query
+
+
 def test_panel_grid_active_runset_none():
     """Test that PanelGrid handles active_runset=None"""
     from wandb_workspaces.reports.v2 import internal
