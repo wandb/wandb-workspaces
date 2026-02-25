@@ -2659,9 +2659,9 @@ class CustomChart(Panel):
                 fields.append(field)
             return fields
 
-        d = self.query
-        d.setdefault("id", None)
-        d.setdefault("name", None)
+        d = {**self.query}
+        d.setdefault("id", [])
+        d.setdefault("name", [])
 
         _query = [
             internal.QueryField(
