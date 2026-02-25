@@ -391,6 +391,10 @@ def _parse_node(node) -> Filters:
                 section = section_map.get(func_call_data["type"], "default_section")
                 name = func_call_data["value"]
 
+                # Convert frontend metric names to backend names for Metric() calls
+                if func_call_data["type"] == "Metric":
+                    name = _convert_fe_to_be_metric_name(name)
+
                 # Handle Tags() which should map to section=run, name=tags
                 if func_call_data["type"] == "Tags" and name == "":
                     section = "run"
@@ -443,13 +447,15 @@ def _handle_comparison(node) -> Filters:
     }
 
     left_operand = node.left.id if isinstance(node.left, ast.Name) else None
-    left_operand_mapped = to_frontend_name(left_operand)
     right_operand = _extract_value(node.comparators[0])
     operation = type(node.ops[0]).__name__
 
+    if left_operand:
+        left_operand = _convert_fe_to_be_metric_name(left_operand)
+
     return Filters(
         op=op_map.get(operation),
-        key=_server_path_to_key(left_operand) if left_operand_mapped else None,
+        key=_server_path_to_key(left_operand) if left_operand else None,
         value=right_operand,
         disabled=False,
     )
@@ -521,6 +527,10 @@ def _handle_within_last_call(node) -> Optional[Filters]:
 
     section = section_map.get(func_call_data["type"], "default_section")
     name = func_call_data["value"]
+
+    # Convert frontend metric names to backend names for Metric() calls
+    if func_call_data["type"] == "Metric":
+        name = _convert_fe_to_be_metric_name(name)
 
     # Handle Tags() which should map to section=run, name=tags
     if func_call_data["type"] == "Tags" and name == "":

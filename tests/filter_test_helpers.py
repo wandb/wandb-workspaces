@@ -284,6 +284,58 @@ def test_expression_parsing():
                 )
             ],
         ),
+        # Frontend metric name conversion — bare identifier
+        (
+            "Name == 'foo'",
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="run", name="displayName"),
+                    filters=None,
+                    value="foo",
+                    disabled=False,
+                )
+            ],
+        ),
+        # Frontend metric name conversion — Metric() function call
+        (
+            "Metric('Name') == 'foo'",
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="run", name="displayName"),
+                    filters=None,
+                    value="foo",
+                    disabled=False,
+                )
+            ],
+        ),
+        # Frontend metric name conversion — another mapped key (bare identifier)
+        (
+            "ID == 'abc123'",
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="run", name="name"),
+                    filters=None,
+                    value="abc123",
+                    disabled=False,
+                )
+            ],
+        ),
+        # Frontend metric name conversion — another mapped key (Metric() call)
+        (
+            "Metric('ID') == 'abc123'",
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="run", name="name"),
+                    filters=None,
+                    value="abc123",
+                    disabled=False,
+                )
+            ],
+        ),
     ]
 
     for expr_str, expected_filters in test_cases:
