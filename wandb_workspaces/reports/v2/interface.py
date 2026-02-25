@@ -141,11 +141,14 @@ class RunsetGroup:
 
 @dataclass(config=dataclass_config, repr=False)
 class RunSettings(Base):
-    """Per-run display settings in a report panel grid.
+    """Configure the display appearance and visibility of an individual run in a report panel grid.
+
+    Use `RunSettings` to customize how a specific run is rendered within a `Runset`,
+    including its line color and visibility in charts.
 
     Attributes:
-        color: Color of the run. Hex (#ff0000), css name (red), or rgb (rgb(255,0,0)).
-        disabled: Whether the run is hidden (eye closed in UI). Default False.
+        color: Display color for the run. Accepts hex format (`#ff0000`), a CSS color name (red), or an RGB string ("rgb(255,0,0)").
+        disabled: If True, hide the run from charts. This is equivalent to clicking the closed-eye icon in the UI.
     """
 
     color: str = ""
@@ -931,7 +934,10 @@ class Runset(Base):
             - "config.param" to group by a config parameter
             - "summary.metric" to group by a summary metric
         order (LList[OrderBy]): A list of `OrderBy` objects to order by.
-        custom_run_colors (LList[OrderBy]): A dictionary mapping run IDs to colors.
+        custom_run_colors (dict): A dictionary mapping run IDs (or `RunsetGroup` keys for
+            grouped runs) to colors. For simple per-run colors, prefer using `run_settings`.
+        run_settings (Dict[str, RunSettings]): Per-run display settings keyed by run ID.
+            Use this to set colors and/or hide individual runs. See `RunSettings`.
 
     Example:
         ```python
@@ -961,7 +967,10 @@ class Runset(Base):
         default_factory=lambda: [OrderBy("CreatedTimestamp", ascending=False)]
     )
 
-    # this field does not get exported to model, but is used in PanelGrid
+    # custom_run_colors supports RunsetGroup tuple keys for grouped-run colors,
+    # which run_settings does not handle. Kept for backward compatibility and
+    # for that grouped-run use case. Plain string keys are merged into run_settings
+    # automatically by the validator below.
     custom_run_colors: Dict[Union[str, Tuple[MetricType, ...]], str] = Field(
         default_factory=dict
     )
@@ -973,13 +982,11 @@ class Runset(Base):
     @model_validator(mode="after")
     def merge_custom_run_colors_into_run_settings(self):
         """Merge plain-string-keyed custom_run_colors into run_settings for backward compat."""
+        merged = dict(self.run_settings)
         for run_id, color in self.custom_run_colors.items():
-            if isinstance(run_id, str) and run_id not in self.run_settings:
-                object.__setattr__(
-                    self,
-                    "run_settings",
-                    {**self.run_settings, run_id: RunSettings(color=color)},
-                )
+            if isinstance(run_id, str) and run_id not in merged:
+                merged[run_id] = RunSettings(color=color)
+        object.__setattr__(self, "run_settings", merged)
         return self
 
     @model_validator(mode="after")
@@ -1019,6 +1026,9 @@ class Runset(Base):
                     "Please verify that the entity and project names are correct and that you have access to this project."
                 )
 
+        # selections.tree in the internal model stores the list of disabled (hidden)
+        # run IDs. It can contain plain strings or SelectionTreeNode objects for
+        # grouped runs. Here we only write plain run ID strings.
         disabled_run_ids = [
             run_id
             for run_id, settings in self.run_settings.items()
