@@ -139,6 +139,22 @@ class RunsetGroup:
     keys: Tuple[RunsetGroupKey, ...]
 
 
+@dataclass(config=dataclass_config, repr=False)
+class RunSettings(Base):
+    """Configure the display appearance and visibility of an individual run in a report panel grid.
+
+    Use `RunSettings` to customize how a specific run is rendered within a `Runset`,
+    including its line color and visibility in charts.
+
+    Attributes:
+        color: Display color for the run. Accepts hex format (`#ff0000`), a CSS color name (red), or an RGB string ("rgb(255,0,0)").
+        disabled: If True, hide the run from charts. This is equivalent to clicking the closed-eye icon in the UI.
+    """
+
+    color: str = ""
+    disabled: bool = False
+
+
 @dataclass(config=dataclass_config, frozen=True)
 class Metric:
     """
@@ -918,7 +934,10 @@ class Runset(Base):
             - "config.param" to group by a config parameter
             - "summary.metric" to group by a summary metric
         order (LList[OrderBy]): A list of `OrderBy` objects to order by.
-        custom_run_colors (LList[OrderBy]): A dictionary mapping run IDs to colors.
+        custom_run_colors (dict): A dictionary mapping run IDs (or `RunsetGroup` keys for
+            grouped runs) to colors. For simple per-run colors, prefer using `run_settings`.
+        run_settings (Dict[str, RunSettings]): Per-run display settings keyed by run ID.
+            Use this to set colors and/or hide individual runs. See `RunSettings`.
 
     Example:
         ```python
@@ -948,12 +967,27 @@ class Runset(Base):
         default_factory=lambda: [OrderBy("CreatedTimestamp", ascending=False)]
     )
 
-    # this field does not get exported to model, but is used in PanelGrid
+    # custom_run_colors supports RunsetGroup tuple keys for grouped-run colors,
+    # which run_settings does not handle. Kept for backward compatibility and
+    # for that grouped-run use case. Plain string keys are merged into run_settings
+    # automatically by the validator below.
     custom_run_colors: Dict[Union[str, Tuple[MetricType, ...]], str] = Field(
         default_factory=dict
     )
 
+    run_settings: Dict[str, "RunSettings"] = Field(default_factory=dict)
+
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
+
+    @model_validator(mode="after")
+    def merge_custom_run_colors_into_run_settings(self):
+        """Merge plain-string-keyed custom_run_colors into run_settings for backward compat."""
+        merged = dict(self.run_settings)
+        for run_id, color in self.custom_run_colors.items():
+            if isinstance(run_id, str) and run_id not in merged:
+                merged[run_id] = RunSettings(color=color)
+        object.__setattr__(self, "run_settings", merged)
+        return self
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
@@ -992,6 +1026,15 @@ class Runset(Base):
                     "Please verify that the entity and project names are correct and that you have access to this project."
                 )
 
+        # selections.tree in the internal model stores the list of disabled (hidden)
+        # run IDs. It can contain plain strings or SelectionTreeNode objects for
+        # grouped runs. Here we only write plain run ID strings.
+        disabled_run_ids = [
+            run_id
+            for run_id, settings in self.run_settings.items()
+            if settings.disabled
+        ]
+
         obj = internal.Runset(
             project=project,
             name=self.name,
@@ -999,6 +1042,7 @@ class Runset(Base):
             filters=expr.expr_to_filters(self.filters),
             grouping=[expr.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
+            selections=internal.RunsetSelections(tree=disabled_run_ids),
         )
         obj.id = self._id
         return obj
@@ -1015,6 +1059,14 @@ class Runset(Base):
             if p.name:
                 project = p.name
 
+        run_settings = {}
+        for item in model.selections.tree:
+            if isinstance(item, str):
+                run_settings[item] = RunSettings(disabled=True)
+            else:
+                for child_id in item.children:
+                    run_settings[child_id] = RunSettings(disabled=True)
+
         obj = cls(
             entity=entity,
             project=project,
@@ -1023,6 +1075,7 @@ class Runset(Base):
             filters=expr.filters_to_expr(model.filters),
             groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
+            run_settings=run_settings,
         )
         obj._id = model.id
         return obj
@@ -1081,6 +1134,11 @@ class PanelGrid(Block):
         # Merge custom_run_colors from runsets, with PanelGrid colors taking precedence
         merged_colors = {}
         for rs in self.runsets:
+            # Colors from run_settings (new path)
+            for run_id, settings in rs.run_settings.items():
+                if settings.color:
+                    merged_colors[run_id] = settings.color
+            # Colors from custom_run_colors (existing, may have RunsetGroup keys)
             merged_colors.update(rs.custom_run_colors)
         merged_colors.update(self.custom_run_colors)
 
@@ -1102,6 +1160,24 @@ class PanelGrid(Block):
     @classmethod
     def _from_model(cls, model: internal.PanelGrid):
         runsets = [Runset._from_model(rs) for rs in model.metadata.run_sets]
+        all_colors = _from_color_dict(model.metadata.custom_run_colors, runsets)
+
+        panelgrid_colors = {}
+        for key, color in all_colors.items():
+            if isinstance(key, str):
+                # If this run ID already exists in a runset's run_settings
+                # (from selections.tree), add its color there too
+                assigned = False
+                for rs in runsets:
+                    if key in rs.run_settings:
+                        rs.run_settings[key].color = color
+                        assigned = True
+                        break
+                if not assigned:
+                    panelgrid_colors[key] = color
+            else:
+                panelgrid_colors[key] = color
+
         obj = cls(
             runsets=runsets,
             hide_run_sets=model.metadata.hide_run_sets,
@@ -1110,9 +1186,7 @@ class PanelGrid(Block):
                 for p in model.metadata.panel_bank_section_config.panels
             ],
             active_runset=model.metadata.open_run_set,
-            custom_run_colors=_from_color_dict(
-                model.metadata.custom_run_colors, runsets
-            ),
+            custom_run_colors=panelgrid_colors,
             # _panel_bank_sections=model.metadata.panel_bank_config.sections,
         )
         obj._open_viz = model.metadata.open_viz
