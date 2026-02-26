@@ -669,6 +669,7 @@ class LinePlotConfig(ReportAPIBaseModel):
     aggregate: Optional[bool] = None
     x_expression: Optional[str] = None
     x_axis_format: Optional[str] = None
+    point_visualization_method: Optional[PointVizMethod] = None
 
     override_line_widths: Optional[dict] = None
     override_colors: Optional[dict] = None

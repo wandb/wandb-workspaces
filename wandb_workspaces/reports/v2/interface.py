@@ -58,6 +58,7 @@ from .internal import (
     Range,
     ReportWidth,
     SmoothingType,
+    PointVizMethod
 )
 
 TextLike = Union[str, "TextWithInlineComments", "Link", "InlineLatex", "InlineCode"]
@@ -1910,8 +1911,12 @@ class LinePlot(Panel):
             appears if you define a custom metric. For example,
             you can specify 'datetime' to format the x-axis as a date and time.
         legend_fields (Optional[LList[str]]): The fields to include in the legend.
-        metric_regex (Optional[str]): Regular expression pattern to match y-axis metrics.
-            The backend will use this pattern to select matching metrics.
+       metric_regex (Optional[str]): Regular expression pattern to match y-axis metrics.
+           The backend will use this pattern to select matching metrics.
+       point_visualization_method (Optional[PointVizMethod]): The method used to aggregate
+           points when there are too many to display. Options include "bucketing-gorilla" (buckets
+           data points and shows min, max, avg per bucket to preserve outliers and spikes) or
+           "sampling" (randomly samples points for faster rendering but may miss outliers).
     """
 
     title: Optional[str] = None
@@ -1941,6 +1946,7 @@ class LinePlot(Panel):
     xaxis_format: Optional[str] = None
     legend_fields: Optional[LList[str]] = None
     metric_regex: Optional[str] = None
+    point_visualization_method: Optional[PointVizMethod] = None
 
     def _to_model(self):
         return internal.LinePlot(
@@ -1975,6 +1981,7 @@ class LinePlot(Panel):
                 legend_fields=self.legend_fields,
                 metric_regex=self.metric_regex,
                 use_metric_regex=True if self.metric_regex else None,
+                point_visualization_method=self.point_visualization_method,
             ),
             id=self._id,
             layout=self.layout._to_model(),
@@ -2024,6 +2031,7 @@ class LinePlot(Panel):
         object.__setattr__(obj, "legend_fields", model.config.legend_fields)
         object.__setattr__(obj, "metric_regex", model.config.metric_regex)
         object.__setattr__(obj, "_id", model.id)
+        object.__setattr__(obj, "point_visualization_method", model.config.point_visualization_method)
         return obj
 
 
