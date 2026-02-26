@@ -1827,6 +1827,10 @@ class LinePlot(Panel):
         xaxis_expression (Optional[str]): The expression for the x-axis.
         legend_fields (Optional[LList[str]]): The fields to include in the legend.
         metric_regex (Optional[str]): Regular expression pattern to match y-axis metrics.
+        point_visualization_method (Optional[PointVizMethod]): The method used to aggregate
+            points when there are too many to display. Options include "bucketing-gorilla" (buckets
+            data points and shows min, max, avg per bucket to preserve outliers and spikes) or
+            "sampling" (randomly samples points for faster rendering but may miss outliers).
             The backend will use this pattern to select matching metrics.
     """
 
