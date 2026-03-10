@@ -624,6 +624,12 @@ def test_metric_to_backend_groupby():
         ("config.epochs", "epochs.value"),
         ("epochs", "epochs.value"),
         ("keys.key1", "keys.value.key1"),
+        # Pass-through when ".value" is already present (nested-dict format)
+        ("keys.value.key1", "keys.value.key1"),
+        ("config.pbt.value.workspace", "pbt.value.workspace"),
+        # Pass-through when ".value" is already present (flat-key format)
+        ("pbt.workspace.value", "pbt.workspace.value"),
+        ("config.pbt.workspace.value", "pbt.workspace.value"),
         # Edge cases
         (None, None),
         ("", ".value"),
@@ -640,9 +646,13 @@ def test_metric_to_frontend_groupby():
     """Test the _metric_to_frontend_groupby function"""
 
     test_cases = [
+        # Nested-dict format (.value after first segment)
         ("epochs.value", wr.Config("epochs")),
         ("keys.value.key1", wr.Config("keys.key1")),
-        ("non_config_path", "non_config_path"),  # Should pass through unchanged
+        # Flat-key format (.value at end)
+        ("pbt.workspace.value", wr.Config("pbt.workspace")),
+        # Non-config paths pass through unchanged
+        ("non_config_path", "non_config_path"),
         (None, None),
         ("None", "None"),
     ]
