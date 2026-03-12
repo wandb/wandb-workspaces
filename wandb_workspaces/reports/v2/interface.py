@@ -28,6 +28,7 @@ report.save()
 
 import base64
 import os
+import warnings
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, Iterable, Optional, Tuple, Union
 from typing import List as LList
@@ -4038,7 +4039,23 @@ def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[
 
     # 3) if ".value" is already present anywhere, the user has provided the
     #    exact backend key — pass through as-is.
+    #    Note: this means a config key literally named "value" (e.g.
+    #    wandb.config.settings = {"value": 123} -> backend key
+    #    "settings.value.value") would need to be specified in full by the user.
+    #    See the ambiguity note in expr.groupby_str_to_key for details.
     if "value" in segments:
+        if segments[-1] == "value" and len(segments) > 1:
+            prefix = ".".join(segments[:-1])
+            warnings.warn(
+                f'Config groupby key "{val}" ends with ".value" and will be '
+                f"passed through as-is. If this is a nested config key literally "
+                f"named 'value' (e.g. wandb.config.{prefix} = "
+                f'{{"value": ...}}), the correct backend path would be '
+                f'"{val}.value" (with a double .value suffix). '
+                f"See expr.groupby_str_to_key docs for details.",
+                UserWarning,
+                stacklevel=2,
+            )
         return val
 
     first, *rest = segments

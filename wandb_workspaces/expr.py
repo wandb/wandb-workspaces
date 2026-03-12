@@ -820,6 +820,14 @@ def groupby_str_to_key(group_str: str) -> Key:
     ``.value`` in the correct position themselves, e.g.
     ``"config.pbt.workspace.value"``, and the function will pass it through as-is.
 
+    **Known limitation:** If a nested config key is literally named ``"value"``
+    (e.g. ``wandb.config.settings = {"value": 123}``), the SDK stores this as
+    ``settings.value.value``. A user grouping by ``"config.settings.value"``
+    would hit the pass-through logic (since ``"value"`` is in the path) and
+    the key would be sent as ``settings.value`` instead of the correct
+    ``settings.value.value``. In this case the user must provide the full
+    backend key: ``"config.settings.value.value"``.
+
     A future improvement could accept ``Config()`` objects in Runset groupby (as
     panels already do) to provide a clearer API for flat key names.
 
@@ -854,6 +862,18 @@ def groupby_str_to_key(group_str: str) -> Key:
         if "value" not in segments:
             first, *rest = segments
             key_name = first + ".value" + ("." + ".".join(rest) if rest else "")
+        elif segments[-1] == "value" and len(segments) > 1:
+            prefix = ".".join(segments[:-1])
+            warnings.warn(
+                f'Config groupby key "{key_name}" ends with ".value" and will be '
+                f"passed through as-is. If this is a nested config key literally "
+                f"named 'value' (e.g. wandb.config.{prefix} = "
+                f'{{"value": ...}}), the correct backend path would be '
+                f'"{key_name}.value" (with a double .value suffix). '
+                f"See groupby_str_to_key docs for details.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     return Key(section=section, name=key_name)
 
