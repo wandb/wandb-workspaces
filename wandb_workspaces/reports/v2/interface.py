@@ -39,7 +39,7 @@ try:
 except ImportError:
     from typing_extensions import Literal
 
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 import wandb
 from pydantic import ConfigDict, Field, model_validator, validator
@@ -3427,6 +3427,105 @@ class Report(Base):
 
         wandb.termlog(f"Saved report to: {self.url}")
         return self
+
+    def _build_share_url(self, token: str) -> str:
+        """Build the magic link URL from the report URL and an access token."""
+        base = self.url
+        separator = "&" if "?" in base else "?"
+        return f"{base}{separator}accessToken={quote(token, safe='')}"
+
+    @property
+    def share_url(self) -> Optional[str]:
+        """The magic link URL for this report, or None if sharing is not enabled.
+
+        Returns the report URL with an access token appended, allowing anyone
+        with the link to view the report even if the project is private.
+        """
+        if not self.id:
+            raise ValueError("save report or explicitly pass `id` to get a share url")
+
+        token = self._get_active_share_token()
+        if token is None:
+            return None
+        return self._build_share_url(token)
+
+    def enable_share_link(self) -> str:
+        """Enable "anyone with link can view" sharing for this report.
+
+        Creates a public access token for the report. If a share link already
+        exists, returns the existing link.
+
+        Returns:
+            str: The magic link URL that can be shared.
+        """
+        if not self.id:
+            raise ValueError("save report before enabling share link")
+
+        existing = self._get_active_share_token()
+        if existing is not None:
+            url = self._build_share_url(existing)
+            wandb.termlog("Share link already active.")
+            return url
+
+        r = _get_api().client.execute(
+            gql.create_access_token,
+            variable_values={
+                "viewId": self.id,
+                "entityName": self.entity,
+                "projectName": self.project,
+            },
+        )
+        token = r["createAccessToken"]["accessToken"]["token"]
+        wandb.termlog("Share link enabled.")
+        return self._build_share_url(token)
+
+    def disable_share_link(self) -> bool:
+        """Disable the "anyone with link can view" share link for this report.
+
+        Revokes all active public access tokens for the report.
+
+        Returns:
+            bool: True if link(s) were revoked, False if no active link existed.
+        """
+        if not self.id:
+            raise ValueError("save report before disabling share link")
+
+        tokens = self._get_active_share_tokens()
+        if not tokens:
+            wandb.termlog("No active share link to disable.")
+            return False
+
+        all_success = True
+        for token in tokens:
+            r = _get_api().client.execute(
+                gql.revoke_access_token,
+                variable_values={"token": token},
+            )
+            if not r["revokeAccessToken"]["success"]:
+                all_success = False
+
+        if all_success:
+            wandb.termlog("Share link disabled.")
+        else:
+            wandb.termwarn("Failed to disable one or more share links.")
+        return all_success
+
+    def _get_active_share_token(self) -> Optional[str]:
+        """Return the token string for the first active PUBLIC access token, or None."""
+        tokens = self._get_active_share_tokens()
+        return tokens[0] if tokens else None
+
+    def _get_active_share_tokens(self) -> list:
+        """Return all active PUBLIC access token strings."""
+        r = _get_api().client.execute(
+            gql.view_access_tokens,
+            variable_values={"reportId": self.id},
+        )
+        return [
+            t["token"]
+            for t in r["view"]["accessTokens"]
+            if t["type"] == "PUBLIC" and t.get("revokedAt") is None
+        ]
 
     def delete(self) -> bool:
         """Delete this report from W&B.

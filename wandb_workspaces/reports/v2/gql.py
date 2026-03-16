@@ -92,3 +92,49 @@ projectInternalId = gql(
     }
     """
 )
+
+view_access_tokens = gql(
+    """
+    query ViewAccessTokens($reportId: ID!) {
+        view(id: $reportId) {
+            accessTokens {
+                token
+                type
+                revokedAt
+            }
+        }
+    }
+    """
+)
+
+create_access_token = gql(
+    """
+    mutation createAccessToken(
+        $viewId: ID!
+        $entityName: String!
+        $projectName: String!
+    ) {
+        createAccessToken(
+            input: {
+                viewId: $viewId
+                projects: [{ entityName: $entityName, projectName: $projectName }]
+            }
+        ) {
+            accessToken {
+                token
+                type
+            }
+        }
+    }
+    """
+)
+
+revoke_access_token = gql(
+    """
+    mutation revokeAccessToken($token: String!) {
+        revokeAccessToken(input: { token: $token }) {
+            success
+        }
+    }
+    """
+)

@@ -1415,3 +1415,231 @@ class TestRunsetRunSettings:
         # run_settings entry should be preserved (not overwritten by custom_run_colors)
         assert runset.run_settings["run-1"].color == "#0000FF"
         assert runset.run_settings["run-1"].disabled is True
+
+
+class TestReportSharing:
+    """Tests for Report magic link sharing methods."""
+
+    def _make_report(self, monkeypatch):
+        """Create a report with a mocked API."""
+        monkeypatch.setattr(wr.interface, "_get_api", lambda: self._api)
+        report = wr.Report(project="proj", entity="ent")
+        report.id = "dummy-id"
+        return report
+
+    def _make_unsaved_report(self, monkeypatch):
+        """Create a report that has not been saved (no id)."""
+
+        class _Api:
+            client = None
+            default_entity = "ent"
+
+        self._api = _Api()
+        monkeypatch.setattr(wr.interface, "_get_api", lambda: self._api)
+        return wr.Report(project="proj", entity="ent")
+
+    def test_enable_share_link(self, monkeypatch):
+        """enable_share_link creates a PUBLIC access token and returns the URL."""
+        from wandb_workspaces.reports.v2 import gql as report_gql
+
+        captured = {}
+
+        class _Client:
+            app_url = "https://wandb.ai/"
+
+            def execute(self, query, *, variable_values):
+                if query is report_gql.view_access_tokens:
+                    return {"view": {"accessTokens": []}}
+                if query is report_gql.create_access_token:
+                    captured["variables"] = variable_values
+                    return {
+                        "createAccessToken": {
+                            "accessToken": {"token": "tok_abc123", "type": "PUBLIC"}
+                        }
+                    }
+                raise AssertionError(f"Unexpected query: {query}")
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        url = report.enable_share_link()
+        assert "accessToken=tok_abc123" in url
+        assert captured["variables"]["viewId"] == "dummy-id"
+        assert captured["variables"]["entityName"] == "ent"
+        assert captured["variables"]["projectName"] == "proj"
+
+    def test_enable_share_link_returns_existing(self, monkeypatch):
+        """enable_share_link returns existing link if one is already active."""
+
+        class _Client:
+            app_url = "https://wandb.ai/"
+
+            def execute(self, query, *, variable_values):
+                return {
+                    "view": {
+                        "accessTokens": [
+                            {
+                                "token": "existing_tok",
+                                "type": "PUBLIC",
+                                "revokedAt": None,
+                            }
+                        ]
+                    }
+                }
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        url = report.enable_share_link()
+        assert "accessToken=existing_tok" in url
+
+    def test_enable_share_link_raises_without_id(self, monkeypatch):
+        """enable_share_link raises ValueError if report has no id."""
+        report = self._make_unsaved_report(monkeypatch)
+        with pytest.raises(ValueError):
+            report.enable_share_link()
+
+    def test_disable_share_link(self, monkeypatch):
+        """disable_share_link revokes the active PUBLIC token."""
+        from wandb_workspaces.reports.v2 import gql as report_gql
+
+        captured = {}
+
+        class _Client:
+            def execute(self, query, *, variable_values):
+                if query is report_gql.view_access_tokens:
+                    return {
+                        "view": {
+                            "accessTokens": [
+                                {
+                                    "token": "tok_to_revoke",
+                                    "type": "PUBLIC",
+                                    "revokedAt": None,
+                                }
+                            ]
+                        }
+                    }
+                if query is report_gql.revoke_access_token:
+                    captured["variables"] = variable_values
+                    return {"revokeAccessToken": {"success": True}}
+                raise AssertionError(f"Unexpected query: {query}")
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        assert report.disable_share_link() is True
+        assert captured["variables"]["token"] == "tok_to_revoke"
+
+    def test_disable_share_link_revokes_all_tokens(self, monkeypatch):
+        """disable_share_link revokes all active PUBLIC tokens."""
+        from wandb_workspaces.reports.v2 import gql as report_gql
+
+        revoked = []
+
+        class _Client:
+            def execute(self, query, *, variable_values):
+                if query is report_gql.view_access_tokens:
+                    return {
+                        "view": {
+                            "accessTokens": [
+                                {"token": "tok_1", "type": "PUBLIC", "revokedAt": None},
+                                {"token": "tok_2", "type": "PUBLIC", "revokedAt": None},
+                            ]
+                        }
+                    }
+                if query is report_gql.revoke_access_token:
+                    revoked.append(variable_values["token"])
+                    return {"revokeAccessToken": {"success": True}}
+                raise AssertionError(f"Unexpected query: {query}")
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        assert report.disable_share_link() is True
+        assert revoked == ["tok_1", "tok_2"]
+
+    def test_disable_share_link_no_active_link(self, monkeypatch):
+        """disable_share_link returns False when no active link exists."""
+
+        class _Client:
+            def execute(self, query, *, variable_values):
+                return {"view": {"accessTokens": []}}
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        assert report.disable_share_link() is False
+
+    def test_disable_share_link_raises_without_id(self, monkeypatch):
+        """disable_share_link raises ValueError if report has no id."""
+        report = self._make_unsaved_report(monkeypatch)
+        with pytest.raises(ValueError):
+            report.disable_share_link()
+
+    def test_share_url_property(self, monkeypatch):
+        """share_url returns the magic link URL when active."""
+
+        class _Client:
+            app_url = "https://wandb.ai/"
+
+            def execute(self, query, *, variable_values):
+                return {
+                    "view": {
+                        "accessTokens": [
+                            {"token": "prop_tok", "type": "PUBLIC", "revokedAt": None}
+                        ]
+                    }
+                }
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        url = report.share_url
+        assert url is not None
+        assert "accessToken=prop_tok" in url
+
+    def test_share_url_none_when_no_link(self, monkeypatch):
+        """share_url returns None when no active share link exists."""
+
+        class _Client:
+            def execute(self, query, *, variable_values):
+                return {"view": {"accessTokens": []}}
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        assert report.share_url is None
+
+    def test_share_url_raises_without_id(self, monkeypatch):
+        """share_url raises ValueError if report has no id."""
+        report = self._make_unsaved_report(monkeypatch)
+        with pytest.raises(ValueError):
+            _ = report.share_url
