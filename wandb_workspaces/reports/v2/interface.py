@@ -58,7 +58,7 @@ from .internal import (
     Range,
     ReportWidth,
     SmoothingType,
-    PointVizMethod
+    PointVizMethod,
 )
 
 TextLike = Union[str, "TextWithInlineComments", "Link", "InlineLatex", "InlineCode"]
@@ -2031,7 +2031,9 @@ class LinePlot(Panel):
         object.__setattr__(obj, "legend_fields", model.config.legend_fields)
         object.__setattr__(obj, "metric_regex", model.config.metric_regex)
         object.__setattr__(obj, "_id", model.id)
-        object.__setattr__(obj, "point_visualization_method", model.config.point_visualization_method)
+        object.__setattr__(
+            obj, "point_visualization_method", model.config.point_visualization_method
+        )
         return obj
 
 
@@ -4004,17 +4006,22 @@ def _metric_to_frontend_panel_grid(x: str):
 
 def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[str]:
     """
-    Normalise a group-by key so the backend always receives the form
-        <first_segment>.value[.<rest>]
+    Normalise a group-by key so the backend always receives a path containing
+    ``.value``.
+
+    By default, assumes nested dict config and inserts ``.value`` after the
+    first segment. If ``.value`` already appears anywhere in the path, the
+    value is returned as-is — this allows users to pass the exact backend key
+    for flat dotted config keys (see ambiguity note in
+    ``expr.groupby_str_to_key`` for details).
 
     Accepts
     --------
     1. wr.Config("epochs")              ➔ "epochs.value"
     2. "config.epochs" / "config.a.b"   ➔ "epochs.value" / "a.value.b"
     3. "epochs" / "a.b"                 ➔ "epochs.value" / "a.value.b"
-
-    Anything that is already in the correct format
-    ("epochs.value", "a.value.b", …) is returned unchanged.
+    4. "a.b.value"                      ➔ "a.b.value"  (pass-through)
+    5. "a.value.b"                      ➔ "a.value.b"  (pass-through)
     """
     if val in (None, "None"):
         return val
@@ -4029,8 +4036,13 @@ def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[
 
     segments = val.split(".")
 
-    # 3) if we already have ".value" immediately after the first segment, keep it
-    if len(segments) >= 2 and segments[1] == "value":
+    # 3) if ".value" is already present anywhere, the user has provided the
+    #    exact backend key — pass through as-is.
+    #    Note: this means a config key literally named "value" (e.g.
+    #    wandb.config.settings = {"value": 123} -> backend key
+    #    "settings.value.value") would need to be specified in full by the user.
+    #    See the ambiguity note in expr.groupby_str_to_key for details.
+    if "value" in segments:
         return val
 
     first, *rest = segments
@@ -4043,19 +4055,21 @@ def _metric_to_frontend_groupby(val: Optional[str]):
     Convert the backend form back into a user-friendly object.
         "epochs.value"   ➔ Config("epochs")
         "a.value.b"      ➔ Config("a.b")
-    Anything that isn’t a config path (doesn’t have '.value' as the second
-    token) is returned unchanged.
+        "a.b.value"      ➔ Config("a.b")
+    Handles both nested-dict format (``.value`` after first segment) and
+    flat-key format (``.value`` at the end). Anything without ``.value``
+    in the path is returned unchanged.
     """
     if val in (None, "None") or not isinstance(val, str):
         return val
 
     parts = val.split(".")
-    if len(parts) < 2 or parts[1] != "value":
+    if "value" not in parts:
         return val  # not a config key, just return as-is
 
-    first = parts[0]
-    rest = parts[2:]
-    path = first + ("." + ".".join(rest) if rest else "")
+    # Strip the "value" segment wherever it appears and reconstruct the path
+    path_parts = [p for p in parts if p != "value"]
+    path = ".".join(path_parts)
     return Config(path)
 
 

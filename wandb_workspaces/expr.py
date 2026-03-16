@@ -801,15 +801,44 @@ def groupby_str_to_key(group_str: str) -> Key:
     Otherwise, it defaults the section to "run".
 
     To simplify usage, if the section is "config", this function ensures that the backend key
-    ends with ".value" (unless already provided).
+    contains ".value" (unless already provided).
+
+    **Ambiguity note:** The W&B config backend has two storage formats depending on
+    how the config was originally logged:
+
+    - Nested dict (``wandb.config.pbt = {"workspace": "val"}``) is stored as
+      ``{"pbt": {"value": {"workspace": "val"}}}``, so the backend key is
+      ``pbt.value.workspace`` — ``.value`` goes after the first (top-level) segment.
+
+    - Flat dotted key (``wandb.config["pbt.workspace"] = "val"``) is stored as
+      ``{"pbt.workspace": {"value": "val"}}``, so the backend key is
+      ``pbt.workspace.value`` — ``.value`` goes at the end.
+
+    This function cannot distinguish between these two cases from the string alone.
+    By default it assumes nested dict format (inserts ``.value`` after the first
+    segment). If the user's config uses flat dotted keys, they should include
+    ``.value`` in the correct position themselves, e.g.
+    ``"config.pbt.workspace.value"``, and the function will pass it through as-is.
+
+    **Known limitation:** If a nested config key is literally named ``"value"``
+    (e.g. ``wandb.config.settings = {"value": 123}``), the SDK stores this as
+    ``settings.value.value``. A user grouping by ``"config.settings.value"``
+    would hit the pass-through logic (since ``"value"`` is in the path) and
+    the key would be sent as ``settings.value`` instead of the correct
+    ``settings.value.value``. In this case the user must provide the full
+    backend key: ``"config.settings.value.value"``.
+
+    A future improvement could accept ``Config()`` objects in Runset groupby (as
+    panels already do) to provide a clearer API for flat key names.
 
     Examples:
-        "group"              -> Key(section="run", name=to_backend_name("group"))
-        "run.group"          -> Key(section="run", name=to_backend_name("group"))
-        "config.param"       -> Key(section="config", name=to_backend_name("param") + ".value")
-        "config.param.value" -> Key(section="config", name=to_backend_name("param.value"))
-        "config.nested.x"    -> Key(section="config", name=to_backend_name("nested.value.x"))
-        "summary.metric"     -> Key(section="summary", name=to_backend_name("metric"))
+        "group"                       -> Key(section="run", name="group")
+        "run.group"                   -> Key(section="run", name="group")
+        "config.param"                -> Key(section="config", name="param.value")
+        "config.nested.x"             -> Key(section="config", name="nested.value.x")
+        "config.pbt.value.workspace"  -> Key(section="config", name="pbt.value.workspace")
+        "config.pbt.workspace.value"  -> Key(section="config", name="pbt.workspace.value")
+        "summary.metric"              -> Key(section="summary", name="metric")
     """
     # Split once to separate the leading section (e.g. "config") from the rest of the path
     parts = group_str.split(".", 1)
@@ -822,15 +851,15 @@ def groupby_str_to_key(group_str: str) -> Key:
     # Convert to backend name first in case the user passed a frontend alias
     key_name = to_backend_name(key_name)
 
-    # Special-case: config parameters require the token ".value" **after the first segment**
-    # so that, e.g.  "config.nested.x" -> "config.nested.value.x"
-    # The existing logic incorrectly appended the suffix resulting in "nested.x.value".
-    # We replicate the behaviour used elsewhere in the codebase (see _metric_to_backend).
+    # Config parameters need a ".value" token in the key path to match the backend
+    # storage format (the SDK wraps each top-level config key in a {"value": ...}
+    # envelope). By default we assume a nested dict and insert ".value" after the
+    # first segment. If ".value" is already present anywhere in the path, the user
+    # has provided the exact backend key — pass it through as-is.
     if section == "config":
         segments = key_name.split(".")
 
-        # If the path already contains "value" as the second segment, keep as-is.
-        if not (len(segments) >= 2 and segments[1] == "value"):
+        if "value" not in segments:
             first, *rest = segments
             key_name = first + ".value" + ("." + ".".join(rest) if rest else "")
 
