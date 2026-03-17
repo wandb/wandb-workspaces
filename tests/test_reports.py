@@ -1596,8 +1596,8 @@ class TestReportSharing:
         with pytest.raises(ValueError):
             report.disable_share_link()
 
-    def test_share_url_property(self, monkeypatch):
-        """share_url returns the magic link URL when active."""
+    def test_get_share_url(self, monkeypatch):
+        """get_share_url returns the magic link URL when active."""
 
         class _Client:
             app_url = "https://wandb.ai/"
@@ -1618,12 +1618,12 @@ class TestReportSharing:
         self._api = _Api()
         report = self._make_report(monkeypatch)
 
-        url = report.share_url
+        url = report.get_share_url()
         assert url is not None
         assert "accessToken=prop_tok" in url
 
-    def test_share_url_none_when_no_link(self, monkeypatch):
-        """share_url returns None when no active share link exists."""
+    def test_get_share_url_none_when_no_link(self, monkeypatch):
+        """get_share_url returns None when no active share link exists."""
 
         class _Client:
             def execute(self, query, *, variable_values):
@@ -1636,10 +1636,26 @@ class TestReportSharing:
         self._api = _Api()
         report = self._make_report(monkeypatch)
 
-        assert report.share_url is None
+        assert report.get_share_url() is None
 
-    def test_share_url_raises_without_id(self, monkeypatch):
-        """share_url raises ValueError if report has no id."""
+    def test_get_share_url_raises_without_id(self, monkeypatch):
+        """get_share_url raises ValueError if report has no id."""
         report = self._make_unsaved_report(monkeypatch)
         with pytest.raises(ValueError):
-            _ = report.share_url
+            report.get_share_url()
+
+    def test_get_share_url_none_when_view_is_null(self, monkeypatch):
+        """get_share_url returns None when the API returns view: null."""
+
+        class _Client:
+            def execute(self, query, *, variable_values):
+                return {"view": None}
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        assert report.get_share_url() is None

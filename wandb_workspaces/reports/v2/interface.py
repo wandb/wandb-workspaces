@@ -3434,12 +3434,12 @@ class Report(Base):
         separator = "&" if "?" in base else "?"
         return f"{base}{separator}accessToken={quote(token, safe='')}"
 
-    @property
-    def share_url(self) -> Optional[str]:
-        """The magic link URL for this report, or None if sharing is not enabled.
+    def get_share_url(self) -> Optional[str]:
+        """Fetch the magic link URL for this report, or None if sharing is not enabled.
 
-        Returns the report URL with an access token appended, allowing anyone
-        with the link to view the report even if the project is private.
+        Makes a network call to check for active access tokens. Returns the
+        report URL with an access token appended, allowing anyone with the link
+        to view the report even if the project is private.
         """
         if not self.id:
             raise ValueError("save report or explicitly pass `id` to get a share url")
@@ -3515,15 +3515,18 @@ class Report(Base):
         tokens = self._get_active_share_tokens()
         return tokens[0] if tokens else None
 
-    def _get_active_share_tokens(self) -> list:
+    def _get_active_share_tokens(self) -> LList[str]:
         """Return all active PUBLIC access token strings."""
         r = _get_api().client.execute(
             gql.view_access_tokens,
             variable_values={"reportId": self.id},
         )
+        view = r.get("view")
+        if not view:
+            return []
         return [
             t["token"]
-            for t in r["view"]["accessTokens"]
+            for t in view["accessTokens"]
             if t["type"] == "PUBLIC" and t.get("revokedAt") is None
         ]
 

@@ -27,8 +27,8 @@ report.save()
 share_url = report.enable_share_link()
 print(f"Share this link: {share_url}")
 
-# Check the current share URL at any time via the property.
-print(f"Current share URL: {report.share_url}")
+# Check the current share URL at any time.
+print(f"Current share URL: {report.get_share_url()}")
 
 # To disable the share link (revokes the access token):
 # report.disable_share_link()
