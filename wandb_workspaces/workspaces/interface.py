@@ -3,6 +3,7 @@
 ```python
 # How to import
 import wandb_workspaces.workspaces as ws
+import wandb_workspaces.reports.v2 as wr
 
 # Example of creating a workspace
 ws.Workspace(
