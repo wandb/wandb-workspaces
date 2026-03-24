@@ -33,6 +33,7 @@ pip install wandb[workspaces]
 
 ```python
 import wandb_workspaces.workspaces as ws
+import wandb_workspaces.reports.v2 as wr
 
 workspace = ws.Workspace(
    name="Example W&B Workspace",
