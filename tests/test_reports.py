@@ -1416,6 +1416,69 @@ class TestRunsetRunSettings:
         assert runset.run_settings["run-1"].color == "#0000FF"
         assert runset.run_settings["run-1"].disabled is True
 
+    def test_additive_mode_from_model_marks_tree_as_visible(self):
+        """With root=0 (additive), tree entries are visible, not disabled."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(
+            selections=internal.RunsetSelections(
+                root=0, tree=["run-1", "run-2"]
+            ),
+        )
+        runset = wr.Runset._from_model(model)
+        assert runset.run_settings["run-1"].disabled is False
+        assert runset.run_settings["run-2"].disabled is False
+        assert runset._selections_root == 0
+
+    def test_additive_mode_to_model_preserves_root(self):
+        """With root=0, _to_model should write root=0 and visible runs in tree."""
+        runset = wr.Runset(
+            entity="test",
+            project="test",
+            run_settings={
+                "run-1": wr.RunSettings(disabled=False),
+                "run-2": wr.RunSettings(disabled=True),
+            },
+        )
+        object.__setattr__(runset, "_selections_root", 0)
+        model = runset._to_model()
+        assert model.selections.root == 0
+        assert model.selections.tree == ["run-1"]
+
+    def test_additive_mode_round_trip(self):
+        """Reading and re-serializing an additive-mode runset should preserve root and tree."""
+        from wandb_workspaces.reports.v2 import internal
+
+        original = internal.Runset(
+            selections=internal.RunsetSelections(
+                root=0, tree=["visible-run"]
+            ),
+        )
+        runset = wr.Runset._from_model(original)
+        assert runset.run_settings["visible-run"].disabled is False
+        assert runset._selections_root == 0
+
+        model = runset._to_model()
+        assert model.selections.root == 0
+        assert model.selections.tree == ["visible-run"]
+
+    def test_subtractive_mode_unchanged(self):
+        """Default subtractive mode (root=1) should behave exactly as before."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(
+            selections=internal.RunsetSelections(
+                root=1, tree=["hidden-run"]
+            ),
+        )
+        runset = wr.Runset._from_model(model)
+        assert runset.run_settings["hidden-run"].disabled is True
+        assert runset._selections_root == 1
+
+        result = runset._to_model()
+        assert result.selections.root == 1
+        assert result.selections.tree == ["hidden-run"]
+
 
 class TestReportSharing:
     """Tests for Report magic link sharing methods."""

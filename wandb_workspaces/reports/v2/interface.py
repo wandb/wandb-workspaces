@@ -979,6 +979,7 @@ class Runset(Base):
     run_settings: Dict[str, "RunSettings"] = Field(default_factory=dict)
 
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
+    _selections_root: int = Field(default=1, init=False, repr=False)
 
     @model_validator(mode="after")
     def merge_custom_run_colors_into_run_settings(self):
@@ -1027,14 +1028,21 @@ class Runset(Base):
                     "Please verify that the entity and project names are correct and that you have access to this project."
                 )
 
-        # selections.tree in the internal model stores the list of disabled (hidden)
-        # run IDs. It can contain plain strings or SelectionTreeNode objects for
-        # grouped runs. Here we only write plain run ID strings.
-        disabled_run_ids = [
-            run_id
-            for run_id, settings in self.run_settings.items()
-            if settings.disabled
-        ]
+        # selections.root determines how selections.tree is interpreted:
+        #   root=1 (subtractive/All): tree entries are HIDDEN runs
+        #   root=0 (additive/None):   tree entries are VISIBLE runs
+        if self._selections_root == 0:
+            tree_ids = [
+                run_id
+                for run_id, settings in self.run_settings.items()
+                if not settings.disabled
+            ]
+        else:
+            tree_ids = [
+                run_id
+                for run_id, settings in self.run_settings.items()
+                if settings.disabled
+            ]
 
         obj = internal.Runset(
             project=project,
@@ -1043,7 +1051,9 @@ class Runset(Base):
             filters=expr.expr_to_filters(self.filters),
             grouping=[expr.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
-            selections=internal.RunsetSelections(tree=disabled_run_ids),
+            selections=internal.RunsetSelections(
+                root=self._selections_root, tree=tree_ids
+            ),
         )
         obj.id = self._id
         return obj
@@ -1060,13 +1070,17 @@ class Runset(Base):
             if p.name:
                 project = p.name
 
+        # root=1 (subtractive): tree entries are disabled (hidden)
+        # root=0 (additive):    tree entries are enabled (visible)
+        is_disabled = model.selections.root != 0
+
         run_settings = {}
         for item in model.selections.tree:
             if isinstance(item, str):
-                run_settings[item] = RunSettings(disabled=True)
+                run_settings[item] = RunSettings(disabled=is_disabled)
             else:
                 for child_id in item.children:
-                    run_settings[child_id] = RunSettings(disabled=True)
+                    run_settings[child_id] = RunSettings(disabled=is_disabled)
 
         obj = cls(
             entity=entity,
@@ -1079,6 +1093,7 @@ class Runset(Base):
             run_settings=run_settings,
         )
         obj._id = model.id
+        obj._selections_root = model.selections.root
         return obj
 
 
