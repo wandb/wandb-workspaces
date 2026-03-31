@@ -74,7 +74,7 @@ LegendPosition = Literal["north", "south", "east", "west"]
 LegendOrientation = Literal["horizontal", "vertical"]
 GroupAgg = Literal["mean", "min", "max", "median", "sum", "samples"]
 GroupArea = Literal["minmax", "stddev", "stderr", "none", "samples"]
-Mark = Literal["solid", "dashed", "dotted", "dotdash", "dotdotdash"]
+Mark = Literal["solid", "dashed", "dotted", "dotdash", "dotdotdash", "points"]
 Timestep = Literal["seconds", "minutes", "hours", "days"]
 SmoothingType = Literal[
     "exponentialTimeWeighted", "exponential", "gaussian", "average", "none"

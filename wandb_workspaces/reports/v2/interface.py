@@ -29,7 +29,7 @@ report.save()
 import base64
 import os
 from datetime import datetime
-from typing import TYPE_CHECKING, Dict, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
 from typing import List as LList
 
 from annotated_types import Annotated, Ge, Le
@@ -55,6 +55,7 @@ from .internal import (
     Language,
     LegendPosition,
     LinePlotStyle,
+    Mark,
     Range,
     ReportWidth,
     SmoothingType,
@@ -1932,10 +1933,11 @@ class LinePlot(Panel):
            points when there are too many to display. Options include "bucketing-gorilla" (buckets
            data points and shows min, max, avg per bucket to preserve outliers and spikes) or
            "sampling" (randomly samples points for faster rendering but may miss outliers).
-        line_titles (Optional[dict]): The titles of the lines. The keys are the line names and the values are the titles.
-        line_colors (Optional[dict]): The colors of the lines. The keys are the line names and the values are the colors.
-        line_widths (Optional[dict]): The widths of the lines. The keys are the line names and the values are the widths.
-        line_marks (Optional[dict]): The dash styles of the lines. The keys are the line names and the values are the styles.
+        line_titles (Optional[Dict[str, str]]): Per-series display titles. Keys use the format "{runId}:{metricName}".
+        line_colors (Optional[Dict[str, Any]]): Per-series colors. Keys use the format "{runId}:{metricName}".
+        line_widths (Optional[Dict[str, float]]): Per-series line widths. Keys use the format "{runId}:{metricName}".
+        line_marks (Optional[Dict[str, Mark]]): Per-series dash styles. Keys use the format "{runId}:{metricName}".
+            Valid values: "solid", "dashed", "dotted", "dotdash", "dotdotdash", "points".
     """
 
     title: Optional[str] = None
@@ -1966,10 +1968,10 @@ class LinePlot(Panel):
     legend_fields: Optional[LList[str]] = None
     metric_regex: Optional[str] = None
     point_visualization_method: Optional[PointVizMethod] = None
-    line_titles: Optional[dict] = None
-    line_colors: Optional[dict] = None
-    line_widths: Optional[dict] = None
-    line_marks: Optional[dict] = None
+    line_titles: Optional[Dict[str, str]] = None
+    line_colors: Optional[Dict[str, Any]] = None
+    line_widths: Optional[Dict[str, float]] = None
+    line_marks: Optional[Dict[str, Mark]] = None
 
     def _to_model(self):
         return internal.LinePlot(
