@@ -29,7 +29,7 @@ report.save()
 import base64
 import os
 from datetime import datetime
-from typing import TYPE_CHECKING, Dict, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
 from typing import List as LList
 
 from annotated_types import Annotated, Ge, Le
@@ -55,6 +55,7 @@ from .internal import (
     Language,
     LegendPosition,
     LinePlotStyle,
+    Mark,
     Range,
     ReportWidth,
     SmoothingType,
@@ -1949,6 +1950,11 @@ class LinePlot(Panel):
            points when there are too many to display. Options include "bucketing-gorilla" (buckets
            data points and shows min, max, avg per bucket to preserve outliers and spikes) or
            "sampling" (randomly samples points for faster rendering but may miss outliers).
+        line_titles (Optional[Dict[str, str]]): Per-series display titles. Keys use the format "{runId}:{metricName}".
+        line_colors (Optional[Dict[str, Any]]): Per-series colors. Keys use the format "{runId}:{metricName}".
+        line_widths (Optional[Dict[str, float]]): Per-series line widths. Keys use the format "{runId}:{metricName}".
+        line_marks (Optional[Dict[str, Mark]]): Per-series dash styles. Keys use the format "{runId}:{metricName}".
+            Valid values: "solid", "dashed", "dotted", "dotdash", "dotdotdash", "points".
     """
 
     title: Optional[str] = None
@@ -1979,6 +1985,10 @@ class LinePlot(Panel):
     legend_fields: Optional[LList[str]] = None
     metric_regex: Optional[str] = None
     point_visualization_method: Optional[PointVizMethod] = None
+    line_titles: Optional[Dict[str, str]] = None
+    line_colors: Optional[Dict[str, Any]] = None
+    line_widths: Optional[Dict[str, float]] = None
+    line_marks: Optional[Dict[str, Mark]] = None
 
     def _to_model(self):
         return internal.LinePlot(
@@ -2014,6 +2024,10 @@ class LinePlot(Panel):
                 metric_regex=self.metric_regex,
                 use_metric_regex=True if self.metric_regex else None,
                 point_visualization_method=self.point_visualization_method,
+                override_series_titles=self.line_titles,
+                override_colors=_normalize_color_overrides(self.line_colors),
+                override_line_widths=self.line_widths,
+                override_marks=self.line_marks,
             ),
             id=self._id,
             layout=self.layout._to_model(),
@@ -2066,6 +2080,10 @@ class LinePlot(Panel):
         object.__setattr__(
             obj, "point_visualization_method", model.config.point_visualization_method
         )
+        object.__setattr__(obj, "line_titles", model.config.override_series_titles)
+        object.__setattr__(obj, "line_colors", model.config.override_colors)
+        object.__setattr__(obj, "line_widths", model.config.override_line_widths)
+        object.__setattr__(obj, "line_marks", model.config.override_marks)
         return obj
 
 
@@ -2243,7 +2261,7 @@ class BarPlot(Panel):
                 legend_template=self.legend_template,
                 font_size=self.font_size,
                 override_series_titles=self.line_titles,
-                override_colors=self.line_colors,
+                override_colors=_normalize_color_overrides(self.line_colors),
                 aggregate=self.groupby not in (None, "None") or self.aggregate,
             ),
             layout=self.layout._to_model(),
@@ -4031,6 +4049,26 @@ def _collides(p1: Panel, p2: Panel) -> bool:
         return False
 
     return True
+
+
+def _normalize_color_overrides(
+    colors: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Normalize color overrides to the frontend's expected format.
+
+    The frontend expects ``{color: str, transparentColor: str}`` objects.
+    For convenience the SDK accepts plain color strings (e.g. ``"#ff0000"``)
+    and expands them here.  Already-expanded dicts are passed through.
+    """
+    if colors is None:
+        return None
+    result = {}
+    for key, val in colors.items():
+        if isinstance(val, str):
+            result[key] = {"color": val, "transparentColor": val + "19"}
+        else:
+            result[key] = val
+    return result
 
 
 def _metric_to_backend(x: Optional[MetricType]):

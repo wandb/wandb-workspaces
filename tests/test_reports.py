@@ -892,6 +892,49 @@ def test_lineplot_metric_regex():
     assert lp4._to_model().config.use_metric_regex is True
 
 
+def test_lineplot_series_overrides_roundtrip():
+    """Per-series overrides (colors, marks, widths, titles) must survive a round-trip."""
+    lp = wr.LinePlot(
+        y=["loss", "accuracy"],
+        line_colors={"run:loss": "#ff0000"},
+        line_marks={"run:loss": "dashed"},
+        line_widths={"run:loss": 2.0},
+        line_titles={"run:loss": "Training Loss"},
+    )
+    model = lp._to_model()
+    # Plain string colors are normalized to {color, transparentColor} for the frontend
+    assert model.config.override_colors == {
+        "run:loss": {"color": "#ff0000", "transparentColor": "#ff000019"}
+    }
+    assert model.config.override_marks == {"run:loss": "dashed"}
+    assert model.config.override_line_widths == {"run:loss": 2.0}
+    assert model.config.override_series_titles == {"run:loss": "Training Loss"}
+
+    # Roundtrip preserves the expanded object format
+    reconstructed = wr.LinePlot._from_model(model)
+    assert reconstructed.line_colors == {
+        "run:loss": {"color": "#ff0000", "transparentColor": "#ff000019"}
+    }
+    assert reconstructed.line_marks == {"run:loss": "dashed"}
+    assert reconstructed.line_widths == {"run:loss": 2.0}
+    assert reconstructed.line_titles == {"run:loss": "Training Loss"}
+
+    # Already-expanded color objects are passed through unchanged
+    expanded = {
+        "run:loss": {"color": "#00ff00", "transparentColor": "rgba(0,255,0,0.1)"}
+    }
+    lp2 = wr.LinePlot(y=["loss"], line_colors=expanded)
+    assert lp2._to_model().config.override_colors == expanded
+
+    # None defaults should not be serialized
+    lp_empty = wr.LinePlot(y=["loss"])
+    spec = lp_empty._to_model().config.model_dump(by_alias=True, exclude_none=True)
+    assert "overrideColors" not in spec
+    assert "overrideMarks" not in spec
+    assert "overrideLineWidths" not in spec
+    assert "overrideSeriesTitles" not in spec
+
+
 def test_block_validation_no_unknown_blocks():
     """Test that blocks are parsed correctly without creating UnknownBlock instances."""
     from wandb_workspaces.reports.v2 import internal
@@ -1421,9 +1464,7 @@ class TestRunsetRunSettings:
         from wandb_workspaces.reports.v2 import internal
 
         model = internal.Runset(
-            selections=internal.RunsetSelections(
-                root=0, tree=["run-1", "run-2"]
-            ),
+            selections=internal.RunsetSelections(root=0, tree=["run-1", "run-2"]),
         )
         runset = wr.Runset._from_model(model)
         assert runset.run_settings["run-1"].disabled is False
@@ -1450,9 +1491,7 @@ class TestRunsetRunSettings:
         from wandb_workspaces.reports.v2 import internal
 
         original = internal.Runset(
-            selections=internal.RunsetSelections(
-                root=0, tree=["visible-run"]
-            ),
+            selections=internal.RunsetSelections(root=0, tree=["visible-run"]),
         )
         runset = wr.Runset._from_model(original)
         assert runset.run_settings["visible-run"].disabled is False
@@ -1467,9 +1506,7 @@ class TestRunsetRunSettings:
         from wandb_workspaces.reports.v2 import internal
 
         model = internal.Runset(
-            selections=internal.RunsetSelections(
-                root=1, tree=["hidden-run"]
-            ),
+            selections=internal.RunsetSelections(root=1, tree=["hidden-run"]),
         )
         runset = wr.Runset._from_model(model)
         assert runset.run_settings["hidden-run"].disabled is True

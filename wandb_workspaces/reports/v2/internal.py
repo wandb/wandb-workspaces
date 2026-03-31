@@ -74,7 +74,7 @@ LegendPosition = Literal["north", "south", "east", "west"]
 LegendOrientation = Literal["horizontal", "vertical"]
 GroupAgg = Literal["mean", "min", "max", "median", "sum", "samples"]
 GroupArea = Literal["minmax", "stddev", "stderr", "none", "samples"]
-Mark = Literal["solid", "dashed", "dotted", "dotdash", "dotdotdash"]
+Mark = Literal["solid", "dashed", "dotted", "dotdash", "dotdotdash", "points"]
 Timestep = Literal["seconds", "minutes", "hours", "days"]
 SmoothingType = Literal[
     "exponentialTimeWeighted", "exponential", "gaussian", "average", "none"
@@ -674,6 +674,7 @@ class LinePlotConfig(ReportAPIBaseModel):
     override_line_widths: Optional[dict] = None
     override_colors: Optional[dict] = None
     override_series_titles: Optional[dict] = None
+    override_marks: Optional[dict] = None
     legend_fields: Optional[LList[str]] = None
 
     metric_regex: Optional[str] = None
