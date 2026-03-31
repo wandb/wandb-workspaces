@@ -187,3 +187,88 @@ def test_list_with_dashes_round_trip():
     # Verify the values survived the round-trip (nested in OR/AND structure)
     inner_filter = parsed.filters[0].filters[0]
     assert inner_filter.value == ["run-one", "two-three", "abc-123-def"]
+
+
+# ===== Disabled filter state preservation tests =====
+
+
+def test_disabled_filters_preserved_in_runset_roundtrip():
+    """Disabled (inactive) filters must survive a _from_model → _to_model roundtrip.
+
+    Regression test: filters_to_expr discarded the ``disabled`` flag and
+    expr_to_filters hardcoded ``disabled=False``, so inactive filters
+    silently became active after a load/save cycle (e.g. report migration).
+    """
+    from wandb_workspaces import expr
+    from wandb_workspaces.reports.v2 import internal
+    import wandb_workspaces.reports.v2 as wr
+
+    internal_runset = internal.Runset(
+        name="test",
+        filters=expr.Filters(
+            op="OR",
+            filters=[
+                expr.Filters(
+                    op="AND",
+                    filters=[
+                        expr.Filters(op="=", key=expr.Key(section="run", name="username"), value="alice", disabled=False),
+                        expr.Filters(op="=", key=expr.Key(section="run", name="state"), value="running", disabled=True),
+                        expr.Filters(op=">=", key=expr.Key(section="run", name="duration"), value="3600", disabled=True),
+                    ],
+                )
+            ],
+        ),
+    )
+
+    iface = wr.Runset._from_model(internal_runset)
+    model = iface._to_model()
+    leaves = model.filters.filters[0].filters
+
+    assert leaves[0].disabled is False
+    assert leaves[1].disabled is True
+    assert leaves[2].disabled is True
+
+
+def test_user_constructed_runset_parses_from_string():
+    """Runsets built by the user (not loaded) should parse filters from the string."""
+    import wandb_workspaces.reports.v2 as wr
+
+    rs = wr.Runset(filters="Metric('User') == 'alice'")
+    assert rs._filters_internal is None
+
+    model = rs._to_model()
+    leaves = model.filters.filters[0].filters
+    assert leaves[0].value == "alice"
+    assert leaves[0].disabled is False
+
+
+def test_modifying_filters_after_load_uses_new_value():
+    """Overwriting .filters on a loaded Runset must discard the stashed tree."""
+    from wandb_workspaces import expr
+    from wandb_workspaces.reports.v2 import internal
+    import wandb_workspaces.reports.v2 as wr
+
+    internal_runset = internal.Runset(
+        name="test",
+        filters=expr.Filters(
+            op="OR",
+            filters=[
+                expr.Filters(
+                    op="AND",
+                    filters=[
+                        expr.Filters(op="=", key=expr.Key(section="run", name="username"), value="alice", disabled=True),
+                    ],
+                )
+            ],
+        ),
+    )
+
+    iface = wr.Runset._from_model(internal_runset)
+    assert iface._filters_internal is not None
+
+    iface.filters = "Metric('User') == 'bob'"
+
+    model = iface._to_model()
+    leaves = model.filters.filters[0].filters
+    assert leaves[0].value == "bob", "New filter value should take effect"
+    assert leaves[0].disabled is False, "New filter should be active"
