@@ -981,6 +981,10 @@ class Runset(Base):
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
     _selections_root: int = Field(default=1, init=False, repr=False)
 
+    _filters_internal: Optional["expr.Filters"] = Field(
+        default=None, init=False, repr=False
+    )
+
     @model_validator(mode="after")
     def merge_custom_run_colors_into_run_settings(self):
         """Merge plain-string-keyed custom_run_colors into run_settings for backward compat."""
@@ -1044,11 +1048,23 @@ class Runset(Base):
                 if settings.disabled
             ]
 
+        # Use the stashed Filters tree when the string hasn't been changed
+        # since loading.  This preserves per-filter metadata (e.g. disabled
+        # state) that the lossy string representation cannot express.
+        filters_unchanged = (
+            self._filters_internal is not None
+            and self.filters == expr.filters_to_expr(self._filters_internal)
+        )
+        if filters_unchanged:
+            filters = self._filters_internal
+        else:
+            filters = expr.expr_to_filters(self.filters)
+
         obj = internal.Runset(
             project=project,
             name=self.name,
             search=internal.RunsetSearch(query=self.query),
-            filters=expr.expr_to_filters(self.filters),
+            filters=filters,
             grouping=[expr.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
             selections=internal.RunsetSelections(
@@ -1094,6 +1110,7 @@ class Runset(Base):
         )
         obj._id = model.id
         obj._selections_root = model.selections.root
+        obj._filters_internal = model.filters
         return obj
 
 
