@@ -2008,7 +2008,7 @@ class LinePlot(Panel):
                 use_metric_regex=True if self.metric_regex else None,
                 point_visualization_method=self.point_visualization_method,
                 override_series_titles=self.line_titles,
-                override_colors=self.line_colors,
+                override_colors=_normalize_color_overrides(self.line_colors),
                 override_line_widths=self.line_widths,
                 override_marks=self.line_marks,
             ),
@@ -2244,7 +2244,7 @@ class BarPlot(Panel):
                 legend_template=self.legend_template,
                 font_size=self.font_size,
                 override_series_titles=self.line_titles,
-                override_colors=self.line_colors,
+                override_colors=_normalize_color_overrides(self.line_colors),
                 aggregate=self.groupby not in (None, "None") or self.aggregate,
             ),
             layout=self.layout._to_model(),
@@ -4032,6 +4032,26 @@ def _collides(p1: Panel, p2: Panel) -> bool:
         return False
 
     return True
+
+
+def _normalize_color_overrides(
+    colors: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Normalize color overrides to the frontend's expected format.
+
+    The frontend expects ``{color: str, transparentColor: str}`` objects.
+    For convenience the SDK accepts plain color strings (e.g. ``"#ff0000"``)
+    and expands them here.  Already-expanded dicts are passed through.
+    """
+    if colors is None:
+        return None
+    result = {}
+    for key, val in colors.items():
+        if isinstance(val, str):
+            result[key] = {"color": val, "transparentColor": val + "19"}
+        else:
+            result[key] = val
+    return result
 
 
 def _metric_to_backend(x: Optional[MetricType]):
