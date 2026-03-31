@@ -892,6 +892,36 @@ def test_lineplot_metric_regex():
     assert lp4._to_model().config.use_metric_regex is True
 
 
+def test_lineplot_series_overrides_roundtrip():
+    """Per-series overrides (colors, marks, widths, titles) must survive a round-trip."""
+    lp = wr.LinePlot(
+        y=["loss", "accuracy"],
+        line_colors={"run:loss": "#ff0000"},
+        line_marks={"run:loss": "dashed"},
+        line_widths={"run:loss": 2.0},
+        line_titles={"run:loss": "Training Loss"},
+    )
+    model = lp._to_model()
+    assert model.config.override_colors == {"run:loss": "#ff0000"}
+    assert model.config.override_marks == {"run:loss": "dashed"}
+    assert model.config.override_line_widths == {"run:loss": 2.0}
+    assert model.config.override_series_titles == {"run:loss": "Training Loss"}
+
+    reconstructed = wr.LinePlot._from_model(model)
+    assert reconstructed.line_colors == {"run:loss": "#ff0000"}
+    assert reconstructed.line_marks == {"run:loss": "dashed"}
+    assert reconstructed.line_widths == {"run:loss": 2.0}
+    assert reconstructed.line_titles == {"run:loss": "Training Loss"}
+
+    # None defaults should not be serialized
+    lp_empty = wr.LinePlot(y=["loss"])
+    spec = lp_empty._to_model().config.model_dump(by_alias=True, exclude_none=True)
+    assert "overrideColors" not in spec
+    assert "overrideMarks" not in spec
+    assert "overrideLineWidths" not in spec
+    assert "overrideSeriesTitles" not in spec
+
+
 def test_block_validation_no_unknown_blocks():
     """Test that blocks are parsed correctly without creating UnknownBlock instances."""
     from wandb_workspaces.reports.v2 import internal

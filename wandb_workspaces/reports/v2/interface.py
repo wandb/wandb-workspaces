@@ -1932,6 +1932,10 @@ class LinePlot(Panel):
            points when there are too many to display. Options include "bucketing-gorilla" (buckets
            data points and shows min, max, avg per bucket to preserve outliers and spikes) or
            "sampling" (randomly samples points for faster rendering but may miss outliers).
+        line_titles (Optional[dict]): The titles of the lines. The keys are the line names and the values are the titles.
+        line_colors (Optional[dict]): The colors of the lines. The keys are the line names and the values are the colors.
+        line_widths (Optional[dict]): The widths of the lines. The keys are the line names and the values are the widths.
+        line_marks (Optional[dict]): The dash styles of the lines. The keys are the line names and the values are the styles.
     """
 
     title: Optional[str] = None
@@ -1962,6 +1966,10 @@ class LinePlot(Panel):
     legend_fields: Optional[LList[str]] = None
     metric_regex: Optional[str] = None
     point_visualization_method: Optional[PointVizMethod] = None
+    line_titles: Optional[dict] = None
+    line_colors: Optional[dict] = None
+    line_widths: Optional[dict] = None
+    line_marks: Optional[dict] = None
 
     def _to_model(self):
         return internal.LinePlot(
@@ -1997,6 +2005,10 @@ class LinePlot(Panel):
                 metric_regex=self.metric_regex,
                 use_metric_regex=True if self.metric_regex else None,
                 point_visualization_method=self.point_visualization_method,
+                override_series_titles=self.line_titles,
+                override_colors=self.line_colors,
+                override_line_widths=self.line_widths,
+                override_marks=self.line_marks,
             ),
             id=self._id,
             layout=self.layout._to_model(),
@@ -2049,6 +2061,10 @@ class LinePlot(Panel):
         object.__setattr__(
             obj, "point_visualization_method", model.config.point_visualization_method
         )
+        object.__setattr__(obj, "line_titles", model.config.override_series_titles)
+        object.__setattr__(obj, "line_colors", model.config.override_colors)
+        object.__setattr__(obj, "line_widths", model.config.override_line_widths)
+        object.__setattr__(obj, "line_marks", model.config.override_marks)
         return obj
 
 
