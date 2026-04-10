@@ -674,33 +674,40 @@ def test_orderby_round_trip_preserves_section():
     from wandb_workspaces.expr import SortKey, SortKeyKey
 
     test_cases = [
-        # (section, name, expected_frontend_type)
-        ("run", "createdAt", wr.Metric),
-        ("summary", "train_inner/ppl", wr.SummaryMetric),
-        ("config", "learning_rate.value", wr.Config),
+        # (section, input_name, expected_frontend_type, expected_output_name)
+        ("run", "createdAt", wr.Metric, "createdAt"),
+        ("summary", "train_inner/ppl", wr.SummaryMetric, "train_inner/ppl"),
+        # Canonical bare-key format (what the frontend creates)
+        ("config", "learning_rate", wr.Config, "learning_rate"),
+        # Legacy format with .value — _from_model strips it, _to_model emits bare key
+        ("config", "learning_rate.value", wr.Config, "learning_rate"),
+        # Nested config key
+        ("config", "optimizer.params", wr.Config, "optimizer.params"),
+        # Legacy nested format — .value stripped wherever it appears
+        ("config", "optimizer.value.params", wr.Config, "optimizer.params"),
     ]
 
-    for section, name, expected_type in test_cases:
+    for section, input_name, expected_type, expected_output_name in test_cases:
         model = SortKey(
-            key=SortKeyKey(section=section, name=name),
+            key=SortKeyKey(section=section, name=input_name),
             ascending=False,
         )
 
         # _from_model should produce the correct MetricType
         order_by = wr.OrderBy._from_model(model)
         assert isinstance(order_by.name, expected_type), (
-            f"section={section!r}: expected {expected_type.__name__}, "
+            f"section={section!r}, name={input_name!r}: expected {expected_type.__name__}, "
             f"got {type(order_by.name).__name__}"
         )
 
-        # _to_model should emit the original section back
+        # _to_model should emit the correct section and bare config key name
         result = order_by._to_model()
         assert result.key.section == section, (
-            f"section={section!r}: expected section={section!r} after round-trip, "
+            f"section={section!r}, name={input_name!r}: expected section={section!r} after round-trip, "
             f"got section={result.key.section!r}"
         )
-        assert result.key.name == name, (
-            f"section={section!r}: expected name={name!r} after round-trip, "
+        assert result.key.name == expected_output_name, (
+            f"section={section!r}, name={input_name!r}: expected name={expected_output_name!r} after round-trip, "
             f"got name={result.key.name!r}"
         )
 

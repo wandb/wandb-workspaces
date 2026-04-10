@@ -909,9 +909,7 @@ class OrderBy(Base):
             name = self.name.name
         elif isinstance(self.name, Config):
             section = "config"
-            n, *rest = self.name.name.split(".")
-            rest = "." + ".".join(rest) if rest else ""
-            name = f"{n}.value{rest}"
+            name = self.name.name
         else:
             section = "run"
             raw = self.name.name if isinstance(self.name, Metric) else self.name
