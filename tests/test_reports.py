@@ -664,6 +664,47 @@ def test_metric_to_frontend_groupby():
         ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
 
 
+def test_orderby_round_trip_preserves_section():
+    """OrderBy must preserve the sort key section (run/summary/config) through a round-trip.
+
+    Regression test for WB-32724: OrderBy._from_model discards model.key.section
+    and _to_model defaults SortKeyKey.section to "run", so sorting by a summary
+    metric gets rewritten as a run-level sort, causing SQL Error 1054 on the server.
+    """
+    from wandb_workspaces.expr import SortKey, SortKeyKey
+
+    test_cases = [
+        # (section, name, expected_frontend_type)
+        ("run", "createdAt", wr.Metric),
+        ("summary", "train_inner/ppl", wr.SummaryMetric),
+        ("config", "learning_rate.value", wr.Config),
+    ]
+
+    for section, name, expected_type in test_cases:
+        model = SortKey(
+            key=SortKeyKey(section=section, name=name),
+            ascending=False,
+        )
+
+        # _from_model should produce the correct MetricType
+        order_by = wr.OrderBy._from_model(model)
+        assert isinstance(order_by.name, expected_type), (
+            f"section={section!r}: expected {expected_type.__name__}, "
+            f"got {type(order_by.name).__name__}"
+        )
+
+        # _to_model should emit the original section back
+        result = order_by._to_model()
+        assert result.key.section == section, (
+            f"section={section!r}: expected section={section!r} after round-trip, "
+            f"got section={result.key.section!r}"
+        )
+        assert result.key.name == name, (
+            f"section={section!r}: expected name={name!r} after round-trip, "
+            f"got name={result.key.name!r}"
+        )
+
+
 def test_groupby_aggregate_behavior():
     """Test that panels automatically set aggregate=True when groupby is specified"""
 
