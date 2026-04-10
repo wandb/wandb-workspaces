@@ -904,15 +904,41 @@ class OrderBy(Base):
     ascending: bool = False
 
     def _to_model(self):
+        if isinstance(self.name, SummaryMetric):
+            section = "summary"
+            name = self.name.name
+        elif isinstance(self.name, Config):
+            section = "config"
+            name = self.name.name
+        else:
+            section = "run"
+            raw = self.name.name if isinstance(self.name, Metric) else self.name
+            name = expr.to_backend_name(raw)
+
         return internal.SortKey(
-            key=internal.SortKeyKey(name=_metric_to_backend(self.name)),
+            key=internal.SortKeyKey(section=section, name=name),
             ascending=self.ascending,
         )
 
     @classmethod
     def _from_model(cls, model: internal.SortKey):
+        section = model.key.section
+        key_name = model.key.name
+
+        if section == "summary":
+            frontend_name = SummaryMetric(key_name)
+        elif section == "config":
+            # Strip ".value" suffix that the backend adds after the first key segment.
+            # "lr.value" → "lr", "nested.value.deep" → "nested.deep"
+            parts = key_name.split(".")
+            if "value" in parts:
+                parts.remove("value")
+            frontend_name = Config(".".join(parts))
+        else:
+            frontend_name = _metric_to_frontend(key_name)
+
         return cls(
-            name=_metric_to_frontend(model.key.name),
+            name=frontend_name,
             ascending=model.ascending,
         )
 
