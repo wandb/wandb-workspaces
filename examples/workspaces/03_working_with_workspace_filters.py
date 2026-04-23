@@ -66,8 +66,8 @@ workspace_with_string_filters = ws.Workspace(
         ),
     ],
     runset_settings=ws.RunsetSettings(
-        # String filters use "and" to combine conditions as there is no "or" available
-        # Supported operators: ==, =, !=, <, <=, >, >=
+        # String filters use "and" and "or" to combine conditions
+        # Supported operators: ==, =, !=, <, <=, >, >=, and, or
         # Note: < maps to <=, > maps to >=, and = maps to == internally to match existing UX behavior
         filters="SummaryMetric('accuracy') > 0.95 and Config('learning_rate') = 0.001 and Metric('State') == 'finished'"
     ),
@@ -276,3 +276,112 @@ workspace_tags_string = ws.Workspace(
 )
 
 workspace_tags_string.save()
+
+# ============================================================================
+# METHOD 5: OR filters and nested groups
+# ============================================================================
+# Combine filters with OR logic using ws.Or(), ws.And(), and ws.Group()
+# Or: combines branches with OR logic
+# And: combines items within a branch with AND logic
+# Group: creates a parenthesised group for precedence control
+
+# Using Or with FilterExpr objects
+workspace_or_filters = ws.Workspace(
+    name="Multiple Learning Rates (OR Filter)",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="LR Comparison",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # Show runs with lr=0.001 OR lr=0.01
+        filters=ws.Or(
+            ws.Config("learning_rate") == 0.001,
+            ws.Config("learning_rate") == 0.01,
+        )
+    ),
+)
+
+workspace_or_filters.save()
+
+# Using Or with And groups
+workspace_or_and = ws.Workspace(
+    name="Best Runs from Two Configs (OR + AND)",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Config Comparison",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # (lr=0.001 AND finished) OR (lr=0.01 AND accuracy > 0.9)
+        filters=ws.Or(
+            ws.And(
+                ws.Config("learning_rate") == 0.001,
+                ws.Metric("State") == "finished",
+            ),
+            ws.And(
+                ws.Config("learning_rate") == 0.01,
+                ws.Summary("accuracy") >= 0.9,
+            ),
+        )
+    ),
+)
+
+workspace_or_and.save()
+
+# Using string expressions with OR
+workspace_or_string = ws.Workspace(
+    name="OR Filter (String Expression)",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Results",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # Python-style boolean expression with 'or' and 'and'
+        # Precedence: AND binds tighter than OR (standard boolean logic)
+        filters="Metric('State') == 'finished' and Config('learning_rate') == 0.001 or Config('learning_rate') == 0.01"
+    ),
+)
+
+workspace_or_string.save()
+
+# Parenthesised groups in string expressions
+workspace_group_string = ws.Workspace(
+    name="Grouped OR Filter (String Expression)",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Results",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # Parentheses override default precedence
+        filters="(Config('learning_rate') == 0.001 or Config('learning_rate') == 0.01) and Metric('State') == 'finished'"
+    ),
+)
+
+workspace_group_string.save()
