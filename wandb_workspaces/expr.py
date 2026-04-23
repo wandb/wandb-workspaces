@@ -338,41 +338,61 @@ def _preprocess_comparison_operators(expr: str) -> str:
     return expr
 
 
+def _normalize_to_or_and_tree(root: Filters) -> Filters:
+    """Wrap a parsed Filters node into the canonical OR -> AND -> leaves tree.
+
+    The backend expects the root to be an OR node whose children are AND
+    buckets.  This function normalises any shape produced by the AST parser
+    into that form.
+    """
+    if root.op == "OR" and root.filters:
+        buckets = []
+        for child in root.filters:
+            if child.op == "AND" and child.filters is not None:
+                buckets.append(child)
+            elif child.op in ("=", "!=", "<=", ">=", "<", ">", "IN", "NIN",
+                              "==", "WITHINSECONDS"):
+                buckets.append(Filters(op="AND", filters=[child]))
+            elif child.op == "OR" and child.filters:
+                for grandchild in child.filters:
+                    if grandchild.op == "AND" and grandchild.filters is not None:
+                        buckets.append(grandchild)
+                    else:
+                        buckets.append(Filters(op="AND", filters=[grandchild]))
+            else:
+                buckets.append(Filters(op="AND", filters=[child]))
+        return Filters(op="OR", filters=buckets)
+
+    if root.op == "AND" and root.filters is not None:
+        return Filters(op="OR", filters=[root])
+
+    return Filters(op="OR", filters=[Filters(op="AND", filters=[root])])
+
+
 def expr_to_filters(expr: str) -> Filters:
     """Parse a string filter expression into an internal Filters tree.
 
+    Supports ``and``, ``or``, and parenthesised groups.
+
     Args:
         expr: A Python-like filter expression string, e.g.,
-            "Config('learning_rate') == 0.001 and State == 'finished'"
-            or "Metric('CreatedTimestamp') within_last 5 days"
+            ``"Config('learning_rate') == 0.001 and Metric('State') == 'finished'"``
+            or ``"Metric('State') == 'finished' or Config('lr') == 0.01"``
 
     Returns:
-        An internal Filters tree structure
+        An internal Filters tree in canonical OR -> AND -> leaves form.
     """
     if not expr:
-        filters = []
-    else:
-        # Preprocess: Convert within_last operator syntax to function syntax
-        # This must happen first, before other transformations
-        expr = _preprocess_within_last_syntax(expr)
+        return Filters(op="OR", filters=[Filters(op="AND", filters=[])])
 
-        # Preprocess: Replace single '=' with '==' for Python AST parsing
-        # But avoid replacing '==', '!=', '<=', '>='
-        expr = _preprocess_equality_operators(expr)
+    expr = _preprocess_within_last_syntax(expr)
+    expr = _preprocess_equality_operators(expr)
+    expr = _preprocess_comparison_operators(expr)
 
-        # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
-        expr = _preprocess_comparison_operators(expr)
+    parsed_expr = ast.parse(expr, mode="eval")
+    root_filter = _parse_node(parsed_expr.body)
 
-        parsed_expr = ast.parse(expr, mode="eval")
-        root_filter = _parse_node(parsed_expr.body)
-
-        # If the root operation is an AND, unpack its child filters
-        if root_filter.op == "AND" and root_filter.filters:
-            filters = root_filter.filters
-        else:
-            filters = [root_filter]
-
-    return Filters(op="OR", filters=[Filters(op="AND", filters=filters)])
+    return _normalize_to_or_and_tree(root_filter)
 
 
 def _parse_node(node) -> Filters:
@@ -712,6 +732,213 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
             return f"{key_name} {op_map[filter.op]} {value}"
 
     return _convert_filter(filter_obj, is_root)
+
+
+# ---------------------------------------------------------------------------
+# FilterV2 (flat format) → Filters tree conversion
+# ---------------------------------------------------------------------------
+
+FILTER_FORMAT_V2 = "filterV2"
+
+
+def is_filter_v2(data: Any) -> bool:
+    """Check if a dict/object uses the v2 flat filter format."""
+    if isinstance(data, dict):
+        return data.get("filterFormat") == FILTER_FORMAT_V2
+    return False
+
+
+def _is_v2_group(item: dict) -> bool:
+    """A v2 group has a 'filters' list but no 'op' at the item level (or no key)."""
+    return "filters" in item and isinstance(item["filters"], list)
+
+
+def _is_valid_v2_leaf(item: dict) -> bool:
+    """A leaf item has a key with a non-empty name and is not disabled."""
+    if item.get("disabled", False):
+        return False
+    key = item.get("key")
+    if not key:
+        return False
+    return bool(key.get("name"))
+
+
+def _v2_leaf_to_filters(item: dict) -> Filters:
+    """Convert a single v2 leaf item to a Filters node."""
+    return Filters(
+        op=item.get("op", "="),
+        key=Key(section=item["key"]["section"], name=item["key"]["name"]),
+        value=item.get("value"),
+        disabled=item.get("disabled"),
+    )
+
+
+def _split_on_or(items: list) -> list:
+    """Split a flat v2 filter list into segments at OR boundaries.
+
+    Items with connector='OR' start a new segment. Items with connector='AND'
+    or no connector stay in the current segment. The first item never has a
+    connector.
+    """
+    if not items:
+        return []
+    segments = []
+    current = []
+    for item in items:
+        connector = item.get("connector")
+        if connector == "OR" and current:
+            segments.append(current)
+            current = []
+        current.append(item)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def _segment_to_node(segment: list) -> Optional[Filters]:
+    """Convert one AND-connected segment into a Filters tree node."""
+    if not segment:
+        return None
+
+    children = []
+    for item in segment:
+        if _is_v2_group(item):
+            if item.get("disabled", False):
+                continue
+            node = _derive_tree_from_v2(item)
+            if node:
+                children.append(node)
+        elif _is_valid_v2_leaf(item):
+            children.append(_v2_leaf_to_filters(item))
+
+    if not children:
+        return None
+    if len(children) == 1:
+        return children[0]
+    return Filters(op="AND", filters=children)
+
+
+def _derive_tree_from_v2(node: dict) -> Optional[Filters]:
+    """Derive a Filters tree from a v2 node (root or group).
+
+    Mirrors the frontend's deriveTree algorithm:
+    1. Split the flat list on OR boundaries
+    2. Treat each segment as AND-connected
+    3. Recursively derive trees for nested groups
+    4. If more than one segment, combine with OR
+    """
+    items = node.get("filters", [])
+    if not items:
+        return None
+
+    segments = _split_on_or(items)
+    segment_nodes = []
+
+    for segment in segments:
+        tree_node = _segment_to_node(segment)
+        if tree_node is not None:
+            segment_nodes.append(tree_node)
+
+    if not segment_nodes:
+        return None
+    if len(segment_nodes) == 1:
+        return segment_nodes[0]
+    return Filters(op="OR", filters=segment_nodes)
+
+
+def filters_v2_to_filters_tree(data: dict) -> Filters:
+    """Convert a v2 filterFormat dict to a legacy Filters tree.
+
+    Args:
+        data: A dict with filterFormat='filterV2' and a flat filters list,
+            as stored in the view spec by the frontend v2 filter UI.
+
+    Returns:
+        A Filters tree in the canonical OR -> AND -> leaves structure.
+    """
+    tree = _derive_tree_from_v2(data)
+    if tree is None:
+        return Filters(op="OR", filters=[Filters(op="AND")])
+
+    return _normalize_to_or_and_tree(tree)
+
+
+def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
+    """Convert a single Filters leaf node to a v2 flat item dict."""
+    if leaf.key is None or not leaf.key.name:
+        return None
+    item: dict = {
+        "key": {"section": leaf.key.section, "name": leaf.key.name},
+        "op": leaf.op,
+        "value": leaf.value,
+    }
+    if leaf.disabled is not None:
+        item["disabled"] = leaf.disabled
+    return item
+
+
+def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
+    """Recursively convert a Filters tree node into a flat list of v2 items.
+
+    Handles OR nodes (emit connector='OR' between segments), AND nodes
+    (emit connector='AND' between items), and nested sub-trees (emitted
+    as FilterV2Group objects).
+    """
+    if node.key is not None:
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
+
+    if node.filters is None:
+        return []
+
+    if node.op == "OR":
+        items: list = []
+        for i, child in enumerate(node.filters):
+            child_items = _tree_node_to_v2_items(child, is_first_in_parent=(i == 0 and is_first_in_parent))
+            if child_items and i > 0:
+                child_items[0]["connector"] = "OR"
+            items.extend(child_items)
+        return items
+
+    if node.op == "AND":
+        items = []
+        for j, child in enumerate(node.filters):
+            is_first = (j == 0) and is_first_in_parent
+            if child.key is not None:
+                child_item = _leaf_to_v2_item(child)
+                if child_item is None:
+                    continue
+                if not is_first:
+                    child_item["connector"] = "AND"
+                items.append(child_item)
+            else:
+                sub_items = _tree_node_to_v2_items(child, is_first_in_parent=True)
+                if not sub_items:
+                    continue
+                group: dict = {"filters": sub_items}
+                if not is_first:
+                    group["connector"] = "AND"
+                items.append(group)
+        return items
+
+    item = _leaf_to_v2_item(node)
+    return [item] if item else []
+
+
+def filters_tree_to_v2(tree: Filters) -> dict:
+    """Convert a Filters tree to the v2 flat filter format.
+
+    This is the inverse of ``filters_v2_to_filters_tree``.  The returned
+    dict is suitable for storing in the view spec as ``filterFormat: "filterV2"``.
+
+    Args:
+        tree: A Filters tree (typically in canonical OR -> AND -> leaves form).
+
+    Returns:
+        A dict with ``filterFormat`` and a flat ``filters`` list.
+    """
+    items = _tree_node_to_v2_items(tree, is_first_in_parent=True)
+    return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
 
 
 def _key_to_server_path(key: Key):
@@ -1083,6 +1310,112 @@ class FilterExpr:
         )
 
 
+FilterItem = Union["FilterExpr", "And", "Or", "Group"]
+
+
+@dataclass(frozen=True)
+class And:
+    """Combine multiple filter items with AND logic.
+
+    Example:
+        >>> And(ws.Config("lr") == 0.01, ws.Metric("State") == "finished")
+    """
+
+    items: tuple
+
+    def __init__(self, *items: FilterItem):
+        object.__setattr__(self, "items", items)
+
+    def __repr__(self) -> str:
+        return f"And({', '.join(repr(i) for i in self.items)})"
+
+    def to_model(self) -> Filters:
+        """Convert to an AND Filters node."""
+        children = []
+        for item in self.items:
+            children.append(item.to_model())
+        return Filters(op="AND", filters=children)
+
+
+@dataclass(frozen=True)
+class Or:
+    """Combine multiple filter items with OR logic.
+
+    Each argument becomes a separate OR branch.  Arguments that are plain
+    ``FilterExpr`` or ``And`` groups are treated as individual AND buckets.
+
+    Example:
+        >>> Or(
+        ...     And(ws.Config("lr") == 0.01, ws.Metric("State") == "finished"),
+        ...     ws.Config("lr") == 0.1,
+        ... )
+    """
+
+    items: tuple
+
+    def __init__(self, *items: FilterItem):
+        object.__setattr__(self, "items", items)
+
+    def __repr__(self) -> str:
+        return f"Or({', '.join(repr(i) for i in self.items)})"
+
+    def to_model(self) -> Filters:
+        """Convert to the canonical OR -> AND -> leaves tree."""
+        buckets = []
+        for item in self.items:
+            node = item.to_model()
+            if node.op == "AND" and node.filters is not None:
+                buckets.append(node)
+            elif node.op == "OR" and node.filters is not None:
+                buckets.extend(node.filters)
+            else:
+                buckets.append(Filters(op="AND", filters=[node]))
+        return Filters(op="OR", filters=buckets)
+
+
+@dataclass(frozen=True)
+class Group:
+    """A parenthesised group of filters, preserving precedence.
+
+    Example:
+        >>> Or(
+        ...     Group(Or(ws.Config("lr") == 0.01, ws.Config("lr") == 0.1)),
+        ...     ws.Metric("State") == "finished",
+        ... )
+    """
+
+    inner: FilterItem
+
+    def __repr__(self) -> str:
+        return f"Group({self.inner!r})"
+
+    def to_model(self) -> Filters:
+        """Delegate to inner item's model."""
+        return self.inner.to_model()
+
+
+def _filter_items_to_filters_tree(items) -> Filters:
+    """Convert a list of FilterExpr / And / Or / Group items to a Filters tree.
+
+    Items in the list are AND'd together.  For OR logic, wrap with ``Or()``.
+    """
+    if not items:
+        return Filters(op="OR", filters=[Filters(op="AND", filters=[])])
+
+    if len(items) == 1:
+        item = items[0]
+        if isinstance(item, Or):
+            return item.to_model()
+        node = item.to_model()
+        return _normalize_to_or_and_tree(node)
+
+    and_children = []
+    for item in items:
+        and_children.append(item.to_model())
+    and_node = Filters(op="AND", filters=and_children)
+    return Filters(op="OR", filters=[and_node])
+
+
 def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     def parse_filter(filter: Filters) -> Optional[FilterExpr]:
         if filter.key is None:
@@ -1104,7 +1437,16 @@ def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     return parse_expression(tree)
 
 
-def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
+def filter_expr_to_filters_tree(filters) -> Filters:
+    """Convert a list of filter items to a Filters tree.
+
+    Accepts ``List[FilterExpr]`` (legacy AND-only) as well as lists containing
+    ``Or``, ``And``, and ``Group`` combinators.
+    """
+    has_combinators = any(isinstance(f, (Or, And, Group)) for f in filters)
+    if has_combinators:
+        return _filter_items_to_filters_tree(filters)
+
     def parse_key(metric: BaseMetric) -> Key:
         section = metric.section
         name = _convert_fe_to_be_metric_name(metric.name)
@@ -1183,25 +1525,22 @@ def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
 def normalize_filters_to_string(instance):
     """Shared model validator that normalizes filters to string format.
 
-    Converts List[FilterExpr] → str while preserving string inputs.
-    This creates a unified internal representation across Workspaces and Reports.
+    Converts ``List[FilterExpr]`` (and lists containing ``Or``/``And``/``Group``)
+    to a string expression.  Preserves string inputs as-is.
 
     Args:
         instance: The model instance with a 'filters' attribute
 
     Returns:
         The instance with normalized filters
-
-    Usage:
-        @model_validator(mode="after")
-        def convert_filterexpr_list_to_string(self):
-            return normalize_filters_to_string(self)
     """
     if isinstance(instance.filters, list):
-        # Convert FilterExpr list to string
-        # This unifies internal representation as string
-        filter_string = filterexpr_list_to_string(instance.filters)
-        # Update the filters field
+        filters_tree = filter_expr_to_filters_tree(instance.filters)
+        filter_string = filters_to_expr(filters_tree)
+        object.__setattr__(instance, "filters", filter_string)
+    elif isinstance(instance.filters, (Or, And, Group)):
+        filters_tree = instance.filters.to_model()
+        filter_string = filters_to_expr(filters_tree)
         object.__setattr__(instance, "filters", filter_string)
     return instance
 

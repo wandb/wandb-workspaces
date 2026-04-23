@@ -324,10 +324,10 @@ class RunsetSettings(Base):
     Attributes:
         query (str): A query to filter the runset (can be a regex expr, see next param).
         regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
-        filters (Union[str, LList[expr.FilterExpr]]): A list of filters to apply to the runset or a string expression.
-            - As a list: Filters are AND'd together. See FilterExpr for more information on creating filters.
-            - As a string: Use Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
-              Supports operators: =, ==, !=, <, >, <=, >=, in, not in
+        filters (Union[str, LList[FilterExpr]]): Filters for the runset.
+            - As a list of FilterExpr: filters are AND'd together.
+            - As a string: Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in, and
         groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
             `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
@@ -407,15 +407,10 @@ class RunsetSettings(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string expression (unified internal format)."""
-        # Inline the normalization logic to avoid circular import with expr module
+        """Convert FilterExpr list to string (unified internal format)."""
         if isinstance(self.filters, list):
-            # Import locally to avoid circular import at module level
-            # Convert FilterExpr list to internal Filters tree
             filters_tree = expr.filter_expr_to_filters_tree(self.filters)
-            # Convert Filters tree to string expression
             filter_string = expr.filters_to_expr(filters_tree)
-            # Update the filters field
             object.__setattr__(self, "filters", filter_string)
         return self
 
@@ -674,7 +669,7 @@ class Workspace(Base):
                                 is_regex=is_regex,
                             ),
                             filters=expr.expr_to_filters(
-                                self.runset_settings.filters  # type: ignore[arg-type]  # validator ensures this is always str
+                                self.runset_settings.filters  # type: ignore[arg-type]
                             ),
                             grouping=[g.to_key() for g in self.runset_settings.groupby],
                             sort=internal.Sort(
