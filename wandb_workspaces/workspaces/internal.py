@@ -10,6 +10,11 @@ from wandb_gql import gql
 
 # these internal objects should be factored out into a separate module as a
 # shared dependency between Workspaces and Reports API
+from wandb_workspaces.expr import (
+    filters_tree_to_v2,
+    filters_v2_to_filters_tree,
+    is_filter_v2,
+)
 from wandb_workspaces.reports.v2.internal import *  # noqa: F403
 from wandb_workspaces.reports.v2.internal import (
     PanelBankConfig,
@@ -23,6 +28,35 @@ from wandb_workspaces.utils.validators import validate_spec_version
 
 CLIENT_SPEC_VERSION = -1
 SPEC_VERSION_KEY = "version"
+
+_v2_runset_ids: set = set()
+
+
+def _filters_dict_needs_v2(node: dict) -> bool:
+    """Check if a serialized Filters tree dict uses features that require v2.
+
+    The canonical legacy tree is OR -> AND -> leaves (depth 2).  This returns
+    True when the tree goes beyond that: multiple OR branches, or any leaf
+    position occupied by a non-leaf node (a nested group).
+    """
+    if not isinstance(node, dict):
+        return False
+    children = node.get("filters")
+    if not children:
+        return False
+    op = node.get("op", "")
+    if op == "OR" and len(children) > 1:
+        return True
+    for and_branch in children:
+        if not isinstance(and_branch, dict):
+            continue
+        leaves = and_branch.get("filters")
+        if not leaves:
+            continue
+        for leaf in leaves:
+            if isinstance(leaf, dict) and leaf.get("filters") is not None:
+                return True
+    return False
 
 
 class WorkspaceAPIBaseModel(BaseModel):
@@ -86,6 +120,29 @@ class WorkspaceViewspec(WorkspaceAPIBaseModel):
     library_expanded: bool = True
 
 
+def _migrate_v2_filters_in_spec(spec_dict: dict) -> dict:
+    """Pre-process a spec dict, converting any v2-format filters to the legacy tree.
+
+    The frontend v2 filter UI stores filters as a flat list with inline
+    connector fields.  Pydantic can't parse that into the legacy Filters
+    model correctly, so we convert before validation.
+
+    Runset IDs whose filters were originally v2 are tracked in the module-level
+    ``_v2_runset_ids`` set so that ``upsert_view2`` can write them back in v2
+    format.
+    """
+    run_sets = spec_dict.get("section", {}).get("runSets", [])
+    for rs in run_sets:
+        filters_data = rs.get("filters")
+        if filters_data and is_filter_v2(filters_data):
+            tree = filters_v2_to_filters_tree(filters_data)
+            rs["filters"] = tree.model_dump(by_alias=True, exclude_none=True)
+            rs_id = rs.get("id")
+            if rs_id:
+                _v2_runset_ids.add(rs_id)
+    return spec_dict
+
+
 class View(WorkspaceAPIBaseModel):
     entity: str
     project: str
@@ -106,7 +163,10 @@ class View(WorkspaceAPIBaseModel):
         spec = view_dict["spec"]
         display_name = view_dict["displayName"]
         id = view_dict["id"]
-        parsed_spec = WorkspaceViewspec.model_validate_json(spec)
+
+        spec_dict = json.loads(spec) if isinstance(spec, str) else spec
+        spec_dict = _migrate_v2_filters_in_spec(spec_dict)
+        parsed_spec = WorkspaceViewspec.model_validate(spec_dict)
 
         return cls(
             entity=entity,
@@ -136,7 +196,21 @@ def upsert_view2(view: View) -> Dict[str, Any]:
     )
 
     api = wandb.Api()
-    spec_str = view.spec.model_dump_json(by_alias=True, exclude_none=True)
+
+    spec_dict = view.spec.model_dump(by_alias=True, exclude_none=True)
+
+    for rs in spec_dict.get("section", {}).get("runSets", []):
+        rs_id = rs.get("id")
+        was_v2 = rs_id and rs_id in _v2_runset_ids
+        needs_v2 = _filters_dict_needs_v2(rs.get("filters", {}))
+
+        if was_v2 or needs_v2:
+            from wandb_workspaces.expr import Filters
+
+            tree = Filters.model_validate(rs["filters"])
+            rs["filters"] = filters_tree_to_v2(tree)
+
+    spec_str = json.dumps(spec_dict)
 
     # Default: assume a new view being created, so no `id` yet
     variables = {
