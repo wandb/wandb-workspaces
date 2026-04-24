@@ -678,11 +678,11 @@ class Workspace(Base):
             ),
         )
 
-        if (
-            self._raw_filters_v2 is not None
-            and self.runset_settings.filters == self._original_v2_filter_string
-        ):
-            runset._raw_filters_v2 = self._raw_filters_v2
+        if self._raw_filters_v2 is not None:
+            if self.runset_settings.filters == self._original_v2_filter_string:
+                runset._raw_filters_v2 = self._raw_filters_v2
+            else:
+                runset._raw_filters_v2 = expr.filters_tree_to_v2(runset.filters)
 
         return internal.View(
             entity=self.entity,

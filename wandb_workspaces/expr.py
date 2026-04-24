@@ -853,6 +853,76 @@ def filters_v2_to_string(data: dict) -> str:
     return _v2_items_to_string(items)
 
 
+def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
+    """Convert a single Filters leaf node to a v2 flat item dict."""
+    if leaf.key is None or not leaf.key.name:
+        return None
+    item: dict = {
+        "key": {"section": leaf.key.section, "name": leaf.key.name},
+        "op": leaf.op,
+        "value": leaf.value,
+    }
+    if leaf.disabled is not None:
+        item["disabled"] = leaf.disabled
+    return item
+
+
+def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
+    """Recursively convert a Filters tree node into a flat list of v2 items."""
+    if node.key is not None:
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
+
+    if node.filters is None:
+        return []
+
+    if node.op == "OR":
+        items: list = []
+        for i, child in enumerate(node.filters):
+            child_items = _tree_node_to_v2_items(child, is_first_in_parent=(i == 0 and is_first_in_parent))
+            if child_items and i > 0:
+                child_items[0]["connector"] = "OR"
+            items.extend(child_items)
+        return items
+
+    if node.op == "AND":
+        items = []
+        for j, child in enumerate(node.filters):
+            is_first = (j == 0) and is_first_in_parent
+            if child.key is not None:
+                child_item = _leaf_to_v2_item(child)
+                if child_item is None:
+                    continue
+                if not is_first:
+                    child_item["connector"] = "AND"
+                items.append(child_item)
+            else:
+                sub_items = _tree_node_to_v2_items(child, is_first_in_parent=True)
+                if not sub_items:
+                    continue
+                group: dict = {"filters": sub_items}
+                if not is_first:
+                    group["connector"] = "AND"
+                items.append(group)
+        return items
+
+    item = _leaf_to_v2_item(node)
+    return [item] if item else []
+
+
+def filters_tree_to_v2(tree: Filters) -> dict:
+    """Convert a Filters tree to the v2 flat filter format.
+
+    Args:
+        tree: A Filters tree (typically in canonical OR -> AND -> leaves form).
+
+    Returns:
+        A dict with ``filterFormat`` and a flat ``filters`` list.
+    """
+    items = _tree_node_to_v2_items(tree, is_first_in_parent=True)
+    return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
+
+
 def _key_to_server_path(key: Key):
     name = key.name
     section = key.section
