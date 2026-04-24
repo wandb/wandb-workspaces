@@ -409,8 +409,12 @@ class RunsetSettings(Base):
     def convert_filterexpr_list_to_string(self):
         """Convert FilterExpr list to string (unified internal format)."""
         if isinstance(self.filters, list):
+            # Import locally to avoid circular import at module level
+            # Convert FilterExpr list to internal Filters tree
             filters_tree = expr.filter_expr_to_filters_tree(self.filters)
+            # Convert Filters tree to string expression
             filter_string = expr.filters_to_expr(filters_tree)
+            # Update the filters field
             object.__setattr__(self, "filters", filter_string)
         return self
 
