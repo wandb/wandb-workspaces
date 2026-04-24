@@ -324,10 +324,12 @@ class RunsetSettings(Base):
     Attributes:
         query (str): A query to filter the runset (can be a regex expr, see next param).
         regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
-        filters (Union[str, LList[FilterExpr]]): Filters for the runset.
+        filters (Union[str, LList[FilterExpr], Or, And, Group]): Filters for the runset.
             - As a list of FilterExpr: filters are AND'd together.
             - As a string: Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
-              Supports operators: =, ==, !=, <, >, <=, >=, in, not in, and
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in, and, or
+            - As an Or/And/Group combinator: allows OR logic and nested groups.
+              e.g., Or(And(Config("lr") == 0.01, Metric("State") == "finished"), Config("lr") == 0.1)
         groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
             `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
@@ -356,7 +358,7 @@ class RunsetSettings(Base):
 
     query: str = ""
     regex_query: bool = False
-    filters: Union[str, LList[expr.FilterExpr]] = ""
+    filters: Union[str, LList[expr.FilterExpr], expr.Or, expr.And, expr.Group] = ""
     groupby: LList[expr.MetricType] = Field(default_factory=list)
     "A list of metrics to group by in the runset."
 
@@ -407,17 +409,8 @@ class RunsetSettings(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string expression (unified internal format)."""
-        # Inline the normalization logic to avoid circular import with expr module
-        if isinstance(self.filters, list):
-            # Import locally to avoid circular import at module level
-            # Convert FilterExpr list to internal Filters tree
-            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
-            # Convert Filters tree to string expression
-            filter_string = expr.filters_to_expr(filters_tree)
-            # Update the filters field
-            object.__setattr__(self, "filters", filter_string)
-        return self
+        """Convert FilterExpr list / Or / And / Group to string (unified internal format)."""
+        return expr.normalize_filters_to_string(self)
 
 
 @dataclass(config=dataclass_config, repr=False)

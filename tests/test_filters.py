@@ -319,6 +319,74 @@ class TestOrStringFilters:
         assert len(tree.filters) == 2
 
 
+class TestOrObjectAPI:
+    """Test OR support via the Or/And/Group object API."""
+
+    def test_or_filterexpr(self):
+        from wandb_workspaces import expr
+
+        f = expr.Or(
+            expr.Config("lr") == 0.01,
+            expr.Config("lr") == 0.1,
+        )
+        tree = f.to_model()
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+
+    def test_and_filterexpr(self):
+        from wandb_workspaces import expr
+
+        f = expr.And(
+            expr.Config("lr") == 0.01,
+            expr.Metric("State") == "finished",
+        )
+        tree = f.to_model()
+        assert tree.op == "AND"
+        assert len(tree.filters) == 2
+
+    def test_or_with_and_groups(self):
+        from wandb_workspaces import expr
+
+        f = expr.Or(
+            expr.And(expr.Config("lr") == 0.01, expr.Metric("State") == "finished"),
+            expr.Config("lr") == 0.1,
+        )
+        tree = f.to_model()
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "AND"
+        assert len(tree.filters[0].filters) == 2
+        assert tree.filters[1].op == "AND"
+        assert len(tree.filters[1].filters) == 1
+
+    def test_or_in_runset_settings(self):
+        import wandb_workspaces.workspaces as ws
+        from wandb_workspaces import expr
+
+        rs = ws.RunsetSettings(
+            filters=expr.Or(
+                expr.Config("lr") == 0.01,
+                expr.Config("lr") == 0.1,
+            )
+        )
+        assert isinstance(rs.filters, str)
+        assert "or" in rs.filters
+
+    def test_or_direct_in_runset_settings(self):
+        """Or should be passed directly, not wrapped in a list."""
+        import wandb_workspaces.workspaces as ws
+        from wandb_workspaces import expr
+
+        rs = ws.RunsetSettings(
+            filters=expr.Or(
+                expr.Config("lr") == 0.01,
+                expr.Config("lr") == 0.1,
+            )
+        )
+        assert isinstance(rs.filters, str)
+        assert "or" in rs.filters
+
+
 class TestV2ToString:
     """Test conversion from v2 flat filter format to display string."""
 
@@ -572,3 +640,45 @@ class TestAlwaysWriteV2:
         assert "connector" not in v2["filters"][0]
         assert v2["filters"][1]["connector"] == "OR"
 
+    def test_or_object_in_runset_settings(self):
+        import wandb_workspaces.workspaces as ws
+        from wandb_workspaces import expr
+
+        rs = ws.RunsetSettings(
+            filters=expr.Or(
+                expr.Config("lr") == 0.01,
+                expr.Config("lr") == 0.1,
+            )
+        )
+        assert isinstance(rs.filters, str)
+        assert "or" in rs.filters
+
+    def test_and_object_in_runset_settings(self):
+        import wandb_workspaces.workspaces as ws
+        from wandb_workspaces import expr
+
+        rs = ws.RunsetSettings(
+            filters=expr.And(
+                expr.Config("lr") == 0.01,
+                expr.Metric("State") == "finished",
+            )
+        )
+        assert isinstance(rs.filters, str)
+        assert "and" in rs.filters
+
+    def test_group_in_runset_settings(self):
+        import wandb_workspaces.workspaces as ws
+        from wandb_workspaces import expr
+
+        rs = ws.RunsetSettings(
+            filters=expr.And(
+                expr.Or(
+                    expr.Config("lr") == 0.01,
+                    expr.Config("lr") == 0.1,
+                ),
+                expr.Metric("State") == "finished",
+            )
+        )
+        assert isinstance(rs.filters, str)
+        assert "or" in rs.filters
+        assert "and" in rs.filters
