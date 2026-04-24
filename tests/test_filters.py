@@ -519,17 +519,14 @@ class TestV2ToString:
         assert "staging" in result
 
 
-class TestV2RawStashRoundTrip:
-    """Test that v2 filters are stashed as raw dicts and replayed on write."""
+class TestV2DirectFilterRoundTrip:
+    """Test that v2 filters are stored directly in Runset.filters and round-trip correctly."""
 
-    def test_v2_stash_and_replay(self):
-        """v2 filter dict should be stashed on read and replayed on write."""
+    def test_v2_filters_stored_as_dict(self):
+        """v2 filter dict should be stored directly in runset.filters."""
         from copy import deepcopy
 
-        from wandb_workspaces.workspaces.internal import (
-            WorkspaceViewspec,
-            _migrate_v2_filters_in_spec,
-        )
+        from wandb_workspaces.workspaces.internal import WorkspaceViewspec
 
         original_v2 = {
             "filterFormat": "filterV2",
@@ -548,27 +545,18 @@ class TestV2RawStashRoundTrip:
             }
         }
 
-        v2_stash = _migrate_v2_filters_in_spec(spec_dict)
-        assert 0 in v2_stash
-        assert v2_stash[0]["filterFormat"] == "filterV2"
-        assert len(v2_stash[0]["filters"]) == 3
-
         parsed_spec = WorkspaceViewspec.model_validate(spec_dict)
-        parsed_spec.section.run_sets[0]._raw_filters_v2 = v2_stash[0]
+        filters = parsed_spec.section.run_sets[0].filters
+        assert isinstance(filters, dict)
+        assert filters["filterFormat"] == "filterV2"
+        assert len(filters["filters"]) == 3
 
         spec_out = parsed_spec.model_dump(by_alias=True, exclude_none=True)
-        for i, rs_model in enumerate(parsed_spec.section.run_sets):
-            if rs_model._raw_filters_v2 is not None:
-                spec_out["section"]["runSets"][i]["filters"] = rs_model._raw_filters_v2
-
         assert spec_out["section"]["runSets"][0]["filters"] == original_v2
 
-    def test_legacy_filters_unchanged(self):
-        """Legacy (non-v2) filters should pass through without stashing."""
-        from wandb_workspaces.workspaces.internal import (
-            WorkspaceViewspec,
-            _migrate_v2_filters_in_spec,
-        )
+    def test_legacy_filters_stored_as_model(self):
+        """Legacy (non-v2) filters should be parsed into Filters model."""
+        from wandb_workspaces.workspaces.internal import WorkspaceViewspec
 
         spec_dict = {
             "section": {
@@ -587,11 +575,10 @@ class TestV2RawStashRoundTrip:
             }
         }
 
-        v2_stash = _migrate_v2_filters_in_spec(spec_dict)
-        assert v2_stash == {}
-
         parsed_spec = WorkspaceViewspec.model_validate(spec_dict)
-        assert parsed_spec.section.run_sets[0]._raw_filters_v2 is None
+        filters = parsed_spec.section.run_sets[0].filters
+        assert not isinstance(filters, dict)
+        assert filters.op == "OR"
 
 
 class TestAlwaysWriteV2:

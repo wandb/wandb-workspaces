@@ -1,5 +1,4 @@
 import json
-from copy import deepcopy
 from typing import Any, Dict, Optional
 from typing import List as LList
 
@@ -8,10 +7,6 @@ from annotated_types import Annotated, Ge
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from pydantic.alias_generators import to_camel
 from wandb_gql import gql
-
-# these internal objects should be factored out into a separate module as a
-# shared dependency between Workspaces and Reports API
-from wandb_workspaces.expr import is_filter_v2
 from wandb_workspaces.reports.v2.internal import *  # noqa: F403
 from wandb_workspaces.reports.v2.internal import (
     PanelBankConfig,
@@ -88,25 +83,6 @@ class WorkspaceViewspec(WorkspaceAPIBaseModel):
     library_expanded: bool = True
 
 
-def _migrate_v2_filters_in_spec(spec_dict: dict) -> Dict[int, dict]:
-    """Stash raw v2 filter dicts and replace with an empty tree for Pydantic.
-
-    The frontend v2 filter UI stores filters as a flat list with inline
-    connector fields.  Pydantic can't parse that into the legacy Filters
-    model, so we stash the raw dict and swap in a default empty tree.
-
-    Returns:
-        A mapping from runset index to the original raw v2 filter dict.
-    """
-    v2_stash: Dict[int, dict] = {}
-    run_sets = spec_dict.get("section", {}).get("runSets", [])
-    for i, rs in enumerate(run_sets):
-        filters_data = rs.get("filters")
-        if filters_data and is_filter_v2(filters_data):
-            v2_stash[i] = deepcopy(filters_data)
-            rs["filters"] = {"op": "OR", "filters": [{"op": "AND"}]}
-    return v2_stash
-
 
 class View(WorkspaceAPIBaseModel):
     entity: str
@@ -130,11 +106,7 @@ class View(WorkspaceAPIBaseModel):
         id = view_dict["id"]
 
         spec_dict = json.loads(spec) if isinstance(spec, str) else spec
-        v2_stash = _migrate_v2_filters_in_spec(spec_dict)
         parsed_spec = WorkspaceViewspec.model_validate(spec_dict)
-
-        for i, raw_v2 in v2_stash.items():
-            parsed_spec.section.run_sets[i]._raw_filters_v2 = raw_v2
 
         return cls(
             entity=entity,
@@ -166,11 +138,6 @@ def upsert_view2(view: View) -> Dict[str, Any]:
     api = wandb.Api()
 
     spec_dict = view.spec.model_dump(by_alias=True, exclude_none=True)
-
-    for i, rs_model in enumerate(view.spec.section.run_sets):
-        if rs_model._raw_filters_v2 is not None:
-            spec_dict["section"]["runSets"][i]["filters"] = rs_model._raw_filters_v2
-
     spec_str = json.dumps(spec_dict)
 
     # Default: assume a new view being created, so no `id` yet
