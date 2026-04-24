@@ -1235,8 +1235,7 @@ def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     return parse_expression(tree)
 
 
-def filter_expr_to_filters_tree(filters) -> Filters:
-    """Convert a list of FilterExpr items to a Filters tree."""
+def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
     def parse_key(metric: BaseMetric) -> Key:
         section = metric.section
         name = _convert_fe_to_be_metric_name(metric.name)
