@@ -385,8 +385,15 @@ def expr_to_filters(expr: str) -> Filters:
     if not expr:
         return Filters(op="OR", filters=[Filters(op="AND", filters=[])])
 
+    # Preprocess: Convert within_last operator syntax to function syntax
+    # This must happen first, before other transformations
     expr = _preprocess_within_last_syntax(expr)
+
+    # Preprocess: Replace single '=' with '==' for Python AST parsing
+    # But avoid replacing '==', '!=', '<=', '>='
     expr = _preprocess_equality_operators(expr)
+    
+    # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
     expr = _preprocess_comparison_operators(expr)
 
     parsed_expr = ast.parse(expr, mode="eval")
