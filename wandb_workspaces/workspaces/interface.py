@@ -407,7 +407,8 @@ class RunsetSettings(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string (unified internal format)."""
+        """Convert FilterExpr list to string expression (unified internal format)."""
+        # Inline the normalization logic to avoid circular import with expr module
         if isinstance(self.filters, list):
             # Import locally to avoid circular import at module level
             # Convert FilterExpr list to internal Filters tree
@@ -570,6 +571,7 @@ class Workspace(Base):
         else:
             filter_string = expr.filters_to_expr(runset_model.filters)
 
+        # then construct the Workspace object
         obj = cls(
             entity=model.entity,
             project=model.project,
@@ -654,14 +656,14 @@ class Workspace(Base):
                 column_pinned=column_pinned_dict,
                 column_visible=column_visible_dict,
                 column_order=column_order,
-                column_widths={},
+                column_widths={},  # No column widths support
             ),
             search=internal.RunsetSearch(
                 query=self.runset_settings.query,
                 is_regex=is_regex,
             ),
             filters=expr.expr_to_filters(
-                self.runset_settings.filters  # type: ignore[arg-type]
+                self.runset_settings.filters  # type: ignore[arg-type]  # validator ensures this is always str
             ),
             grouping=[g.to_key() for g in self.runset_settings.groupby],
             sort=internal.Sort(
