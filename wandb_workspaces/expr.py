@@ -346,7 +346,7 @@ def expr_to_filters(expr: str) -> Filters:
     Args:
         expr: A Python-like filter expression string, e.g.,
             ``"Config('learning_rate') == 0.001 and Metric('State') == 'finished'"``
-            or ``"Metric('State') == 'finished' or Config('lr') == 0.01"``
+            or ``"Metric('State') == 'finished' or Metric('CreatedTimestamp') within_last 5 days"``
 
     Returns:
         An internal Filters tree structure.
@@ -609,6 +609,43 @@ def _handle_logical_op(node) -> Filters:
     return Filters(op=op, filters=filters)
 
 
+def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
+    """Format a single filter leaf into a human-readable string.
+
+    Shared by both the legacy tree-to-string path and the v2-to-string path.
+    """
+    frontend_name = _convert_be_to_fe_metric_name(name)
+
+    if op == "WITHINSECONDS":
+        func_name = section_map_reversed.get(section, "Metric")
+        amount, unit = _convert_seconds_to_time(value)
+        if isinstance(amount, float) and amount.is_integer():
+            amount = int(amount)
+        return f'{func_name}("{frontend_name}") within_last {amount} {unit}'
+
+    if section in section_map_reversed:
+        func_name = section_map_reversed[section]
+        key_str = f'{func_name}("{frontend_name}")'
+    else:
+        key_str = frontend_name
+
+    py_op = OPERATOR_MAP.get(op, op)
+
+    if value is None:
+        val_str = "None"
+    elif isinstance(value, list):
+        parts = []
+        for v in value:
+            parts.append(f"'{v}'" if isinstance(v, str) else str(v))
+        val_str = f"[{', '.join(parts)}]"
+    elif isinstance(value, str):
+        val_str = f"'{value}'"
+    else:
+        val_str = str(value)
+
+    return f"{key_str} {py_op} {val_str}"
+
+
 def filters_to_expr(filter_obj: Any, is_root=True) -> str:
     """Convert an internal Filters tree back to a string expression.
 
@@ -619,19 +656,6 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
     Returns:
         A Python-like filter expression string
     """
-    op_map = {
-        ">": ">",
-        "<": "<",
-        "=": "==",
-        "==": "==",
-        "!=": "!=",
-        ">=": ">=",
-        "<=": "<=",
-        "IN": "in",
-        "NIN": "not in",
-        "AND": "and",
-        "OR": "or",
-    }
 
     def _convert_filter(filter: Any, is_root: bool) -> str:
         if hasattr(filter, "filters") and filter.filters is not None:
@@ -648,62 +672,10 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
             return f"({expr})" if not is_root and sub_expressions else expr
         else:
             if not filter.key or not filter.key.name:
-                # Skip filters with empty key names
                 return ""
-
-            # Special handling for WITHINSECONDS operator
-            if filter.op == "WITHINSECONDS":
-                key_name = filter.key.name
-                section = filter.key.section
-
-                # Convert backend metric name to frontend name
-                frontend_key_name = _convert_be_to_fe_metric_name(key_name)
-
-                # Prepend the function name if the section matches
-                if section in section_map_reversed:
-                    function_name = section_map_reversed[section]
-                    metric_expr = f'{function_name}("{frontend_key_name}")'
-                else:
-                    metric_expr = frontend_key_name
-
-                # Convert seconds back to human-readable format
-                amount, unit = _convert_seconds_to_time(filter.value)
-                # Format amount as int if it's a whole number, otherwise as float
-                if isinstance(amount, float) and amount.is_integer():
-                    amount = int(amount)
-
-                # Use operator syntax for output (more readable)
-                return f"{metric_expr} within_last {amount} {unit}"
-
-            key_name = filter.key.name
-            section = filter.key.section
-
-            # Convert backend metric name to frontend name
-            frontend_key_name = _convert_be_to_fe_metric_name(key_name)
-
-            # Prepend the function name if the section matches
-            if section in section_map_reversed:
-                function_name = section_map_reversed[section]
-                key_name = f'{function_name}("{frontend_key_name}")'
-            else:
-                key_name = frontend_key_name
-
-            value = filter.value
-            if value is None:
-                value = "None"
-            elif isinstance(value, list):
-                # Properly quote string elements in lists to avoid parse errors
-                formatted_elements = []
-                for v in value:
-                    if isinstance(v, str):
-                        formatted_elements.append(f"'{v}'")
-                    else:
-                        formatted_elements.append(str(v))
-                value = f"[{', '.join(formatted_elements)}]"
-            elif isinstance(value, str):
-                value = f"'{value}'"
-
-            return f"{key_name} {op_map[filter.op]} {value}"
+            return _format_filter_leaf(
+                filter.key.section, filter.key.name, filter.op, filter.value
+            )
 
     return _convert_filter(filter_obj, is_root)
 
@@ -738,41 +710,12 @@ def _format_v2_leaf(item: dict) -> Optional[str]:
     if not key or not key.get("name"):
         return None
 
-    section = key.get("section", "run")
-    name = key["name"]
-    op = item.get("op", "=")
-    value = item.get("value")
-
-    frontend_name = _convert_be_to_fe_metric_name(name)
-
-    if op == "WITHINSECONDS":
-        func_name = section_map_reversed.get(section, "Metric")
-        amount, unit = _convert_seconds_to_time(value)
-        if isinstance(amount, float) and amount.is_integer():
-            amount = int(amount)
-        return f'{func_name}("{frontend_name}") within_last {amount} {unit}'
-
-    if section in section_map_reversed:
-        func_name = section_map_reversed[section]
-        key_str = f'{func_name}("{frontend_name}")'
-    else:
-        key_str = frontend_name
-
-    py_op = OPERATOR_MAP.get(op, op)
-
-    if value is None:
-        val_str = "None"
-    elif isinstance(value, list):
-        parts = []
-        for v in value:
-            parts.append(f"'{v}'" if isinstance(v, str) else str(v))
-        val_str = f"[{', '.join(parts)}]"
-    elif isinstance(value, str):
-        val_str = f"'{value}'"
-    else:
-        val_str = str(value)
-
-    return f"{key_str} {py_op} {val_str}"
+    return _format_filter_leaf(
+        key.get("section", "run"),
+        key["name"],
+        item.get("op", "="),
+        item.get("value"),
+    )
 
 
 def _v2_items_to_string(items: list) -> str:
