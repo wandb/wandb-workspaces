@@ -1218,6 +1218,107 @@ class FilterExpr:
         )
 
 
+FilterItem = Union["FilterExpr", "And", "Or", "Group"]
+
+
+@dataclass(frozen=True)
+class And:
+    """Combine multiple filter items with AND logic.
+
+    Example:
+        >>> And(ws.Config("lr") == 0.01, ws.Metric("State") == "finished")
+    """
+
+    items: tuple
+
+    def __init__(self, *items: FilterItem):
+        object.__setattr__(self, "items", items)
+
+    def __repr__(self) -> str:
+        return f"And({', '.join(repr(i) for i in self.items)})"
+
+    def to_model(self) -> Filters:
+        """Convert to an AND Filters node."""
+        children = []
+        for item in self.items:
+            children.append(item.to_model())
+        return Filters(op="AND", filters=children)
+
+
+@dataclass(frozen=True)
+class Or:
+    """Combine multiple filter items with OR logic.
+
+    Each argument becomes a separate OR branch.  Arguments that are plain
+    ``FilterExpr`` or ``And`` groups are treated as individual AND buckets.
+
+    Example:
+        >>> Or(
+        ...     And(ws.Config("lr") == 0.01, ws.Metric("State") == "finished"),
+        ...     ws.Config("lr") == 0.1,
+        ... )
+    """
+
+    items: tuple
+
+    def __init__(self, *items: FilterItem):
+        object.__setattr__(self, "items", items)
+
+    def __repr__(self) -> str:
+        return f"Or({', '.join(repr(i) for i in self.items)})"
+
+    def to_model(self) -> Filters:
+        """Convert to the canonical OR -> AND -> leaves tree."""
+        buckets = []
+        for item in self.items:
+            node = item.to_model()
+            if node.op == "AND" and node.filters is not None:
+                buckets.append(node)
+            elif node.op == "OR" and node.filters is not None:
+                buckets.extend(node.filters)
+            else:
+                buckets.append(Filters(op="AND", filters=[node]))
+        return Filters(op="OR", filters=buckets)
+
+
+@dataclass(frozen=True)
+class Group:
+    """A parenthesised group of filters, preserving precedence.
+
+    Example:
+        >>> Or(
+        ...     Group(Or(ws.Config("lr") == 0.01, ws.Config("lr") == 0.1)),
+        ...     ws.Metric("State") == "finished",
+        ... )
+    """
+
+    inner: FilterItem
+
+    def __repr__(self) -> str:
+        return f"Group({self.inner!r})"
+
+    def to_model(self) -> Filters:
+        """Delegate to inner item's model."""
+        return self.inner.to_model()
+
+
+def _filter_items_to_filters_tree(items) -> Filters:
+    """Convert a list of FilterExpr / And / Or / Group items to a Filters tree.
+
+    Items in the list are AND'd together.  For OR logic, wrap with ``Or()``.
+    """
+    if not items:
+        return Filters(op="AND", filters=[])
+
+    if len(items) == 1:
+        return items[0].to_model()
+
+    and_children = []
+    for item in items:
+        and_children.append(item.to_model())
+    return Filters(op="AND", filters=and_children)
+
+
 def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     def parse_filter(filter: Filters) -> Optional[FilterExpr]:
         if filter.key is None:
@@ -1240,7 +1341,15 @@ def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
 
 
 def filter_expr_to_filters_tree(filters) -> Filters:
-    """Convert a list of FilterExpr items to a Filters tree."""
+    """Convert a list of filter items to a Filters tree.
+
+    Accepts ``List[FilterExpr]`` (legacy AND-only) as well as lists containing
+    ``Or``, ``And``, and ``Group`` combinators.
+    """
+    has_combinators = any(isinstance(f, (Or, And, Group)) for f in filters)
+    if has_combinators:
+        return _filter_items_to_filters_tree(filters)
+
     def parse_key(metric: BaseMetric) -> Key:
         section = metric.section
         name = _convert_fe_to_be_metric_name(metric.name)
