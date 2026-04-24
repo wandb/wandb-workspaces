@@ -18,6 +18,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     StringConstraints,
     computed_field,
     root_validator,
@@ -368,6 +369,8 @@ class Runset(ReportAPIBaseModel):
     sort: Sort = Field(default_factory=Sort)
     selections: RunsetSelections = Field(default_factory=RunsetSelections)
     expanded_row_addresses: list = Field(default_factory=list)
+
+    _raw_filters_v2: Optional[dict] = PrivateAttr(default=None)
 
 
 class CodeLine(ReportAPIBaseModel):

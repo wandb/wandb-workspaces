@@ -748,197 +748,109 @@ def is_filter_v2(data: Any) -> bool:
     return False
 
 
-def _is_v2_group(item: dict) -> bool:
-    """A v2 group has a 'filters' list but no 'op' at the item level (or no key)."""
-    return "filters" in item and isinstance(item["filters"], list)
+def _format_v2_leaf(item: dict) -> Optional[str]:
+    """Format a single v2 leaf item as a human-readable string.
 
+    Args:
+        item: A v2 filter item dict with key, op, and value fields.
 
-def _is_valid_v2_leaf(item: dict) -> bool:
-    """A leaf item has a key with a non-empty name and is not disabled."""
+    Returns:
+        A formatted string like ``Config("lr") == 0.01``, or None if the
+        item is disabled or has no valid key.
+    """
     if item.get("disabled", False):
-        return False
+        return None
     key = item.get("key")
-    if not key:
-        return False
-    return bool(key.get("name"))
+    if not key or not key.get("name"):
+        return None
+
+    section = key.get("section", "run")
+    name = key["name"]
+    op = item.get("op", "=")
+    value = item.get("value")
+
+    frontend_name = _convert_be_to_fe_metric_name(name)
+
+    if op == "WITHINSECONDS":
+        func_name = section_map_reversed.get(section, "Metric")
+        amount, unit = _convert_seconds_to_time(value)
+        if isinstance(amount, float) and amount.is_integer():
+            amount = int(amount)
+        return f'{func_name}("{frontend_name}") within_last {amount} {unit}'
+
+    if section in section_map_reversed:
+        func_name = section_map_reversed[section]
+        key_str = f'{func_name}("{frontend_name}")'
+    else:
+        key_str = frontend_name
+
+    py_op = OPERATOR_MAP.get(op, op)
+
+    if value is None:
+        val_str = "None"
+    elif isinstance(value, list):
+        parts = []
+        for v in value:
+            parts.append(f"'{v}'" if isinstance(v, str) else str(v))
+        val_str = f"[{', '.join(parts)}]"
+    elif isinstance(value, str):
+        val_str = f"'{value}'"
+    else:
+        val_str = str(value)
+
+    return f"{key_str} {py_op} {val_str}"
 
 
-def _v2_leaf_to_filters(item: dict) -> Filters:
-    """Convert a single v2 leaf item to a Filters node."""
-    return Filters(
-        op=item.get("op", "="),
-        key=Key(section=item["key"]["section"], name=item["key"]["name"]),
-        value=item.get("value"),
-        disabled=item.get("disabled"),
-    )
+def _v2_items_to_string(items: list) -> str:
+    """Walk a flat v2 filter list and emit a display string.
 
-
-def _split_on_or(items: list) -> list:
-    """Split a flat v2 filter list into segments at OR boundaries.
-
-    Items with connector='OR' start a new segment. Items with connector='AND'
-    or no connector stay in the current segment. The first item never has a
-    connector.
+    Handles connectors (AND/OR), nested groups (parentheses), and skips
+    disabled or empty items.
     """
-    if not items:
-        return []
-    segments = []
-    current = []
+    parts: List[str] = []
     for item in items:
+        if item.get("disabled", False):
+            continue
+
         connector = item.get("connector")
-        if connector == "OR" and current:
-            segments.append(current)
-            current = []
-        current.append(item)
-    if current:
-        segments.append(current)
-    return segments
 
-
-def _segment_to_node(segment: list) -> Optional[Filters]:
-    """Convert one AND-connected segment into a Filters tree node."""
-    if not segment:
-        return None
-
-    children = []
-    for item in segment:
-        if _is_v2_group(item):
-            if item.get("disabled", False):
+        if "filters" in item and isinstance(item["filters"], list):
+            inner = _v2_items_to_string(item["filters"])
+            if not inner:
                 continue
-            node = _derive_tree_from_v2(item)
-            if node:
-                children.append(node)
-        elif _is_valid_v2_leaf(item):
-            children.append(_v2_leaf_to_filters(item))
+            if connector and parts:
+                parts.append(connector.lower())
+            parts.append(f"({inner})")
+        else:
+            formatted = _format_v2_leaf(item)
+            if formatted is None:
+                continue
+            if connector and parts:
+                parts.append(connector.lower())
+            parts.append(formatted)
 
-    if not children:
-        return None
-    if len(children) == 1:
-        return children[0]
-    return Filters(op="AND", filters=children)
+    return " ".join(parts)
 
 
-def _derive_tree_from_v2(node: dict) -> Optional[Filters]:
-    """Derive a Filters tree from a v2 node (root or group).
+def filters_v2_to_string(data: dict) -> str:
+    """Convert a v2 filterFormat dict to a human-readable filter string.
 
-    Mirrors the frontend's deriveTree algorithm:
-    1. Split the flat list on OR boundaries
-    2. Treat each segment as AND-connected
-    3. Recursively derive trees for nested groups
-    4. If more than one segment, combine with OR
+    Args:
+        data: A dict with ``filterFormat='filterV2'`` and a flat ``filters``
+            list, as stored in the view spec by the frontend v2 filter UI.
+
+    Returns:
+        A Python-like filter expression string, e.g.
+        ``"Config('lr') == 0.01 or Metric('State') == 'finished'"``.
+
+    Examples:
+        >>> filters_v2_to_string({"filterFormat": "filterV2", "filters": []})
+        ''
     """
-    items = node.get("filters", [])
+    items = data.get("filters", [])
     if not items:
-        return None
-
-    segments = _split_on_or(items)
-    segment_nodes = []
-
-    for segment in segments:
-        tree_node = _segment_to_node(segment)
-        if tree_node is not None:
-            segment_nodes.append(tree_node)
-
-    if not segment_nodes:
-        return None
-    if len(segment_nodes) == 1:
-        return segment_nodes[0]
-    return Filters(op="OR", filters=segment_nodes)
-
-
-def filters_v2_to_filters_tree(data: dict) -> Filters:
-    """Convert a v2 filterFormat dict to a legacy Filters tree.
-
-    Args:
-        data: A dict with filterFormat='filterV2' and a flat filters list,
-            as stored in the view spec by the frontend v2 filter UI.
-
-    Returns:
-        A Filters tree in the canonical OR -> AND -> leaves structure.
-    """
-    tree = _derive_tree_from_v2(data)
-    if tree is None:
-        return Filters(op="OR", filters=[Filters(op="AND")])
-
-    return _normalize_to_or_and_tree(tree)
-
-
-def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
-    """Convert a single Filters leaf node to a v2 flat item dict."""
-    if leaf.key is None or not leaf.key.name:
-        return None
-    item: dict = {
-        "key": {"section": leaf.key.section, "name": leaf.key.name},
-        "op": leaf.op,
-        "value": leaf.value,
-    }
-    if leaf.disabled is not None:
-        item["disabled"] = leaf.disabled
-    return item
-
-
-def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
-    """Recursively convert a Filters tree node into a flat list of v2 items.
-
-    Handles OR nodes (emit connector='OR' between segments), AND nodes
-    (emit connector='AND' between items), and nested sub-trees (emitted
-    as FilterV2Group objects).
-    """
-    if node.key is not None:
-        item = _leaf_to_v2_item(node)
-        return [item] if item else []
-
-    if node.filters is None:
-        return []
-
-    if node.op == "OR":
-        items: list = []
-        for i, child in enumerate(node.filters):
-            child_items = _tree_node_to_v2_items(child, is_first_in_parent=(i == 0 and is_first_in_parent))
-            if child_items and i > 0:
-                child_items[0]["connector"] = "OR"
-            items.extend(child_items)
-        return items
-
-    if node.op == "AND":
-        items = []
-        for j, child in enumerate(node.filters):
-            is_first = (j == 0) and is_first_in_parent
-            if child.key is not None:
-                child_item = _leaf_to_v2_item(child)
-                if child_item is None:
-                    continue
-                if not is_first:
-                    child_item["connector"] = "AND"
-                items.append(child_item)
-            else:
-                sub_items = _tree_node_to_v2_items(child, is_first_in_parent=True)
-                if not sub_items:
-                    continue
-                group: dict = {"filters": sub_items}
-                if not is_first:
-                    group["connector"] = "AND"
-                items.append(group)
-        return items
-
-    item = _leaf_to_v2_item(node)
-    return [item] if item else []
-
-
-def filters_tree_to_v2(tree: Filters) -> dict:
-    """Convert a Filters tree to the v2 flat filter format.
-
-    This is the inverse of ``filters_v2_to_filters_tree``.  The returned
-    dict is suitable for storing in the view spec as ``filterFormat: "filterV2"``.
-
-    Args:
-        tree: A Filters tree (typically in canonical OR -> AND -> leaves form).
-
-    Returns:
-        A dict with ``filterFormat`` and a flat ``filters`` list.
-    """
-    items = _tree_node_to_v2_items(tree, is_first_in_parent=True)
-    return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
+        return ""
+    return _v2_items_to_string(items)
 
 
 def _key_to_server_path(key: Key):
