@@ -338,7 +338,7 @@ def _preprocess_comparison_operators(expr: str) -> str:
     return expr
 
 
-def _normalize_to_or_and_tree(root: Filters) -> Filters:
+def _normalize_tree(root: Filters) -> Filters:
     """Wrap a parsed Filters node into the canonical OR -> AND -> leaves tree.
 
     The backend expects the root to be an OR node whose children are AND
@@ -399,7 +399,7 @@ def expr_to_filters(expr: str) -> Filters:
     parsed_expr = ast.parse(expr, mode="eval")
     root_filter = _parse_node(parsed_expr.body)
 
-    return _normalize_to_or_and_tree(root_filter)
+    return _normalize_tree(root_filter)
 
 
 def _parse_node(node) -> Filters:
@@ -1396,7 +1396,7 @@ def _filter_items_to_filters_tree(items) -> Filters:
         if isinstance(item, Or):
             return item.to_model()
         node = item.to_model()
-        return _normalize_to_or_and_tree(node)
+        return _normalize_tree(node)
 
     and_children = []
     for item in items:
