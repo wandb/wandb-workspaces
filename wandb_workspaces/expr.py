@@ -1428,23 +1428,29 @@ def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
 def normalize_filters_to_string(instance):
     """Shared model validator that normalizes filters to string format.
 
-    Converts ``List[FilterExpr]`` (and lists containing ``Or``/``And``/``Group``)
-    to a string expression.  Preserves string inputs as-is.
+    Converts List[FilterExpr] → str while preserving string inputs.
+    This creates a unified internal representation across Workspaces and Reports.
 
     Args:
         instance: The model instance with a 'filters' attribute
 
     Returns:
         The instance with normalized filters
+
+    Usage:
+        @model_validator(mode="after")
+        def convert_filterexpr_list_to_string(self):
+            return normalize_filters_to_string(self)
     """
     if isinstance(instance.filters, list):
-        filters_tree = filter_expr_to_filters_tree(instance.filters)
-        filter_string = filters_to_expr(filters_tree)
+        # Convert FilterExpr list to string
+        # This unifies internal representation as string
+        filter_string = filterexpr_list_to_string(instance.filters)
+        # Update the filters field
         object.__setattr__(instance, "filters", filter_string)
     elif isinstance(instance.filters, (Or, And, Group)):
-        filters_tree = instance.filters.to_model()
-        filter_string = filters_to_expr(filters_tree)
-        object.__setattr__(instance, "filters", filter_string)
+        tree = filter_expr_to_filters_tree([instance.filters])
+        object.__setattr__(instance, "filters", filters_to_expr(tree))
     return instance
 
 
