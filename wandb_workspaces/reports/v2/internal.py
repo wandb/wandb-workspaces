@@ -361,7 +361,7 @@ class Runset(ReportAPIBaseModel):
     project: Optional[Project] = None
     name: str = "Run set"
     search: RunsetSearch = Field(default_factory=RunsetSearch)
-    filters: Filters = Field(
+    filters: Union[Filters, dict] = Field(
         default_factory=lambda: Filters(filters=[Filters(op="AND")])
     )
     grouping: LList[Key] = Field(default_factory=list)

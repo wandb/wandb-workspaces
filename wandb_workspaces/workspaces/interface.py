@@ -324,10 +324,10 @@ class RunsetSettings(Base):
     Attributes:
         query (str): A query to filter the runset (can be a regex expr, see next param).
         regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
-        filters (Union[str, LList[expr.FilterExpr]]): A list of filters to apply to the runset or a string expression.
-            - As a list: Filters are AND'd together. See FilterExpr for more information on creating filters.
-            - As a string: Use Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
-              Supports operators: =, ==, !=, <, >, <=, >=, in, not in
+        filters (Union[str, LList[FilterExpr]]): Filters for the runset.
+            - As a list of FilterExpr: filters are AND'd together.
+            - As a string: Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in, and
         groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
             `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
@@ -459,6 +459,9 @@ class Workspace(Base):
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
 
+    _raw_filters_v2: Optional[dict] = Field(None, init=False, repr=False)
+    _original_v2_filter_string: str = Field("", init=False, repr=False)
+
     @property
     def auto_generate_panels(self) -> bool:
         return self._auto_generate_panels
@@ -561,6 +564,12 @@ class Workspace(Base):
             col for col, is_pinned in run_feed.column_pinned.items() if is_pinned
         ]
 
+        runset_model = model.spec.section.run_sets[0]
+        if isinstance(runset_model.filters, dict) and expr.is_filter_v2(runset_model.filters):
+            filter_string = expr.filters_v2_to_string(runset_model.filters)
+        else:
+            filter_string = expr.filters_to_expr(runset_model.filters)
+
         # then construct the Workspace object
         obj = cls(
             entity=model.entity,
@@ -572,16 +581,14 @@ class Workspace(Base):
             ],
             settings=workspace_settings,
             runset_settings=RunsetSettings(
-                query=model.spec.section.run_sets[0].search.query,
+                query=runset_model.search.query,
                 regex_query=regex_query,
-                filters=expr.filters_to_expr(model.spec.section.run_sets[0].filters),
+                filters=filter_string,
                 groupby=[
-                    expr.BaseMetric.from_key(v)
-                    for v in model.spec.section.run_sets[0].grouping
+                    expr.BaseMetric.from_key(v) for v in runset_model.grouping
                 ],
                 order=[
-                    expr.Ordering.from_key(s)
-                    for s in model.spec.section.run_sets[0].sort.keys
+                    expr.Ordering.from_key(s) for s in runset_model.sort.keys
                 ],
                 run_settings=run_settings,
                 pinned_columns=pinned_columns,
@@ -589,7 +596,10 @@ class Workspace(Base):
         )
         obj._internal_name = model.name
         obj._internal_id = model.id
-        obj._internal_runset_id = model.spec.section.run_sets[0].id
+        obj._internal_runset_id = runset_model.id
+        if isinstance(runset_model.filters, dict):
+            obj._raw_filters_v2 = runset_model.filters
+            obj._original_v2_filter_string = filter_string
         return obj
 
     def _to_model(self) -> internal.View:
@@ -640,6 +650,45 @@ class Workspace(Base):
             else list(self.runset_settings.pinned_columns)
         )
 
+        if self._raw_filters_v2 is not None:
+            if self.runset_settings.filters == self._original_v2_filter_string:
+                filters_value = self._raw_filters_v2
+            else:
+                tree = expr.expr_to_filters(
+                    self.runset_settings.filters  # type: ignore[arg-type] # validator ensures this is always str
+                )
+                filters_value = expr.filters_tree_to_v2(tree)
+        else:
+            filters_value = expr.expr_to_filters(
+                self.runset_settings.filters  # type: ignore[arg-type]
+            )
+
+        runset = internal.Runset(
+            id=self._internal_runset_id,
+            run_feed=internal.RunFeed(
+                column_pinned=column_pinned_dict,
+                column_visible=column_visible_dict,
+                column_order=column_order,
+                column_widths={},  # No column widths support
+            ),
+            search=internal.RunsetSearch(
+                query=self.runset_settings.query,
+                is_regex=is_regex,
+            ),
+            filters=filters_value,
+            grouping=[g.to_key() for g in self.runset_settings.groupby],
+            sort=internal.Sort(
+                keys=[o.to_key() for o in self.runset_settings.order]
+            ),
+            selections=internal.RunsetSelections(
+                tree=[
+                    id
+                    for id, config in self.runset_settings.run_settings.items()
+                    if config.disabled
+                ],
+            ),
+        )
+
         return internal.View(
             entity=self.entity,
             project=self.project,
@@ -660,35 +709,7 @@ class Workspace(Base):
                         pinned=False
                     ),
                     settings=internal_settings,
-                    run_sets=[
-                        internal.Runset(
-                            id=self._internal_runset_id,
-                            run_feed=internal.RunFeed(
-                                column_pinned=column_pinned_dict,
-                                column_visible=column_visible_dict,
-                                column_order=column_order,
-                                column_widths={},  # No column widths support
-                            ),
-                            search=internal.RunsetSearch(
-                                query=self.runset_settings.query,
-                                is_regex=is_regex,
-                            ),
-                            filters=expr.expr_to_filters(
-                                self.runset_settings.filters  # type: ignore[arg-type]  # validator ensures this is always str
-                            ),
-                            grouping=[g.to_key() for g in self.runset_settings.groupby],
-                            sort=internal.Sort(
-                                keys=[o.to_key() for o in self.runset_settings.order]
-                            ),
-                            selections=internal.RunsetSelections(
-                                tree=[
-                                    id
-                                    for id, config in self.runset_settings.run_settings.items()
-                                    if config.disabled
-                                ],
-                            ),
-                        ),
-                    ],
+                    run_sets=[runset],
                     custom_run_colors={
                         id: config.color
                         for id, config in self.runset_settings.run_settings.items()
