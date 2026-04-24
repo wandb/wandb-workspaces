@@ -793,38 +793,36 @@ def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
     if node.filters is None:
         return []
 
-    if node.op == "OR":
-        items: list = []
-        for i, child in enumerate(node.filters):
-            child_items = _tree_node_to_v2_items(child, is_first_in_parent=(i == 0 and is_first_in_parent))
-            if child_items and i > 0:
-                child_items[0]["connector"] = "OR"
-            items.extend(child_items)
-        return items
+    if node.op not in ("OR", "AND"):
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
 
-    if node.op == "AND":
-        items = []
-        for j, child in enumerate(node.filters):
-            is_first = (j == 0) and is_first_in_parent
-            if child.key is not None:
-                child_item = _leaf_to_v2_item(child)
-                if child_item is None:
-                    continue
+    items: list = []
+    for i, child in enumerate(node.filters):
+        is_first = (i == 0) and is_first_in_parent
+
+        if child.key is not None:
+            child_item = _leaf_to_v2_item(child)
+            if child_item is None:
+                continue
+            if not is_first:
+                child_item["connector"] = node.op
+            items.append(child_item)
+        else:
+            sub_items = _tree_node_to_v2_items(child, is_first_in_parent=True)
+            if not sub_items:
+                continue
+            if len(sub_items) == 1:
                 if not is_first:
-                    child_item["connector"] = "AND"
-                items.append(child_item)
+                    sub_items[0]["connector"] = node.op
+                items.append(sub_items[0])
             else:
-                sub_items = _tree_node_to_v2_items(child, is_first_in_parent=True)
-                if not sub_items:
-                    continue
                 group: dict = {"filters": sub_items}
                 if not is_first:
-                    group["connector"] = "AND"
+                    group["connector"] = node.op
                 items.append(group)
-        return items
 
-    item = _leaf_to_v2_item(node)
-    return [item] if item else []
+    return items
 
 
 def filters_tree_to_v2(tree: Filters) -> dict:
