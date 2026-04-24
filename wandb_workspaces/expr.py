@@ -77,6 +77,10 @@ __all__ = [
     "Ordering",
     # Filter expression type (needed for type hints)
     "FilterExpr",
+    # Combinators for OR / nested filter groups
+    "Or",
+    "And",
+    "Group",
 ]
 
 Expression = Dict[str, Any]
