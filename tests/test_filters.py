@@ -184,9 +184,7 @@ def test_list_with_dashes_round_trip():
     parsed = expr.expr_to_filters(expr_string)
     assert parsed is not None
 
-    # Verify the values survived the round-trip (nested in OR/AND structure)
-    inner_filter = parsed.filters[0].filters[0]
-    assert inner_filter.value == ["run-one", "two-three", "abc-123-def"]
+    assert parsed.value == ["run-one", "two-three", "abc-123-def"]
 
 
 # ===== Disabled filter state preservation tests =====
@@ -237,9 +235,8 @@ def test_user_constructed_runset_parses_from_string():
     assert rs._filters_internal is None
 
     model = rs._to_model()
-    leaves = model.filters.filters[0].filters
-    assert leaves[0].value == "alice"
-    assert leaves[0].disabled is False
+    assert model.filters.value == "alice"
+    assert model.filters.disabled is False
 
 
 def test_modifying_filters_after_load_uses_new_value():
@@ -269,9 +266,8 @@ def test_modifying_filters_after_load_uses_new_value():
     iface.filters = "Metric('User') == 'bob'"
 
     model = iface._to_model()
-    leaves = model.filters.filters[0].filters
-    assert leaves[0].value == "bob", "New filter value should take effect"
-    assert leaves[0].disabled is False, "New filter should be active"
+    assert model.filters.value == "bob", "New filter value should take effect"
+    assert model.filters.disabled is False, "New filter should be active"
 
 
 # ===== OR filter and v2 deserialization tests =====
@@ -288,10 +284,8 @@ class TestOrStringFilters:
         )
         assert tree.op == "OR"
         assert len(tree.filters) == 2
-        assert tree.filters[0].op == "AND"
-        assert tree.filters[1].op == "AND"
-        assert tree.filters[0].filters[0].value == "finished"
-        assert tree.filters[1].filters[0].value == 0.01
+        assert tree.filters[0].value == "finished"
+        assert tree.filters[1].value == 0.01
 
     def test_and_or_precedence(self):
         from wandb_workspaces import expr
@@ -301,11 +295,10 @@ class TestOrStringFilters:
         )
         assert tree.op == "OR"
         assert len(tree.filters) == 2
-        # First bucket: (State AND lr==0.01)
         assert tree.filters[0].op == "AND"
         assert len(tree.filters[0].filters) == 2
-        # Second bucket: (lr==0.1)
-        assert tree.filters[1].op == "AND"
+        assert tree.filters[1].op == "="
+        assert tree.filters[1].value == 0.1
 
     def test_or_round_trip(self):
         from wandb_workspaces import expr
@@ -322,7 +315,8 @@ class TestOrStringFilters:
         tree = expr.expr_to_filters(
             "(Config('lr') == 0.01 or Config('lr') == 0.1) and Metric('State') == 'finished'"
         )
-        assert tree.op == "OR"
+        assert tree.op == "AND"
+        assert len(tree.filters) == 2
 
 
 class TestOrObjectAPI:
@@ -365,34 +359,6 @@ class TestOrObjectAPI:
         assert tree.filters[1].op == "AND"
         assert len(tree.filters[1].filters) == 1
 
-    @pytest.mark.skip(reason="Or in RunsetSettings is PR2 functionality")
-    def test_or_in_runset_settings(self):
-        import wandb_workspaces.workspaces as ws
-        from wandb_workspaces import expr
-
-        rs = ws.RunsetSettings(
-            filters=expr.Or(
-                expr.Config("lr") == 0.01,
-                expr.Config("lr") == 0.1,
-            )
-        )
-        assert isinstance(rs.filters, str)
-        assert "or" in rs.filters
-
-    @pytest.mark.skip(reason="Or in RunsetSettings is PR2 functionality")
-    def test_or_direct_in_runset_settings(self):
-        """Or should be passed directly, not wrapped in a list."""
-        import wandb_workspaces.workspaces as ws
-        from wandb_workspaces import expr
-
-        rs = ws.RunsetSettings(
-            filters=expr.Or(
-                expr.Config("lr") == 0.01,
-                expr.Config("lr") == 0.1,
-            )
-        )
-        assert isinstance(rs.filters, str)
-        assert "or" in rs.filters
 
 
 class TestV2ToString:
@@ -626,3 +592,38 @@ class TestV2RawStashRoundTrip:
 
         parsed_spec = WorkspaceViewspec.model_validate(spec_dict)
         assert parsed_spec.section.run_sets[0]._raw_filters_v2 is None
+
+
+class TestAlwaysWriteV2:
+    """Test tree-to-v2 conversion and Or/And/Group in RunsetSettings."""
+
+    def test_and_only_tree_converts_to_v2(self):
+        from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
+
+        tree = Filters(op="OR", filters=[
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+            ])
+        ])
+        v2 = filters_tree_to_v2(tree)
+        assert v2["filterFormat"] == "filterV2"
+        assert len(v2["filters"]) == 1
+        assert v2["filters"][0]["value"] == 0.01
+
+    def test_or_tree_converts_to_v2(self):
+        from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
+
+        tree = Filters(op="OR", filters=[
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+            ]),
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.1),
+            ]),
+        ])
+        v2 = filters_tree_to_v2(tree)
+        assert v2["filterFormat"] == "filterV2"
+        assert len(v2["filters"]) == 2
+        assert "connector" not in v2["filters"][0]
+        assert v2["filters"][1]["connector"] == "OR"
+

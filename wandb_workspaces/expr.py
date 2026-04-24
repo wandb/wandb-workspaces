@@ -338,37 +338,6 @@ def _preprocess_comparison_operators(expr: str) -> str:
     return expr
 
 
-def _normalize_tree(root: Filters) -> Filters:
-    """Wrap a parsed Filters node into the canonical OR -> AND -> leaves tree.
-
-    The backend expects the root to be an OR node whose children are AND
-    buckets.  This function normalises any shape produced by the AST parser
-    into that form.
-    """
-    if root.op == "OR" and root.filters:
-        buckets = []
-        for child in root.filters:
-            if child.op == "AND" and child.filters is not None:
-                buckets.append(child)
-            elif child.op in ("=", "!=", "<=", ">=", "<", ">", "IN", "NIN",
-                              "==", "WITHINSECONDS"):
-                buckets.append(Filters(op="AND", filters=[child]))
-            elif child.op == "OR" and child.filters:
-                for grandchild in child.filters:
-                    if grandchild.op == "AND" and grandchild.filters is not None:
-                        buckets.append(grandchild)
-                    else:
-                        buckets.append(Filters(op="AND", filters=[grandchild]))
-            else:
-                buckets.append(Filters(op="AND", filters=[child]))
-        return Filters(op="OR", filters=buckets)
-
-    if root.op == "AND" and root.filters is not None:
-        return Filters(op="OR", filters=[root])
-
-    return Filters(op="OR", filters=[Filters(op="AND", filters=[root])])
-
-
 def expr_to_filters(expr: str) -> Filters:
     """Parse a string filter expression into an internal Filters tree.
 
@@ -380,10 +349,10 @@ def expr_to_filters(expr: str) -> Filters:
             or ``"Metric('State') == 'finished' or Config('lr') == 0.01"``
 
     Returns:
-        An internal Filters tree in canonical OR -> AND -> leaves form.
+        An internal Filters tree structure.
     """
     if not expr:
-        return Filters(op="OR", filters=[Filters(op="AND", filters=[])])
+        return Filters(op="AND", filters=[])
 
     # Preprocess: Convert within_last operator syntax to function syntax
     # This must happen first, before other transformations
@@ -397,9 +366,7 @@ def expr_to_filters(expr: str) -> Filters:
     expr = _preprocess_comparison_operators(expr)
 
     parsed_expr = ast.parse(expr, mode="eval")
-    root_filter = _parse_node(parsed_expr.body)
-
-    return _normalize_tree(root_filter)
+    return _parse_node(parsed_expr.body)
 
 
 def _parse_node(node) -> Filters:
@@ -1389,20 +1356,15 @@ def _filter_items_to_filters_tree(items) -> Filters:
     Items in the list are AND'd together.  For OR logic, wrap with ``Or()``.
     """
     if not items:
-        return Filters(op="OR", filters=[Filters(op="AND", filters=[])])
+        return Filters(op="AND", filters=[])
 
     if len(items) == 1:
-        item = items[0]
-        if isinstance(item, Or):
-            return item.to_model()
-        node = item.to_model()
-        return _normalize_tree(node)
+        return items[0].to_model()
 
     and_children = []
     for item in items:
         and_children.append(item.to_model())
-    and_node = Filters(op="AND", filters=and_children)
-    return Filters(op="OR", filters=[and_node])
+    return Filters(op="AND", filters=and_children)
 
 
 def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
