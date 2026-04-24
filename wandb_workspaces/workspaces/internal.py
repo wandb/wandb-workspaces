@@ -7,6 +7,9 @@ from annotated_types import Annotated, Ge
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from pydantic.alias_generators import to_camel
 from wandb_gql import gql
+
+# these internal objects should be factored out into a separate module as a
+# shared dependency between Workspaces and Reports API
 from wandb_workspaces.reports.v2.internal import *  # noqa: F403
 from wandb_workspaces.reports.v2.internal import (
     PanelBankConfig,
@@ -83,7 +86,6 @@ class WorkspaceViewspec(WorkspaceAPIBaseModel):
     library_expanded: bool = True
 
 
-
 class View(WorkspaceAPIBaseModel):
     entity: str
     project: str
@@ -104,9 +106,7 @@ class View(WorkspaceAPIBaseModel):
         spec = view_dict["spec"]
         display_name = view_dict["displayName"]
         id = view_dict["id"]
-
-        spec_dict = json.loads(spec) if isinstance(spec, str) else spec
-        parsed_spec = WorkspaceViewspec.model_validate(spec_dict)
+        parsed_spec = WorkspaceViewspec.model_validate_json(spec)
 
         return cls(
             entity=entity,
@@ -136,9 +136,7 @@ def upsert_view2(view: View) -> Dict[str, Any]:
     )
 
     api = wandb.Api()
-
-    spec_dict = view.spec.model_dump(by_alias=True, exclude_none=True)
-    spec_str = json.dumps(spec_dict)
+    spec_str = view.spec.model_dump_json(by_alias=True, exclude_none=True)
 
     # Default: assume a new view being created, so no `id` yet
     variables = {
