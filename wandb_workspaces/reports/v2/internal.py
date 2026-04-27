@@ -20,12 +20,13 @@ from pydantic import (
     Field,
     StringConstraints,
     computed_field,
+    field_validator,
     root_validator,
     validator,
 )
 from pydantic.alias_generators import to_camel
 
-from ...expr import Filters, Key, SortKey, SortKeyKey
+from ...expr import Filters, Key, SortKey, SortKeyKey, is_filter_v2
 
 
 def _generate_name(length: int = 12) -> str:
@@ -368,6 +369,13 @@ class Runset(ReportAPIBaseModel):
     sort: Sort = Field(default_factory=Sort)
     selections: RunsetSelections = Field(default_factory=RunsetSelections)
     expanded_row_addresses: list = Field(default_factory=list)
+
+    @field_validator("filters", mode="wrap")
+    @classmethod
+    def _keep_v2_as_dict(cls, v, handler):
+        if isinstance(v, dict) and is_filter_v2(v):
+            return v
+        return handler(v)
 
 
 class CodeLine(ReportAPIBaseModel):

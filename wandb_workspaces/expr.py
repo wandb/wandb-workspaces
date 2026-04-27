@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
 from typing import List as LList
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from wandb_workspaces.utils.invertable_dict import InvertableDict
@@ -49,13 +49,6 @@ class Filters(ReportAPIBaseModel):
     value: Optional[Any] = None
     disabled: Optional[bool] = None
     current: Optional["Filters"] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_v2_format(cls, data: Any) -> Any:
-        if isinstance(data, dict) and data.get("filterFormat") == "filterV2":
-            raise ValueError("v2 filter dicts are stored as raw dicts, not Filters trees")
-        return data
 
 
 class SortKeyKey(ReportAPIBaseModel):
