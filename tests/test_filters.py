@@ -235,8 +235,11 @@ def test_user_constructed_runset_parses_from_string():
     assert rs._filters_internal is None
 
     model = rs._to_model()
-    assert model.filters.value == "alice"
-    assert model.filters.disabled is False
+    # _to_model wraps in canonical OR → AND → leaves for legacy backend
+    assert model.filters.op == "OR"
+    leaf = model.filters.filters[0].filters[0]
+    assert leaf.value == "alice"
+    assert leaf.disabled is False
 
 
 def test_modifying_filters_after_load_uses_new_value():
@@ -266,8 +269,10 @@ def test_modifying_filters_after_load_uses_new_value():
     iface.filters = "Metric('User') == 'bob'"
 
     model = iface._to_model()
-    assert model.filters.value == "bob", "New filter value should take effect"
-    assert model.filters.disabled is False, "New filter should be active"
+    # _to_model wraps in canonical OR → AND → leaves for legacy backend
+    leaf = model.filters.filters[0].filters[0]
+    assert leaf.value == "bob", "New filter value should take effect"
+    assert leaf.disabled is False, "New filter should be active"
 
 
 # ===== OR filter and v2 deserialization tests =====
@@ -871,7 +876,7 @@ class TestWorkspaceWriteBack:
         assert any(f.get("value") == 0.01 for f in filters_out["filters"])
 
     def test_legacy_workspace_writes_legacy_tree(self):
-        """A workspace without v2 filters writes a legacy Filters tree."""
+        """A workspace without v2 filters writes a canonical OR → AND → leaves tree."""
         from wandb_workspaces.workspaces.interface import RunsetSettings, Workspace
         from wandb_workspaces import expr
 
@@ -886,4 +891,8 @@ class TestWorkspaceWriteBack:
         model = ws._to_model()
         filters_out = model.spec.section.run_sets[0].filters
         assert isinstance(filters_out, expr.Filters)
+        assert filters_out.op == "OR"
+        assert len(filters_out.filters) == 1
+        assert filters_out.filters[0].op == "AND"
+        assert len(filters_out.filters[0].filters) == 2
 

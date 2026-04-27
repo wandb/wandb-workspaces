@@ -1085,7 +1085,7 @@ class Runset(Base):
         if filters_unchanged:
             filters = self._filters_internal
         else:
-            filters = expr.expr_to_filters(self.filters)
+            filters = expr.wrap_as_legacy_tree(expr.expr_to_filters(self.filters))
 
         obj = internal.Runset(
             project=project,

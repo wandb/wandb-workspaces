@@ -659,9 +659,10 @@ class Workspace(Base):
                 )
                 filters_value = expr.filters_tree_to_v2(tree)
         else:
-            filters_value = expr.expr_to_filters(
+            tree = expr.expr_to_filters(
                 self.runset_settings.filters  # type: ignore[arg-type] # validator ensures this is always str
             )
+            filters_value = expr.wrap_as_legacy_tree(tree)
 
         runset = internal.Runset(
             id=self._internal_runset_id,

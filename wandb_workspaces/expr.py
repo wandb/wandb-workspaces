@@ -369,6 +369,21 @@ def expr_to_filters(expr: str) -> Filters:
     return _parse_node(parsed_expr.body)
 
 
+def wrap_as_legacy_tree(tree: Filters) -> Filters:
+    """Wrap a raw parse tree into the canonical OR → AND → leaves structure.
+
+    The legacy frontend filter reader (legacyFiltersFromJSON) requires filters
+    in the shape ``OR([AND([...leaves...])])``.  This helper normalises any
+    ``Filters`` tree produced by ``expr_to_filters`` into that shape so it can
+    be safely written to the backend for non-v2 workspaces and reports.
+    """
+    if tree.op == "AND" and tree.filters:
+        children = tree.filters
+    else:
+        children = [tree]
+    return Filters(op="OR", filters=[Filters(op="AND", filters=children)])
+
+
 def _parse_node(node) -> Filters:
     # Check if this is a WithinLast function call (not inside a comparison)
     if isinstance(node, ast.Call):
