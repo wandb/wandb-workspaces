@@ -349,7 +349,7 @@ def expr_to_filters(expr: str) -> Filters:
             or ``"Metric('State') == 'finished' or Metric('CreatedTimestamp') within_last 5 days"``
 
     Returns:
-        An internal Filters tree structure.
+        An internal Filters tree structure
     """
     if not expr:
         return Filters(op="AND", filters=[])
@@ -361,7 +361,7 @@ def expr_to_filters(expr: str) -> Filters:
     # Preprocess: Replace single '=' with '==' for Python AST parsing
     # But avoid replacing '==', '!=', '<=', '>='
     expr = _preprocess_equality_operators(expr)
-    
+
     # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
     expr = _preprocess_comparison_operators(expr)
 
@@ -614,15 +614,22 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
 
     Shared by both the legacy tree-to-string path and the v2-to-string path.
     """
+    # Convert backend metric name to frontend name
     frontend_name = _convert_be_to_fe_metric_name(name)
 
+    # Special handling for WITHINSECONDS operator
     if op == "WITHINSECONDS":
+        # Prepend the function name if the section matches
         func_name = section_map_reversed.get(section, "Metric")
+        # Convert seconds back to human-readable format
         amount, unit = _convert_seconds_to_time(value)
+        # Format amount as int if it's a whole number, otherwise as float
         if isinstance(amount, float) and amount.is_integer():
             amount = int(amount)
+        # Use operator syntax for output (more readable)
         return f'{func_name}("{frontend_name}") within_last {amount} {unit}'
 
+    # Prepend the function name if the section matches
     if section in section_map_reversed:
         func_name = section_map_reversed[section]
         key_str = f'{func_name}("{frontend_name}")'
@@ -634,6 +641,7 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
     if value is None:
         val_str = "None"
     elif isinstance(value, list):
+        # Properly quote string elements in lists to avoid parse errors
         parts = []
         for v in value:
             parts.append(f"'{v}'" if isinstance(v, str) else str(v))
@@ -672,6 +680,7 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
             return f"({expr})" if not is_root and sub_expressions else expr
         else:
             if not filter.key or not filter.key.name:
+                # Skip filters with empty key names
                 return ""
             return _format_filter_leaf(
                 filter.key.section, filter.key.name, filter.op, filter.value
