@@ -620,14 +620,20 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
     # Special handling for WITHINSECONDS operator
     if op == "WITHINSECONDS":
         # Prepend the function name if the section matches
-        func_name = section_map_reversed.get(section, "Metric")
+        if section in section_map_reversed:
+            function_name = section_map_reversed[section]
+            metric_expr = f'{function_name}("{frontend_name}")'
+        else:
+            metric_expr = frontend_name
+
         # Convert seconds back to human-readable format
         amount, unit = _convert_seconds_to_time(value)
         # Format amount as int if it's a whole number, otherwise as float
         if isinstance(amount, float) and amount.is_integer():
             amount = int(amount)
+
         # Use operator syntax for output (more readable)
-        return f'{func_name}("{frontend_name}") within_last {amount} {unit}'
+        return f"{metric_expr} within_last {amount} {unit}"
 
     # Prepend the function name if the section matches
     if section in section_map_reversed:
@@ -642,10 +648,13 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
         val_str = "None"
     elif isinstance(value, list):
         # Properly quote string elements in lists to avoid parse errors
-        parts = []
+        formatted_elements = []
         for v in value:
-            parts.append(f"'{v}'" if isinstance(v, str) else str(v))
-        val_str = f"[{', '.join(parts)}]"
+            if isinstance(v, str):
+                formatted_elements.append(f"'{v}'")
+            else:
+                formatted_elements.append(str(v))
+        val_str = f"[{', '.join(formatted_elements)}]"
     elif isinstance(value, str):
         val_str = f"'{value}'"
     else:
