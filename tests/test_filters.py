@@ -599,6 +599,18 @@ class TestV2ToString:
         result = filters_v2_to_string(v2)
         assert result == 'Metric("Tags") in [\'prod\', \'staging\']'
 
+    def test_v2_nin_operator(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"key": {"section": "run", "name": "tags"}, "op": "NIN", "value": ["debug", "test"]},
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == 'Metric("Tags") not in [\'debug\', \'test\']'
+
 
 class TestV2DirectFilterRoundTrip:
     """Test that v2 filters are stored directly in Runset.filters and round-trip correctly."""
@@ -728,4 +740,150 @@ class TestTreeToV2Conversion:
         assert group["filters"][0]["value"] == "b"
         assert group["filters"][1]["value"] == "finished"
         assert group["filters"][1]["connector"] == "AND"
+
+
+class TestV2FullRoundTrip:
+    """Test v2 dict → string → tree → v2 round-trip preserves semantics."""
+
+    def test_v2_group_round_trip(self):
+        """A v2 payload with a group should survive the full round-trip."""
+        from wandb_workspaces.expr import (
+            expr_to_filters,
+            filters_tree_to_v2,
+            filters_v2_to_string,
+        )
+
+        v2_original = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {
+                    "filters": [
+                        {"op": "=", "key": {"section": "run", "name": "host"}, "value": "abc", "disabled": False},
+                        {"op": "=", "key": {"section": "run", "name": "host"}, "value": "xyz", "disabled": False, "connector": "OR"},
+                    ],
+                    "connector": "AND",
+                },
+            ],
+        }
+        s = filters_v2_to_string(v2_original)
+        tree = expr_to_filters(s)
+        v2_out = filters_tree_to_v2(tree)
+
+        assert v2_out["filterFormat"] == "filterV2"
+        assert len(v2_out["filters"]) == 2
+        assert v2_out["filters"][0]["value"] == "finished"
+        group = v2_out["filters"][1]
+        assert "filters" in group
+        assert group["connector"] == "AND"
+        assert len(group["filters"]) == 2
+        assert group["filters"][0]["value"] == "abc"
+        assert group["filters"][1]["value"] == "xyz"
+        assert group["filters"][1]["connector"] == "OR"
+
+    def test_v2_flat_mixed_round_trip_is_semantically_stable(self):
+        """Flat mixed AND/OR: round-trip may add parens to make precedence explicit.
+
+        Input string:  A and B or C       (implicit AND precedence)
+        Output string: (A and B) or C     (explicit group for the AND)
+
+        A second round-trip should then be completely stable.
+        """
+        from wandb_workspaces.expr import (
+            expr_to_filters,
+            filters_tree_to_v2,
+            filters_v2_to_string,
+        )
+
+        v2_original = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.1, "disabled": False, "connector": "OR"},
+            ],
+        }
+        # First round-trip
+        s1 = filters_v2_to_string(v2_original)
+        tree1 = expr_to_filters(s1)
+        v2_rt1 = filters_tree_to_v2(tree1)
+        s2 = filters_v2_to_string(v2_rt1)
+
+        # Second round-trip should be fully stable
+        tree2 = expr_to_filters(s2)
+        v2_rt2 = filters_tree_to_v2(tree2)
+        s3 = filters_v2_to_string(v2_rt2)
+        assert s2 == s3
+
+
+class TestWorkspaceWriteBack:
+    """Test Workspace._to_model() write-back behavior for v2 and legacy filters."""
+
+    def _make_workspace_from_v2(self, v2_filters):
+        """Simulate loading a workspace that has v2 filters."""
+        from copy import deepcopy
+
+        from wandb_workspaces.workspaces.interface import RunsetSettings, Workspace
+        from wandb_workspaces import expr
+
+        filter_string = expr.filters_v2_to_string(v2_filters)
+        ws = Workspace(
+            entity="test",
+            project="test",
+            name="test workspace",
+            runset_settings=RunsetSettings(filters=filter_string),
+        )
+        ws._raw_filters_v2 = deepcopy(v2_filters)
+        ws._original_v2_filter_string = filter_string
+        return ws
+
+    def test_unchanged_v2_uses_raw_dict(self):
+        """If filters haven't been modified, _to_model uses the raw v2 dict."""
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
+            ],
+        }
+        ws = self._make_workspace_from_v2(v2)
+        model = ws._to_model()
+        assert isinstance(model.spec.section.run_sets[0].filters, dict)
+        assert model.spec.section.run_sets[0].filters["filterFormat"] == "filterV2"
+        assert model.spec.section.run_sets[0].filters == v2
+
+    def test_modified_v2_reconverts_to_v2(self):
+        """If filters are modified, _to_model converts through tree → v2."""
+        from wandb_workspaces import expr
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+            ],
+        }
+        ws = self._make_workspace_from_v2(v2)
+        ws.runset_settings.filters = "Config('lr') == 0.01"
+        model = ws._to_model()
+        filters_out = model.spec.section.run_sets[0].filters
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert any(f.get("value") == 0.01 for f in filters_out["filters"])
+
+    def test_legacy_workspace_writes_legacy_tree(self):
+        """A workspace without v2 filters writes a legacy Filters tree."""
+        from wandb_workspaces.workspaces.interface import RunsetSettings, Workspace
+        from wandb_workspaces import expr
+
+        ws = Workspace(
+            entity="test",
+            project="test",
+            name="test workspace",
+            runset_settings=RunsetSettings(
+                filters="Config('lr') == 0.01 and Metric('State') == 'finished'"
+            ),
+        )
+        model = ws._to_model()
+        filters_out = model.spec.section.run_sets[0].filters
+        assert isinstance(filters_out, expr.Filters)
 
