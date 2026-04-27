@@ -1011,6 +1011,8 @@ class Runset(Base):
     _filters_internal: Optional["expr.Filters"] = Field(
         default=None, init=False, repr=False
     )
+    _raw_filters_v2: Optional[dict] = Field(None, init=False, repr=False)
+    _original_v2_filter_string: str = Field("", init=False, repr=False)
 
     @model_validator(mode="after")
     def merge_custom_run_colors_into_run_settings(self):
@@ -1075,17 +1077,23 @@ class Runset(Base):
                 if settings.disabled
             ]
 
-        # Use the stashed Filters tree when the string hasn't been changed
-        # since loading.  This preserves per-filter metadata (e.g. disabled
-        # state) that the lossy string representation cannot express.
-        filters_unchanged = (
+        # Use the stashed filters when the string hasn't been changed since
+        # loading.  For v2 filters this preserves the raw dict; for legacy
+        # filters it preserves per-filter metadata (e.g. disabled state) that
+        # the lossy string representation cannot express.
+        if self._raw_filters_v2 is not None:
+            if self.filters == self._original_v2_filter_string:
+                filters = self._raw_filters_v2
+            else:
+                tree = expr.expr_to_filters(self.filters)
+                filters = expr.filters_tree_to_v2(tree)
+        elif (
             self._filters_internal is not None
             and self.filters == expr.filters_to_expr(self._filters_internal)
-        )
-        if filters_unchanged:
+        ):
             filters = self._filters_internal
         else:
-            filters = expr.expr_to_filters(self.filters)
+            filters = expr.wrap_as_legacy_tree(expr.expr_to_filters(self.filters))
 
         obj = internal.Runset(
             project=project,
@@ -1125,19 +1133,28 @@ class Runset(Base):
                 for child_id in item.children:
                     run_settings[child_id] = RunSettings(disabled=is_disabled)
 
+        if isinstance(model.filters, dict) and expr.is_filter_v2(model.filters):
+            filter_string = expr.filters_v2_to_string(model.filters)
+        else:
+            filter_string = expr.filters_to_expr(model.filters)
+
         obj = cls(
             entity=entity,
             project=project,
             name=model.name,
             query=model.search.query if model.search else "",
-            filters=expr.filters_to_expr(model.filters),
+            filters=filter_string,
             groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
             run_settings=run_settings,
         )
         obj._id = model.id
         obj._selections_root = model.selections.root
-        obj._filters_internal = model.filters
+        if isinstance(model.filters, dict) and expr.is_filter_v2(model.filters):
+            obj._raw_filters_v2 = model.filters
+            obj._original_v2_filter_string = filter_string
+        else:
+            obj._filters_internal = model.filters
         return obj
 
 
