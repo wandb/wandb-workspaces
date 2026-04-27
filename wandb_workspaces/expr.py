@@ -822,7 +822,28 @@ def _flatten_tree_to_v2_items(node: Filters, connector: str) -> list:
 
 
 def _tree_node_to_v2_items(node: Filters) -> list:
-    """Convert a Filters tree node into a flat list of v2 items (one level of groups max)."""
+    """Convert a Filters tree node into a flat list of v2 items (one level of groups max).
+
+    Groups in the v2 output arise from two sources:
+
+    1. Explicit parentheses in the filter string — e.g. ``(A or B) and C``
+       creates an OR subtree nested inside an AND, which becomes a v2 group.
+
+    2. Python's ast.parse operator precedence — AND binds tighter than OR,
+       so ``A and B or C`` is parsed as ``Or([And([A, B]), C])``.  The AND
+       subtree has multiple children under an OR parent, so it also becomes
+       a v2 group.  This matches the frontend's own precedence behavior.
+
+    The frontend already applies its own AND-before-OR precedence when
+    reading flat v2 items, so the groups from case (2) are redundant — but
+    they are unavoidable because Python's ast.parse groups AND operands
+    into their own node when mixed with OR (e.g. ``A and B or C`` becomes
+    ``Or([And([A, B]), C])``).  The frontend handles them correctly either
+    way.
+
+    In both cases, any child node with multiple sub-filters becomes a v2
+    group (``{"filters": [...]}``) while leaf nodes are inlined directly.
+    """
     if node.key is not None:
         item = _leaf_to_v2_item(node)
         return [item] if item else []
