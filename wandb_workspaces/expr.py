@@ -811,10 +811,6 @@ def _flatten_tree_to_v2_items(node: Filters, connector: str) -> list:
     if node.filters is None:
         return []
 
-    if node.op not in ("OR", "AND"):
-        item = _leaf_to_v2_item(node)
-        return [item] if item else []
-
     items: list = []
     for child in node.filters:
         sub_items = _flatten_tree_to_v2_items(child, node.op)
@@ -834,10 +830,6 @@ def _tree_node_to_v2_items(node: Filters) -> list:
     if node.filters is None:
         return []
 
-    if node.op not in ("OR", "AND"):
-        item = _leaf_to_v2_item(node)
-        return [item] if item else []
-
     items: list = []
     for i, child in enumerate(node.filters):
         if child.key is not None:
@@ -848,6 +840,8 @@ def _tree_node_to_v2_items(node: Filters) -> list:
                 item["connector"] = node.op
             items.append(item)
         elif child.filters and len(child.filters) > 1:
+            # V2 supports at most one level of group nesting, so we flatten
+            # the entire subtree into v2 items and wrap them in a single group.
             group_items = _flatten_tree_to_v2_items(child, child.op)
             if not group_items:
                 continue
@@ -856,6 +850,8 @@ def _tree_node_to_v2_items(node: Filters) -> list:
                 group["connector"] = node.op
             items.append(group)
         else:
+            # Single-child or empty node — no point wrapping in a group,
+            # just inline the flattened items directly.
             sub_items = _flatten_tree_to_v2_items(child, node.op)
             for j, si in enumerate(sub_items):
                 if j == 0 and items:
