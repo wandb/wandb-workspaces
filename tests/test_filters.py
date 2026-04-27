@@ -662,8 +662,8 @@ class TestV2DirectFilterRoundTrip:
         assert filters.op == "OR"
 
 
-class TestAlwaysWriteV2:
-    """Test tree-to-v2 conversion and Or/And/Group in RunsetSettings."""
+class TestTreeToV2Conversion:
+    """Test Filters tree to v2 flat format conversion."""
 
     def test_and_only_tree_converts_to_v2(self):
         from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
@@ -694,4 +694,38 @@ class TestAlwaysWriteV2:
         assert len(v2["filters"]) == 2
         assert "connector" not in v2["filters"][0]
         assert v2["filters"][1]["connector"] == "OR"
+
+    def test_group_tree_converts_to_v2(self):
+        """a or (b and c) — the AND subtree becomes a v2 group.
+
+        Expected v2:
+        {"filterFormat": "filterV2", "filters": [
+            {"key": ..., "op": "=", "value": "a"},
+            {"connector": "OR", "filters": [
+                {"key": ..., "op": "=", "value": "b"},
+                {"key": ..., "op": "=", "value": "finished", "connector": "AND"},
+            ]},
+        ]}
+        """
+        from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
+
+        tree = Filters(op="OR", filters=[
+            Filters(op="=", key=Key(section="run", name="displayName"), value="a"),
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="run", name="displayName"), value="b"),
+                Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+            ]),
+        ])
+        v2 = filters_tree_to_v2(tree)
+        assert v2["filterFormat"] == "filterV2"
+        assert len(v2["filters"]) == 2
+        assert v2["filters"][0]["value"] == "a"
+        assert "connector" not in v2["filters"][0]
+        group = v2["filters"][1]
+        assert group["connector"] == "OR"
+        assert "filters" in group
+        assert len(group["filters"]) == 2
+        assert group["filters"][0]["value"] == "b"
+        assert group["filters"][1]["value"] == "finished"
+        assert group["filters"][1]["connector"] == "AND"
 
