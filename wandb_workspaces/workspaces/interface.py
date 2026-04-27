@@ -660,7 +660,7 @@ class Workspace(Base):
                 filters_value = expr.filters_tree_to_v2(tree)
         else:
             filters_value = expr.expr_to_filters(
-                self.runset_settings.filters  # type: ignore[arg-type]
+                self.runset_settings.filters  # type: ignore[arg-type] # validator ensures this is always str
             )
 
         runset = internal.Runset(
