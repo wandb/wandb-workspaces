@@ -791,8 +791,31 @@ def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
     return item
 
 
-def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
-    """Recursively convert a Filters tree node into a flat list of v2 items."""
+def _flatten_tree_to_v2_items(node: Filters, connector: str) -> list:
+    """Flatten a Filters tree node into v2 items with the given connector. No groups."""
+    if node.key is not None:
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
+
+    if node.filters is None:
+        return []
+
+    if node.op not in ("OR", "AND"):
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
+
+    items: list = []
+    for child in node.filters:
+        sub_items = _flatten_tree_to_v2_items(child, node.op)
+        for si in sub_items:
+            if items and "connector" not in si:
+                si["connector"] = node.op
+            items.append(si)
+    return items
+
+
+def _tree_node_to_v2_items(node: Filters) -> list:
+    """Convert a Filters tree node into a flat list of v2 items (one level of groups max)."""
     if node.key is not None:
         item = _leaf_to_v2_item(node)
         return [item] if item else []
@@ -806,28 +829,27 @@ def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
 
     items: list = []
     for i, child in enumerate(node.filters):
-        is_first = (i == 0) and is_first_in_parent
-
         if child.key is not None:
-            child_item = _leaf_to_v2_item(child)
-            if child_item is None:
+            item = _leaf_to_v2_item(child)
+            if item is None:
                 continue
-            if not is_first:
-                child_item["connector"] = node.op
-            items.append(child_item)
+            if items:
+                item["connector"] = node.op
+            items.append(item)
+        elif child.filters and len(child.filters) > 1:
+            group_items = _flatten_tree_to_v2_items(child, child.op)
+            if not group_items:
+                continue
+            group: dict = {"filters": group_items}
+            if items:
+                group["connector"] = node.op
+            items.append(group)
         else:
-            sub_items = _tree_node_to_v2_items(child, is_first_in_parent=True)
-            if not sub_items:
-                continue
-            if len(sub_items) == 1:
-                if not is_first:
-                    sub_items[0]["connector"] = node.op
-                items.append(sub_items[0])
-            else:
-                group: dict = {"filters": sub_items}
-                if not is_first:
-                    group["connector"] = node.op
-                items.append(group)
+            sub_items = _flatten_tree_to_v2_items(child, node.op)
+            for j, si in enumerate(sub_items):
+                if j == 0 and items:
+                    si["connector"] = node.op
+                items.append(si)
 
     return items
 
@@ -841,7 +863,7 @@ def filters_tree_to_v2(tree: Filters) -> dict:
     Returns:
         A dict with ``filterFormat`` and a flat ``filters`` list.
     """
-    items = _tree_node_to_v2_items(tree, is_first_in_parent=True)
+    items = _tree_node_to_v2_items(tree)
     return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
 
 

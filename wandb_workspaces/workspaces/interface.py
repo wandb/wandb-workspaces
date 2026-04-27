@@ -324,10 +324,10 @@ class RunsetSettings(Base):
     Attributes:
         query (str): A query to filter the runset (can be a regex expr, see next param).
         regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
-        filters (Union[str, LList[FilterExpr]]): Filters for the runset.
-            - As a list of FilterExpr: filters are AND'd together.
-            - As a string: Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
-              Supports operators: =, ==, !=, <, >, <=, >=, in, not in, and
+        filters (Union[str, LList[expr.FilterExpr]]): A list of filters to apply to the runset or a string expression.
+            - As a list: Filters are AND'd together. See FilterExpr for more information on creating filters.
+            - As a string: Use Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in
         groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
             `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
