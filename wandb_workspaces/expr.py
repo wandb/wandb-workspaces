@@ -814,47 +814,26 @@ def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
     return item
 
 
-def _flatten_tree_to_v2_items(node: Filters, connector: str) -> list:
-    """Flatten a Filters tree node into v2 items with the given connector. No groups."""
-    if node.key is not None:
-        item = _leaf_to_v2_item(node)
-        return [item] if item else []
-
-    if node.filters is None:
-        return []
-
-    items: list = []
-    for child in node.filters:
-        sub_items = _flatten_tree_to_v2_items(child, node.op)
-        for si in sub_items:
-            if items and "connector" not in si:
-                si["connector"] = node.op
-            items.append(si)
-    return items
+_V2_PRECEDENCE = {"AND": 1, "OR": 0}
 
 
-def _tree_node_to_v2_items(node: Filters) -> list:
-    """Convert a Filters tree node into a flat list of v2 items (one level of groups max).
+def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
+    """Recursively convert a Filters tree node into a flat list of v2 items.
 
-    Groups in the v2 output arise from two sources:
+    We already handle AND/OR precedence in the UI by forming the tree there,
+    but Python's ``ast.parse`` produces nested nodes for each ``and`` operator
+    (e.g. ``A or B and C`` → ``Or([A, And([B, C])])``).  Without this logic
+    those implicit AND nodes would become v2 groups, which is both confusing
+    for users (they see a group they didn't explicitly create) and problematic
+    because our UI only supports up to 1 level of grouping.
 
-    1. Explicit parentheses in the filter string — e.g. ``(A or B) and C``
-       creates an OR subtree nested inside an AND, which becomes a v2 group.
+    Groups are only created when a child operator's precedence is **not**
+    strictly higher than the parent's:
 
-    2. Python's ast.parse operator precedence — AND binds tighter than OR,
-       so ``A and B or C`` is parsed as ``Or([And([A, B]), C])``.  The AND
-       subtree has multiple children under an OR parent, so it also becomes
-       a v2 group.  This matches the frontend's own precedence behavior.
-
-    The frontend already applies its own AND-before-OR precedence when
-    reading flat v2 items, so the groups from case (2) are redundant — but
-    they are unavoidable because Python's ast.parse groups AND operands
-    into their own node when mixed with OR (e.g. ``A and B or C`` becomes
-    ``Or([And([A, B]), C])``).  The frontend handles them correctly either
-    way.
-
-    In both cases, any child node with multiple sub-filters becomes a v2
-    group (``{"filters": [...]}``) while leaf nodes are inlined directly.
+    - OR inside AND  → group (semantically required)
+    - OR inside OR   → group (explicit parentheses in source)
+    - AND inside AND → group (explicit parentheses in source)
+    - AND inside OR  → inline (AND already binds tighter, no group needed)
     """
     if node.key is not None:
         item = _leaf_to_v2_item(node)
@@ -863,35 +842,75 @@ def _tree_node_to_v2_items(node: Filters) -> list:
     if node.filters is None:
         return []
 
+    if node.op not in ("OR", "AND"):
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
+
     items: list = []
     for i, child in enumerate(node.filters):
+        is_first = (i == 0) and is_first_in_parent
+
         if child.key is not None:
-            item = _leaf_to_v2_item(child)
-            if item is None:
+            child_item = _leaf_to_v2_item(child)
+            if child_item is None:
                 continue
-            if items:
-                item["connector"] = node.op
-            items.append(item)
-        elif child.filters and len(child.filters) > 1:
-            # V2 supports at most one level of group nesting, so we flatten
-            # the entire subtree into v2 items and wrap them in a single group.
-            group_items = _flatten_tree_to_v2_items(child, child.op)
-            if not group_items:
-                continue
-            group: dict = {"filters": group_items}
-            if items:
-                group["connector"] = node.op
-            items.append(group)
+            if not is_first:
+                child_item["connector"] = node.op
+            items.append(child_item)
         else:
-            # Single-child or empty node — no point wrapping in a group,
-            # just inline the flattened items directly.
-            sub_items = _flatten_tree_to_v2_items(child, node.op)
-            for j, si in enumerate(sub_items):
-                if j == 0 and items:
-                    si["connector"] = node.op
-                items.append(si)
+            sub_items = _tree_node_to_v2_items(child, is_first_in_parent=True)
+            if not sub_items:
+                continue
+
+            child_prec = _V2_PRECEDENCE.get(child.op, 0)
+            parent_prec = _V2_PRECEDENCE.get(node.op, 0)
+            needs_group = len(sub_items) > 1 and child_prec <= parent_prec
+
+            if needs_group:
+                group: dict = {"filters": sub_items}
+                if not is_first:
+                    group["connector"] = node.op
+                items.append(group)
+            else:
+                for j, sub in enumerate(sub_items):
+                    if j == 0 and not is_first:
+                        sub = {**sub, "connector": node.op}
+                    items.append(sub)
 
     return items
+
+
+def _flatten_nested_groups(items: list) -> list:
+    """Flatten groups that contain nested groups into a single level.
+
+    The v2 UI only supports one level of nesting.  If a group's ``filters``
+    list itself contains a group, inline that inner group's items so the
+    result never exceeds depth 1.
+    """
+    result: list = []
+    for item in items:
+        if "filters" in item and "key" not in item:
+            inner = item["filters"]
+            has_nested = any(
+                "filters" in sub and "key" not in sub for sub in inner
+            )
+            if has_nested:
+                flat_inner: list = []
+                for sub in inner:
+                    if "filters" in sub and "key" not in sub:
+                        for k, nested_item in enumerate(sub["filters"]):
+                            entry = {**nested_item}
+                            if k == 0 and sub.get("connector"):
+                                entry["connector"] = sub["connector"]
+                            flat_inner.append(entry)
+                    else:
+                        flat_inner.append(sub)
+                result.append({**item, "filters": flat_inner})
+            else:
+                result.append(item)
+        else:
+            result.append(item)
+    return result
 
 
 def filters_tree_to_v2(tree: Filters) -> dict:
@@ -903,7 +922,15 @@ def filters_tree_to_v2(tree: Filters) -> dict:
     Returns:
         A dict with ``filterFormat`` and a flat ``filters`` list.
     """
-    items = _tree_node_to_v2_items(tree)
+    items = _tree_node_to_v2_items(tree, is_first_in_parent=True)
+    if (
+        len(items) == 1
+        and isinstance(items[0], dict)
+        and "filters" in items[0]
+        and "connector" not in items[0]
+    ):
+        items = items[0]["filters"]
+    items = _flatten_nested_groups(items)
     return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
 
 

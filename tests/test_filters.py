@@ -708,18 +708,8 @@ class TestTreeToV2Conversion:
         assert "connector" not in v2["filters"][0]
         assert v2["filters"][1]["connector"] == "OR"
 
-    def test_group_tree_converts_to_v2(self):
-        """a or (b and c) — the AND subtree becomes a v2 group.
-
-        Expected v2:
-        {"filterFormat": "filterV2", "filters": [
-            {"key": ..., "op": "=", "value": "a"},
-            {"connector": "OR", "filters": [
-                {"key": ..., "op": "=", "value": "b"},
-                {"key": ..., "op": "=", "value": "finished", "connector": "AND"},
-            ]},
-        ]}
-        """
+    def test_and_inside_or_inlines_flat(self):
+        """a or (b and c) — AND inside OR inlines flat (AND binds tighter)."""
         from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
 
         tree = Filters(op="OR", filters=[
@@ -731,16 +721,37 @@ class TestTreeToV2Conversion:
         ])
         v2 = filters_tree_to_v2(tree)
         assert v2["filterFormat"] == "filterV2"
+        assert len(v2["filters"]) == 3
+        assert v2["filters"][0]["value"] == "a"
+        assert "connector" not in v2["filters"][0]
+        assert v2["filters"][1]["value"] == "b"
+        assert v2["filters"][1]["connector"] == "OR"
+        assert v2["filters"][2]["value"] == "finished"
+        assert v2["filters"][2]["connector"] == "AND"
+
+    def test_or_inside_and_creates_group(self):
+        """a and (b or c) — OR inside AND creates a group."""
+        from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
+
+        tree = Filters(op="AND", filters=[
+            Filters(op="=", key=Key(section="run", name="displayName"), value="a"),
+            Filters(op="OR", filters=[
+                Filters(op="=", key=Key(section="run", name="displayName"), value="b"),
+                Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+            ]),
+        ])
+        v2 = filters_tree_to_v2(tree)
+        assert v2["filterFormat"] == "filterV2"
         assert len(v2["filters"]) == 2
         assert v2["filters"][0]["value"] == "a"
         assert "connector" not in v2["filters"][0]
         group = v2["filters"][1]
-        assert group["connector"] == "OR"
+        assert group["connector"] == "AND"
         assert "filters" in group
         assert len(group["filters"]) == 2
         assert group["filters"][0]["value"] == "b"
         assert group["filters"][1]["value"] == "finished"
-        assert group["filters"][1]["connector"] == "AND"
+        assert group["filters"][1]["connector"] == "OR"
 
 
 class TestV2FullRoundTrip:
