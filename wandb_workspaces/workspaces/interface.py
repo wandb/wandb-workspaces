@@ -459,6 +459,9 @@ class Workspace(Base):
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
 
+    _raw_filters_v2: Optional[dict] = Field(None, init=False, repr=False)
+    _original_v2_filter_string: str = Field("", init=False, repr=False)
+
     @property
     def auto_generate_panels(self) -> bool:
         return self._auto_generate_panels
@@ -594,6 +597,9 @@ class Workspace(Base):
         obj._internal_name = model.name
         obj._internal_id = model.id
         obj._internal_runset_id = runset_model.id
+        if isinstance(runset_model.filters, dict):
+            obj._raw_filters_v2 = runset_model.filters
+            obj._original_v2_filter_string = filter_string
         return obj
 
     def _to_model(self) -> internal.View:
@@ -644,6 +650,20 @@ class Workspace(Base):
             else list(self.runset_settings.pinned_columns)
         )
 
+        if self._raw_filters_v2 is not None:
+            if self.runset_settings.filters == self._original_v2_filter_string:
+                filters_value = self._raw_filters_v2
+            else:
+                tree = expr.expr_to_filters(
+                    self.runset_settings.filters  # type: ignore[arg-type] # validator ensures this is always str
+                )
+                filters_value = expr.filters_tree_to_v2(tree)
+        else:
+            tree = expr.expr_to_filters(
+                self.runset_settings.filters  # type: ignore[arg-type] # validator ensures this is always str
+            )
+            filters_value = expr.wrap_as_legacy_tree(tree)
+
         return internal.View(
             entity=self.entity,
             project=self.project,
@@ -677,9 +697,7 @@ class Workspace(Base):
                                 query=self.runset_settings.query,
                                 is_regex=is_regex,
                             ),
-                            filters=expr.expr_to_filters(
-                                self.runset_settings.filters  # type: ignore[arg-type]  # validator ensures this is always str
-                            ),
+                            filters=filters_value,
                             grouping=[g.to_key() for g in self.runset_settings.groupby],
                             sort=internal.Sort(
                                 keys=[o.to_key() for o in self.runset_settings.order]

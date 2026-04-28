@@ -341,38 +341,48 @@ def _preprocess_comparison_operators(expr: str) -> str:
 def expr_to_filters(expr: str) -> Filters:
     """Parse a string filter expression into an internal Filters tree.
 
+    Supports ``and``, ``or``, and parenthesised groups.
+
     Args:
         expr: A Python-like filter expression string, e.g.,
-            "Config('learning_rate') == 0.001 and State == 'finished'"
-            or "Metric('CreatedTimestamp') within_last 5 days"
+            ``"Config('learning_rate') == 0.001 and Metric('State') == 'finished'"``
+            or ``"Metric('State') == 'finished' or Metric('CreatedTimestamp') within_last 5 days"``
 
     Returns:
         An internal Filters tree structure
     """
     if not expr:
-        filters = []
+        return Filters(op="AND", filters=[])
+
+    # Preprocess: Convert within_last operator syntax to function syntax
+    # This must happen first, before other transformations
+    expr = _preprocess_within_last_syntax(expr)
+
+    # Preprocess: Replace single '=' with '==' for Python AST parsing
+    # But avoid replacing '==', '!=', '<=', '>='
+    expr = _preprocess_equality_operators(expr)
+
+    # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
+    expr = _preprocess_comparison_operators(expr)
+
+    parsed_expr = ast.parse(expr, mode="eval")
+    return _parse_node(parsed_expr.body)
+
+
+
+def wrap_as_legacy_tree(tree: Filters) -> Filters:
+    """Wrap a raw parse tree into the canonical OR → AND → leaves structure.
+
+    The legacy frontend filter reader (legacyFiltersFromJSON) requires filters
+    in the shape ``OR([AND([...leaves...])])``.  This helper normalises any
+    ``Filters`` tree produced by ``expr_to_filters`` into that shape so it can
+    be safely written to the backend for non-v2 workspaces and reports.
+    """
+    if tree.op == "AND" and tree.filters:
+        children = tree.filters
     else:
-        # Preprocess: Convert within_last operator syntax to function syntax
-        # This must happen first, before other transformations
-        expr = _preprocess_within_last_syntax(expr)
-
-        # Preprocess: Replace single '=' with '==' for Python AST parsing
-        # But avoid replacing '==', '!=', '<=', '>='
-        expr = _preprocess_equality_operators(expr)
-
-        # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
-        expr = _preprocess_comparison_operators(expr)
-
-        parsed_expr = ast.parse(expr, mode="eval")
-        root_filter = _parse_node(parsed_expr.body)
-
-        # If the root operation is an AND, unpack its child filters
-        if root_filter.op == "AND" and root_filter.filters:
-            filters = root_filter.filters
-        else:
-            filters = [root_filter]
-
-    return Filters(op="OR", filters=[Filters(op="AND", filters=filters)])
+        children = [tree]
+    return Filters(op="OR", filters=[Filters(op="AND", filters=children)])
 
 
 def _parse_node(node) -> Filters:
