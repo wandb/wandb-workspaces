@@ -561,6 +561,12 @@ class Workspace(Base):
             col for col, is_pinned in run_feed.column_pinned.items() if is_pinned
         ]
 
+        runset_model = model.spec.section.run_sets[0]
+        if isinstance(runset_model.filters, dict) and expr.is_filter_v2(runset_model.filters):
+            filter_string = expr.filters_v2_to_string(runset_model.filters)
+        else:
+            filter_string = expr.filters_to_expr(runset_model.filters)
+
         # then construct the Workspace object
         obj = cls(
             entity=model.entity,
@@ -572,16 +578,14 @@ class Workspace(Base):
             ],
             settings=workspace_settings,
             runset_settings=RunsetSettings(
-                query=model.spec.section.run_sets[0].search.query,
+                query=runset_model.search.query,
                 regex_query=regex_query,
-                filters=expr.filters_to_expr(model.spec.section.run_sets[0].filters),
+                filters=filter_string,
                 groupby=[
-                    expr.BaseMetric.from_key(v)
-                    for v in model.spec.section.run_sets[0].grouping
+                    expr.BaseMetric.from_key(v) for v in runset_model.grouping
                 ],
                 order=[
-                    expr.Ordering.from_key(s)
-                    for s in model.spec.section.run_sets[0].sort.keys
+                    expr.Ordering.from_key(s) for s in runset_model.sort.keys
                 ],
                 run_settings=run_settings,
                 pinned_columns=pinned_columns,
@@ -589,7 +593,7 @@ class Workspace(Base):
         )
         obj._internal_name = model.name
         obj._internal_id = model.id
-        obj._internal_runset_id = model.spec.section.run_sets[0].id
+        obj._internal_runset_id = runset_model.id
         return obj
 
     def _to_model(self) -> internal.View:

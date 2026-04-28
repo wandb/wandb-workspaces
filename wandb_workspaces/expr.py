@@ -615,6 +615,60 @@ def _handle_logical_op(node) -> Filters:
     return Filters(op=op, filters=filters)
 
 
+def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
+    """Format a single filter leaf into a human-readable string.
+
+    Shared by both the legacy tree-to-string path and the v2-to-string path.
+    """
+    # Convert backend metric name to frontend name
+    frontend_name = _convert_be_to_fe_metric_name(name)
+
+    # Special handling for WITHINSECONDS operator
+    if op == "WITHINSECONDS":
+        # Prepend the function name if the section matches
+        if section in section_map_reversed:
+            function_name = section_map_reversed[section]
+            metric_expr = f'{function_name}("{frontend_name}")'
+        else:
+            metric_expr = frontend_name
+
+        # Convert seconds back to human-readable format
+        amount, unit = _convert_seconds_to_time(value)
+        # Format amount as int if it's a whole number, otherwise as float
+        if isinstance(amount, float) and amount.is_integer():
+            amount = int(amount)
+
+        # Use operator syntax for output (more readable)
+        return f"{metric_expr} within_last {amount} {unit}"
+
+    # Prepend the function name if the section matches
+    if section in section_map_reversed:
+        func_name = section_map_reversed[section]
+        key_str = f'{func_name}("{frontend_name}")'
+    else:
+        key_str = frontend_name
+
+    py_op = OPERATOR_MAP.get(op, op)
+
+    if value is None:
+        val_str = "None"
+    elif isinstance(value, list):
+        # Properly quote string elements in lists to avoid parse errors
+        formatted_elements = []
+        for v in value:
+            if isinstance(v, str):
+                formatted_elements.append(f"'{v}'")
+            else:
+                formatted_elements.append(str(v))
+        val_str = f"[{', '.join(formatted_elements)}]"
+    elif isinstance(value, str):
+        val_str = f"'{value}'"
+    else:
+        val_str = str(value)
+
+    return f"{key_str} {py_op} {val_str}"
+
+
 def filters_to_expr(filter_obj: Any, is_root=True) -> str:
     """Convert an internal Filters tree back to a string expression.
 
@@ -625,19 +679,6 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
     Returns:
         A Python-like filter expression string
     """
-    op_map = {
-        ">": ">",
-        "<": "<",
-        "=": "==",
-        "==": "==",
-        "!=": "!=",
-        ">=": ">=",
-        "<=": "<=",
-        "IN": "in",
-        "NIN": "not in",
-        "AND": "and",
-        "OR": "or",
-    }
 
     def _convert_filter(filter: Any, is_root: bool) -> str:
         if hasattr(filter, "filters") and filter.filters is not None:
@@ -656,62 +697,206 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
             if not filter.key or not filter.key.name:
                 # Skip filters with empty key names
                 return ""
-
-            # Special handling for WITHINSECONDS operator
-            if filter.op == "WITHINSECONDS":
-                key_name = filter.key.name
-                section = filter.key.section
-
-                # Convert backend metric name to frontend name
-                frontend_key_name = _convert_be_to_fe_metric_name(key_name)
-
-                # Prepend the function name if the section matches
-                if section in section_map_reversed:
-                    function_name = section_map_reversed[section]
-                    metric_expr = f'{function_name}("{frontend_key_name}")'
-                else:
-                    metric_expr = frontend_key_name
-
-                # Convert seconds back to human-readable format
-                amount, unit = _convert_seconds_to_time(filter.value)
-                # Format amount as int if it's a whole number, otherwise as float
-                if isinstance(amount, float) and amount.is_integer():
-                    amount = int(amount)
-
-                # Use operator syntax for output (more readable)
-                return f"{metric_expr} within_last {amount} {unit}"
-
-            key_name = filter.key.name
-            section = filter.key.section
-
-            # Convert backend metric name to frontend name
-            frontend_key_name = _convert_be_to_fe_metric_name(key_name)
-
-            # Prepend the function name if the section matches
-            if section in section_map_reversed:
-                function_name = section_map_reversed[section]
-                key_name = f'{function_name}("{frontend_key_name}")'
-            else:
-                key_name = frontend_key_name
-
-            value = filter.value
-            if value is None:
-                value = "None"
-            elif isinstance(value, list):
-                # Properly quote string elements in lists to avoid parse errors
-                formatted_elements = []
-                for v in value:
-                    if isinstance(v, str):
-                        formatted_elements.append(f"'{v}'")
-                    else:
-                        formatted_elements.append(str(v))
-                value = f"[{', '.join(formatted_elements)}]"
-            elif isinstance(value, str):
-                value = f"'{value}'"
-
-            return f"{key_name} {op_map[filter.op]} {value}"
+            return _format_filter_leaf(
+                filter.key.section, filter.key.name, filter.op, filter.value
+            )
 
     return _convert_filter(filter_obj, is_root)
+
+
+FILTER_FORMAT_V2 = "filterV2"
+
+
+def is_filter_v2(data: Any) -> bool:
+    """Check if a dict/object uses the v2 flat filter format."""
+    if isinstance(data, dict):
+        return data.get("filterFormat") == FILTER_FORMAT_V2
+    return False
+
+
+def _format_v2_leaf(item: dict) -> Optional[str]:
+    """Format a single v2 leaf item as a human-readable string.
+
+    Args:
+        item: A v2 filter item dict with key, op, and value fields.
+
+    Returns:
+        A formatted string like ``Config("lr") == 0.01``, or None if the
+        item is disabled or has no valid key.
+    """
+    if item.get("disabled", False):
+        return None
+    key = item.get("key")
+    if not key or not key.get("name"):
+        return None
+
+    return _format_filter_leaf(
+        key.get("section", "run"),
+        key["name"],
+        item.get("op", "="),
+        item.get("value"),
+    )
+
+
+def _v2_items_to_string(items: list) -> str:
+    """Walk a flat v2 filter list and emit a display string.
+
+    Handles connectors (AND/OR), nested groups (parentheses), and skips
+    disabled or empty items.
+    """
+    parts: List[str] = []
+    for item in items:
+        if item.get("disabled", False):
+            continue
+
+        connector = item.get("connector")
+
+        if "filters" in item and isinstance(item["filters"], list):
+            inner = _v2_items_to_string(item["filters"])
+            if not inner:
+                continue
+            if connector and parts:
+                parts.append(connector.lower())
+            parts.append(f"({inner})")
+        else:
+            formatted = _format_v2_leaf(item)
+            if formatted is None:
+                continue
+            if connector and parts:
+                parts.append(connector.lower())
+            parts.append(formatted)
+
+    return " ".join(parts)
+
+
+def filters_v2_to_string(data: dict) -> str:
+    """Convert a v2 filterFormat dict to a human-readable filter string.
+
+    Args:
+        data: A dict with ``filterFormat='filterV2'`` and a flat ``filters``
+            list, as stored in the view spec by the frontend v2 filter UI.
+
+    Returns:
+        A Python-like filter expression string, e.g.
+        ``"Config('lr') == 0.01 or Metric('State') == 'finished'"``.
+
+    Examples:
+        >>> filters_v2_to_string({"filterFormat": "filterV2", "filters": []})
+        ''
+    """
+    items = data.get("filters", [])
+    if not items:
+        return ""
+    return _v2_items_to_string(items)
+
+
+def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
+    """Convert a single Filters leaf node to a v2 flat item dict."""
+    if leaf.key is None or not leaf.key.name:
+        return None
+    item: dict = {
+        "key": {"section": leaf.key.section, "name": leaf.key.name},
+        "op": leaf.op,
+        "value": leaf.value,
+    }
+    if leaf.disabled is not None:
+        item["disabled"] = leaf.disabled
+    return item
+
+
+def _flatten_tree_to_v2_items(node: Filters, connector: str) -> list:
+    """Flatten a Filters tree node into v2 items with the given connector. No groups."""
+    if node.key is not None:
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
+
+    if node.filters is None:
+        return []
+
+    items: list = []
+    for child in node.filters:
+        sub_items = _flatten_tree_to_v2_items(child, node.op)
+        for si in sub_items:
+            if items and "connector" not in si:
+                si["connector"] = node.op
+            items.append(si)
+    return items
+
+
+def _tree_node_to_v2_items(node: Filters) -> list:
+    """Convert a Filters tree node into a flat list of v2 items (one level of groups max).
+
+    Groups in the v2 output arise from two sources:
+
+    1. Explicit parentheses in the filter string — e.g. ``(A or B) and C``
+       creates an OR subtree nested inside an AND, which becomes a v2 group.
+
+    2. Python's ast.parse operator precedence — AND binds tighter than OR,
+       so ``A and B or C`` is parsed as ``Or([And([A, B]), C])``.  The AND
+       subtree has multiple children under an OR parent, so it also becomes
+       a v2 group.  This matches the frontend's own precedence behavior.
+
+    The frontend already applies its own AND-before-OR precedence when
+    reading flat v2 items, so the groups from case (2) are redundant — but
+    they are unavoidable because Python's ast.parse groups AND operands
+    into their own node when mixed with OR (e.g. ``A and B or C`` becomes
+    ``Or([And([A, B]), C])``).  The frontend handles them correctly either
+    way.
+
+    In both cases, any child node with multiple sub-filters becomes a v2
+    group (``{"filters": [...]}``) while leaf nodes are inlined directly.
+    """
+    if node.key is not None:
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
+
+    if node.filters is None:
+        return []
+
+    items: list = []
+    for i, child in enumerate(node.filters):
+        if child.key is not None:
+            item = _leaf_to_v2_item(child)
+            if item is None:
+                continue
+            if items:
+                item["connector"] = node.op
+            items.append(item)
+        elif child.filters and len(child.filters) > 1:
+            # V2 supports at most one level of group nesting, so we flatten
+            # the entire subtree into v2 items and wrap them in a single group.
+            group_items = _flatten_tree_to_v2_items(child, child.op)
+            if not group_items:
+                continue
+            group: dict = {"filters": group_items}
+            if items:
+                group["connector"] = node.op
+            items.append(group)
+        else:
+            # Single-child or empty node — no point wrapping in a group,
+            # just inline the flattened items directly.
+            sub_items = _flatten_tree_to_v2_items(child, node.op)
+            for j, si in enumerate(sub_items):
+                if j == 0 and items:
+                    si["connector"] = node.op
+                items.append(si)
+
+    return items
+
+
+def filters_tree_to_v2(tree: Filters) -> dict:
+    """Convert a Filters tree to the v2 flat filter format.
+
+    Args:
+        tree: A Filters tree (typically in canonical OR -> AND -> leaves form).
+
+    Returns:
+        A dict with ``filterFormat`` and a flat ``filters`` list.
+    """
+    items = _tree_node_to_v2_items(tree)
+    return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
+
+
 
 
 def _key_to_server_path(key: Key):

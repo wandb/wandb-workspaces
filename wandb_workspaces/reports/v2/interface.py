@@ -1125,12 +1125,17 @@ class Runset(Base):
                 for child_id in item.children:
                     run_settings[child_id] = RunSettings(disabled=is_disabled)
 
+        if isinstance(model.filters, dict) and expr.is_filter_v2(model.filters):
+            filter_string = expr.filters_v2_to_string(model.filters)
+        else:
+            filter_string = expr.filters_to_expr(model.filters)
+
         obj = cls(
             entity=entity,
             project=project,
             name=model.name,
             query=model.search.query if model.search else "",
-            filters=expr.filters_to_expr(model.filters),
+            filters=filter_string,
             groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
             run_settings=run_settings,

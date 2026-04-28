@@ -272,3 +272,204 @@ def test_modifying_filters_after_load_uses_new_value():
     leaves = model.filters.filters[0].filters
     assert leaves[0].value == "bob", "New filter value should take effect"
     assert leaves[0].disabled is False, "New filter should be active"
+
+
+# ===== v2 filter read/conversion tests =====
+
+class TestV2ToString:
+    """Test conversion from v2 flat filter format to display string."""
+
+    def test_simple_v2_and(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == 'Metric("State") == \'finished\' and Config("lr") == 0.01'
+
+    def test_simple_v2_or(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "OR"},
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == 'Metric("State") == \'finished\' or Config("lr") == 0.01'
+
+    def test_v2_and_then_or(self):
+        """Corresponds to: state=finished AND lr=0.01 OR lr=0.1"""
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.1, "disabled": False, "connector": "OR"},
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == (
+            'Metric("State") == \'finished\' and Config("lr") == 0.01 or Config("lr") == 0.1'
+        )
+
+    def test_v2_with_group(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {
+                    "filters": [
+                        {"op": "=", "key": {"section": "run", "name": "host"}, "value": "abc", "disabled": False},
+                        {"op": "=", "key": {"section": "run", "name": "host"}, "value": "xyz", "disabled": False, "connector": "OR"},
+                    ],
+                    "disabled": False,
+                    "connector": "AND",
+                },
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == (
+            'Metric("State") == \'finished\' and '
+            '(Metric("Hostname") == \'abc\' or Metric("Hostname") == \'xyz\')'
+        )
+
+    def test_v2_disabled_items_skipped(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "run", "name": ""}, "value": "", "disabled": True, "connector": "AND"},
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == 'Metric("State") == \'finished\''
+
+    def test_v2_empty_filters(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == ""
+
+    def test_is_filter_v2(self):
+        from wandb_workspaces.expr import is_filter_v2
+
+        assert is_filter_v2({"filterFormat": "filterV2", "filters": []})
+        assert not is_filter_v2({"op": "OR", "filters": []})
+        assert not is_filter_v2({"filterFormat": "other"})
+        assert not is_filter_v2("not a dict")
+
+    def test_v2_within_last(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"key": {"section": "run", "name": "createdAt"}, "op": "WITHINSECONDS", "value": 432000},
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == 'Metric("CreatedTimestamp") within_last 5 days'
+
+    def test_v2_in_operator(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"key": {"section": "run", "name": "tags"}, "op": "IN", "value": ["prod", "staging"]},
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == 'Metric("Tags") in [\'prod\', \'staging\']'
+
+    def test_v2_nin_operator(self):
+        from wandb_workspaces.expr import filters_v2_to_string
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"key": {"section": "run", "name": "tags"}, "op": "NIN", "value": ["debug", "test"]},
+            ],
+        }
+        result = filters_v2_to_string(v2)
+        assert result == 'Metric("Tags") not in [\'debug\', \'test\']'
+
+
+class TestV2DirectFilterRoundTrip:
+    """Test that v2 filters are stored directly in Runset.filters and round-trip correctly."""
+
+    def test_v2_filters_stored_as_dict(self):
+        """v2 filter dict should be stored directly in runset.filters."""
+        from copy import deepcopy
+
+        from wandb_workspaces.workspaces.internal import WorkspaceViewspec
+
+        original_v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished"},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "connector": "AND"},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.1, "connector": "OR"},
+            ],
+        }
+        spec_dict = {
+            "section": {
+                "panelBankConfig": {"state": 0, "settings": {}, "sections": []},
+                "panelBankSectionConfig": {"pinned": False},
+                "customRunColors": {},
+                "runSets": [{"id": "rs1", "filters": deepcopy(original_v2)}],
+            }
+        }
+
+        parsed_spec = WorkspaceViewspec.model_validate(spec_dict)
+        filters = parsed_spec.section.run_sets[0].filters
+        assert isinstance(filters, dict)
+        assert filters["filterFormat"] == "filterV2"
+        assert len(filters["filters"]) == 3
+
+        spec_out = parsed_spec.model_dump(by_alias=True, exclude_none=True)
+        assert spec_out["section"]["runSets"][0]["filters"] == original_v2
+
+    def test_legacy_filters_stored_as_model(self):
+        """Legacy (non-v2) filters should be parsed into Filters model."""
+        from wandb_workspaces.workspaces.internal import WorkspaceViewspec
+
+        spec_dict = {
+            "section": {
+                "panelBankConfig": {"state": 0, "settings": {}, "sections": []},
+                "panelBankSectionConfig": {"pinned": False},
+                "customRunColors": {},
+                "runSets": [{
+                    "id": "rs1",
+                    "filters": {
+                        "op": "OR",
+                        "filters": [{"op": "AND", "filters": [
+                            {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False}
+                        ]}]
+                    },
+                }],
+            }
+        }
+
+        parsed_spec = WorkspaceViewspec.model_validate(spec_dict)
+        filters = parsed_spec.section.run_sets[0].filters
+        assert not isinstance(filters, dict)
+        assert filters.op == "OR"
