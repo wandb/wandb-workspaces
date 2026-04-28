@@ -33,6 +33,7 @@ class ReportAPIBaseModel(BaseModel):
         validate_assignment=True,
         populate_by_name=True,
         arbitrary_types_allowed=True,
+        extra="allow",
     )
 
 
