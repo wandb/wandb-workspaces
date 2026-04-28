@@ -108,6 +108,29 @@ def _should_show(v):
     return False
 
 
+def _selection_disabled_map(selections: internal.RunsetSelections) -> Dict[str, bool]:
+    is_disabled = selections.root != 0
+    disabled = {}
+    for item in selections.tree:
+        if isinstance(item, str):
+            disabled[item] = is_disabled
+        else:
+            for child_id in item.children:
+                disabled[child_id] = is_disabled
+    return disabled
+
+
+def _current_selection_disabled_map(
+    run_settings: Dict[str, "RunSettings"],
+    original_disabled: Dict[str, bool],
+) -> Dict[str, bool]:
+    return {
+        run_id: settings.disabled
+        for run_id, settings in run_settings.items()
+        if settings.disabled or run_id in original_disabled
+    }
+
+
 @dataclass(config=dataclass_config, repr=False)
 class Base:
     def __repr__(self):
@@ -145,20 +168,30 @@ class SectionLayoutSettings(Base):
 
     columns: int = 3
     rows: int = 2
+    _flow_config_internal: Optional[internal.FlowConfig] = Field(
+        default=None, init=False, repr=False
+    )
 
     @classmethod
     def _from_model(cls, model: internal.FlowConfig):
-        return cls(
+        obj = cls(
             columns=model.columns_per_page,
             rows=model.rows_per_page,
         )
+        obj._flow_config_internal = model
+        return obj
 
     def _to_model(self):
-        return internal.FlowConfig(
-            snap_to_columns=True,
-            columns_per_page=self.columns,
-            rows_per_page=self.rows,
+        flow_config = (
+            self._flow_config_internal.model_copy(deep=True)
+            if self._flow_config_internal is not None
+            else internal.FlowConfig()
         )
+        flow_config.columns_per_page = self.columns
+        flow_config.rows_per_page = self.rows
+        if self._flow_config_internal is None:
+            flow_config.snap_to_columns = True
+        return flow_config
 
 
 @dataclass
@@ -186,29 +219,38 @@ class SectionPanelSettings(Base):
     # Smoothing settings
     smoothing_type: internal.SmoothingType = "none"
     smoothing_weight: Annotated[int, Ge(0)] = 0
+    _local_panel_settings_internal: Optional[internal.LocalPanelSettings] = Field(
+        default=None, init=False, repr=False
+    )
 
     @classmethod
     def _from_model(cls, model: internal.LocalPanelSettings):
         x_axis = expr._convert_be_to_fe_metric_name(model.x_axis)
 
-        return cls(
+        obj = cls(
             x_axis=x_axis,
             x_min=model.x_axis_min,
             x_max=model.x_axis_max,
             smoothing_type=model.smoothing_type,
             smoothing_weight=model.smoothing_weight,
         )
+        obj._local_panel_settings_internal = model
+        return obj
 
     def _to_model(self):
         x_axis = expr._convert_fe_to_be_metric_name(self.x_axis)
 
-        return internal.LocalPanelSettings(
-            x_axis=x_axis,
-            x_axis_min=self.x_min,
-            x_axis_max=self.x_max,
-            smoothing_type=self.smoothing_type,
-            smoothing_weight=self.smoothing_weight,
+        local_panel_settings = (
+            self._local_panel_settings_internal.model_copy(deep=True)
+            if self._local_panel_settings_internal is not None
+            else internal.LocalPanelSettings()
         )
+        local_panel_settings.x_axis = x_axis
+        local_panel_settings.x_axis_min = self.x_min
+        local_panel_settings.x_axis_max = self.x_max
+        local_panel_settings.smoothing_type = self.smoothing_type
+        local_panel_settings.smoothing_weight = self.smoothing_weight
+        return local_panel_settings
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -233,10 +275,13 @@ class Section(Base):
         default_factory=SectionLayoutSettings
     )
     panel_settings: SectionPanelSettings = Field(default_factory=SectionPanelSettings)
+    _section_internal: Optional[internal.PanelBankConfigSectionsItem] = Field(
+        default=None, init=False, repr=False
+    )
 
     @classmethod
     def _from_model(cls, model: internal.PanelBankConfigSectionsItem):
-        return cls(
+        obj = cls(
             name=model.name,
             panels=[_lookup_panel(p) for p in model.panels],
             is_open=model.is_open,
@@ -244,6 +289,8 @@ class Section(Base):
             layout_settings=SectionLayoutSettings._from_model(model.flow_config),
             panel_settings=SectionPanelSettings._from_model(model.local_panel_settings),
         )
+        obj._section_internal = model
+        return obj
 
     def _to_model(self):
         panel_models = [p._to_model() for p in self.panels]
@@ -252,14 +299,18 @@ class Section(Base):
 
         # Add warning that panel layout only works if they set section settings layout = "custom"
 
-        return internal.PanelBankConfigSectionsItem(
-            name=self.name,
-            panels=panel_models,
-            is_open=self.is_open,
-            pinned=self.pinned,
-            flow_config=flow_config,
-            local_panel_settings=local_panel_settings,
+        section = (
+            self._section_internal.model_copy(deep=True)
+            if self._section_internal is not None
+            else internal.PanelBankConfigSectionsItem()
         )
+        section.name = self.name
+        section.panels = panel_models
+        section.is_open = self.is_open
+        section.pinned = self.pinned
+        section.flow_config = flow_config
+        section.local_panel_settings = local_panel_settings
+        return section
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -540,6 +591,9 @@ class Workspace(Base):
     _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
     _stashed_filter_string: Optional[str] = Field(default=None, init=False, repr=False)
 
+    _internal_view: Optional[internal.View] = Field(None, init=False, repr=False)
+    "The original loaded view, used to preserve frontend-owned viewspec fields."
+
     @property
     def auto_generate_panels(self) -> bool:
         return self._auto_generate_panels
@@ -568,13 +622,15 @@ class Workspace(Base):
         # construct configs from disjoint parts of settings
         run_settings = {}
 
-        disabled_runs = model.spec.section.run_sets[0].selections.tree
+        selections = model.spec.section.run_sets[0].selections
+        disabled_runs = selections.tree
+        is_disabled = selections.root != 0
         for item in disabled_runs:
             if isinstance(item, str):
-                run_settings[item] = RunSettings(disabled=True)
+                run_settings[item] = RunSettings(disabled=is_disabled)
             else:
                 for child_id in item.children:
-                    run_settings[child_id] = RunSettings(disabled=True)
+                    run_settings[child_id] = RunSettings(disabled=is_disabled)
 
         custom_run_colors = model.spec.section.custom_run_colors
         for k, v in custom_run_colors.items():
@@ -633,7 +689,12 @@ class Workspace(Base):
             point_visualization_method=point_viz_method,
             sort_panels_alphabetically=panel_bank_settings.sort_alphabetically,
             group_by_prefix=group_by_prefix,
+            panel_search_query=panel_bank_settings.search_query or "",
+            auto_expand_panel_search_results=(
+                panel_bank_settings.auto_expand_search_results or False
+            ),
         )
+        workspace_settings._panel_search_history = panel_bank_settings.search_history
 
         # Extract column settings from run_feed
         run_feed = model.spec.section.run_sets[0].run_feed
@@ -656,6 +717,9 @@ class Workspace(Base):
             filter_string = expr.filters_v2_to_string(stashed_v2)
 
         # then construct the Workspace object
+        should_auto_generate_panels = (
+            model.spec.section.settings.should_auto_generate_panels is True
+        )
         obj = cls(
             entity=model.entity,
             project=model.project,
@@ -681,12 +745,18 @@ class Workspace(Base):
                     for rid in (model.spec.section.run_sets[0].pinned_run_ids or [])
                 ],
             ),
+            auto_generate_panels=should_auto_generate_panels,
         )
         obj._internal_name = model.name
         obj._internal_id = model.id
         obj._internal_runset_id = runset_model.id
         obj._stashed_filters_v2 = stashed_v2
         obj._stashed_filter_string = filter_string
+        obj.runset_settings._visible_columns = [
+            col for col, is_visible in run_feed.column_visible.items() if is_visible
+        ]
+        obj.runset_settings._column_order = list(run_feed.column_order)
+        obj._internal_view = model
         return obj
 
     def _to_model(self) -> internal.View:
@@ -701,7 +771,7 @@ class Workspace(Base):
             )
 
         x_axis = expr._convert_fe_to_be_metric_name(self.settings.x_axis)
-        point_viz_method = (
+        point_viz_method: Literal["bucketing-gorilla", "sampling"] = (
             "bucketing-gorilla"
             if self.settings.point_visualization_method == "bucketing"
             else "sampling"
@@ -710,20 +780,6 @@ class Workspace(Base):
             None if not self.settings.remove_legends_from_panels else True
         )
         color_run_names = None if self.settings.tooltip_color_run_names else False
-        internal_settings = internal.ViewspecSectionSettings(
-            x_axis=x_axis,
-            x_axis_min=self.settings.x_min,
-            x_axis_max=self.settings.x_max,
-            smoothing_type=self.settings.smoothing_type,
-            smoothing_weight=self.settings.smoothing_weight,
-            ignore_outliers=self.settings.ignore_outliers,
-            suppress_legends=suppress_legends,
-            tooltip_number_of_runs=self.settings.tooltip_number_of_runs,
-            color_run_names=color_run_names,
-            max_runs=self.settings.max_runs,
-            point_visualization_method=point_viz_method,
-            should_auto_generate_panels=self.auto_generate_panels,
-        )
 
         # Convert list format (SDK) to dict format (backend) for columns
         # column_visible and column_pinned are the same (pinned columns are the only visible ones. We pass this for consistency but other columns will be visibile in the FE)
@@ -747,77 +803,162 @@ class Workspace(Base):
                 expr.expr_to_filters(self.runset_settings.filters)  # type: ignore[arg-type] # validator ensures this is always str
             )
 
-        return internal.View(
-            entity=self.entity,
-            project=self.project,
-            display_name=self.name,
-            name=self._internal_name,
-            id=self._internal_id,
-            spec=internal.WorkspaceViewspec(
-                section=internal.ViewspecSection(
-                    panel_bank_config=internal.PanelBankConfig(
-                        state=1,  # TODO: What is this?
-                        settings=internal.PanelBankConfigSettings(
-                            sort_alphabetically=self.settings.sort_panels_alphabetically,
-                            auto_organize_prefix=auto_organize_prefix,
+        if self._internal_view is not None:
+            view = self._internal_view.model_copy(deep=True)
+            view.entity = self.entity
+            view.project = self.project
+            view.display_name = self.name
+            view.name = self._internal_name
+            view.id = self._internal_id
+            section = view.spec.section
+        else:
+            view = internal.View(
+                entity=self.entity,
+                project=self.project,
+                display_name=self.name,
+                name=self._internal_name,
+                id=self._internal_id,
+                spec=internal.WorkspaceViewspec(
+                    section=internal.ViewspecSection(
+                        panel_bank_config=internal.PanelBankConfig(state=1),
+                        panel_bank_section_config=internal.PanelBankSectionConfig(
+                            pinned=False
                         ),
-                        sections=sections,
+                        custom_run_colors={},
                     ),
-                    panel_bank_section_config=internal.PanelBankSectionConfig(
-                        pinned=False
-                    ),
-                    settings=internal_settings,
-                    run_sets=[
-                        internal.Runset(
-                            id=self._internal_runset_id,
-                            run_feed=internal.RunFeed(
-                                column_pinned=column_pinned_dict,
-                                column_visible=column_visible_dict,
-                                column_order=column_order,
-                                column_widths={},  # No column widths support
-                            ),
-                            search=internal.RunsetSearch(
-                                query=self.runset_settings.query,
-                                is_regex=is_regex,
-                            ),
-                            filters=filters_value,
-                            grouping=[g.to_key() for g in self.runset_settings.groupby],
-                            sort=internal.Sort(
-                                keys=[o.to_key() for o in self.runset_settings.order]
-                            ),
-                            selections=internal.RunsetSelections(
-                                tree=[
-                                    id
-                                    for id, config in self.runset_settings.run_settings.items()
-                                    if config.disabled
-                                ],
-                            ),
-                            baseline_run_id=(
-                                _encode_run_gid(
-                                    self.runset_settings.baseline_run,
-                                    self.project,
-                                    self.entity,
-                                )
-                                if self.runset_settings.baseline_run
-                                else None
-                            ),
-                            pinned_run_ids=(
-                                [
-                                    _encode_run_gid(s, self.project, self.entity)
-                                    for s in self.runset_settings.pinned_runs
-                                ]
-                                if self.runset_settings.pinned_runs
-                                else None
-                            ),
-                        ),
-                    ],
-                    custom_run_colors={
-                        id: config.color
-                        for id, config in self.runset_settings.run_settings.items()
-                    },
                 ),
-            ),
+            )
+            section = view.spec.section
+
+        panel_bank_config = section.panel_bank_config.model_copy(deep=True)
+        panel_bank_settings = panel_bank_config.settings.model_copy(deep=True)
+        panel_bank_settings.sort_alphabetically = (
+            self.settings.sort_panels_alphabetically
         )
+        panel_bank_settings.auto_organize_prefix = auto_organize_prefix
+        if (
+            self.settings.panel_search_query
+            or panel_bank_settings.search_query is not None
+        ):
+            panel_bank_settings.search_query = self.settings.panel_search_query
+        if (
+            self.settings.auto_expand_panel_search_results
+            or panel_bank_settings.auto_expand_search_results is not None
+        ):
+            panel_bank_settings.auto_expand_search_results = (
+                self.settings.auto_expand_panel_search_results
+            )
+        if self.settings._panel_search_history is not None:
+            panel_bank_settings.search_history = self.settings._panel_search_history
+        panel_bank_config.settings = panel_bank_settings
+        panel_bank_config.sections = sections
+        section.panel_bank_config = panel_bank_config
+
+        internal_settings = section.settings.model_copy(deep=True)
+        internal_settings.x_axis = x_axis
+        internal_settings.x_axis_min = self.settings.x_min
+        internal_settings.x_axis_max = self.settings.x_max
+        internal_settings.smoothing_type = self.settings.smoothing_type
+        internal_settings.smoothing_weight = self.settings.smoothing_weight
+        internal_settings.ignore_outliers = self.settings.ignore_outliers
+        internal_settings.suppress_legends = suppress_legends
+        internal_settings.tooltip_number_of_runs = self.settings.tooltip_number_of_runs
+        internal_settings.color_run_names = color_run_names
+        internal_settings.max_runs = self.settings.max_runs
+        internal_settings.point_visualization_method = point_viz_method
+        if (
+            self._internal_view is None
+            or self.auto_generate_panels
+            or internal_settings.should_auto_generate_panels in (False, None)
+        ):
+            internal_settings.should_auto_generate_panels = self.auto_generate_panels
+        section.settings = internal_settings
+
+        run_sets = list(section.run_sets)
+        runset = run_sets[0].model_copy(deep=True) if run_sets else internal.Runset()
+        runset.id = self._internal_runset_id
+
+        run_feed = runset.run_feed.model_copy(deep=True)
+        original_pinned_columns = [
+            col for col, is_pinned in run_feed.column_pinned.items() if is_pinned
+        ]
+        pinned_columns_changed = (
+            self._internal_view is None
+            or self.runset_settings.pinned_columns != original_pinned_columns
+        )
+        if pinned_columns_changed:
+            run_feed.column_pinned = column_pinned_dict
+            run_feed.column_visible = column_visible_dict
+            run_feed.column_order = column_order
+            if self._internal_view is None:
+                run_feed.column_widths = {}
+        runset.run_feed = run_feed
+
+        search = runset.search.model_copy(deep=True)
+        search.query = self.runset_settings.query
+        search.is_regex = is_regex
+        runset.search = search
+        runset.filters = filters_value
+        runset.grouping = [g.to_key() for g in self.runset_settings.groupby]
+        runset.sort = internal.Sort(
+            keys=[o.to_key() for o in self.runset_settings.order]
+        )
+        runset.baseline_run_id = (
+            _encode_run_gid(
+                self.runset_settings.baseline_run,
+                self.project,
+                self.entity,
+            )
+            if self.runset_settings.baseline_run
+            else None
+        )
+        runset.pinned_run_ids = (
+            [
+                _encode_run_gid(s, self.project, self.entity)
+                for s in self.runset_settings.pinned_runs
+            ]
+            if self.runset_settings.pinned_runs
+            else None
+        )
+
+        selections = runset.selections.model_copy(deep=True)
+        original_disabled = _selection_disabled_map(runset.selections)
+        current_disabled = _current_selection_disabled_map(
+            self.runset_settings.run_settings, original_disabled
+        )
+        if self._internal_view is None or current_disabled != original_disabled:
+            if selections.root == 0:
+                selections.tree = [
+                    id
+                    for id, config in self.runset_settings.run_settings.items()
+                    if not config.disabled
+                ]
+            else:
+                selections.tree = [
+                    id
+                    for id, config in self.runset_settings.run_settings.items()
+                    if config.disabled
+                ]
+        runset.selections = selections
+
+        if run_sets:
+            run_sets[0] = runset
+        else:
+            run_sets = [runset]
+        section.run_sets = run_sets
+
+        custom_run_colors = dict(section.custom_run_colors)
+        custom_run_colors.update(
+            {
+                id: config.color
+                for id, config in self.runset_settings.run_settings.items()
+                if config.color
+            }
+        )
+        section.custom_run_colors = custom_run_colors
+
+        view.spec.section = section
+        return view
 
     @classmethod
     def from_url(cls, url: str):
