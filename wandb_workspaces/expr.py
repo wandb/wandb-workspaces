@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
 from typing import List as LList
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 from wandb_workspaces.utils.invertable_dict import InvertableDict
@@ -50,6 +50,13 @@ class Filters(ReportAPIBaseModel):
     disabled: Optional[bool] = None
     current: Optional["Filters"] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_v2_format(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("filterFormat") == "filterV2":
+            raise ValueError("v2 filter dicts are stored as raw dicts, not Filters trees")
+        return data
+
 
 class SortKeyKey(ReportAPIBaseModel):
     section: str = "run"
@@ -70,6 +77,10 @@ __all__ = [
     "Ordering",
     # Filter expression type (needed for type hints)
     "FilterExpr",
+    # Combinators for OR / nested filter groups
+    "Or",
+    "And",
+    "Group",
 ]
 
 Expression = Dict[str, Any]
@@ -349,7 +360,7 @@ def expr_to_filters(expr: str) -> Filters:
             or ``"Metric('State') == 'finished' or Metric('CreatedTimestamp') within_last 5 days"``
 
     Returns:
-        An internal Filters tree structure
+        An internal Filters tree structure.
     """
     if not expr:
         return Filters(op="AND", filters=[])
@@ -361,28 +372,12 @@ def expr_to_filters(expr: str) -> Filters:
     # Preprocess: Replace single '=' with '==' for Python AST parsing
     # But avoid replacing '==', '!=', '<=', '>='
     expr = _preprocess_equality_operators(expr)
-
+    
     # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
     expr = _preprocess_comparison_operators(expr)
 
     parsed_expr = ast.parse(expr, mode="eval")
     return _parse_node(parsed_expr.body)
-
-
-
-def wrap_as_legacy_tree(tree: Filters) -> Filters:
-    """Wrap a raw parse tree into the canonical OR → AND → leaves structure.
-
-    The legacy frontend filter reader (legacyFiltersFromJSON) requires filters
-    in the shape ``OR([AND([...leaves...])])``.  This helper normalises any
-    ``Filters`` tree produced by ``expr_to_filters`` into that shape so it can
-    be safely written to the backend for non-v2 workspaces and reports.
-    """
-    if tree.op == "AND" and tree.filters:
-        children = tree.filters
-    else:
-        children = [tree]
-    return Filters(op="OR", filters=[Filters(op="AND", filters=children)])
 
 
 def _parse_node(node) -> Filters:
@@ -630,28 +625,15 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
 
     Shared by both the legacy tree-to-string path and the v2-to-string path.
     """
-    # Convert backend metric name to frontend name
     frontend_name = _convert_be_to_fe_metric_name(name)
 
-    # Special handling for WITHINSECONDS operator
     if op == "WITHINSECONDS":
-        # Prepend the function name if the section matches
-        if section in section_map_reversed:
-            function_name = section_map_reversed[section]
-            metric_expr = f'{function_name}("{frontend_name}")'
-        else:
-            metric_expr = frontend_name
-
-        # Convert seconds back to human-readable format
+        func_name = section_map_reversed.get(section, "Metric")
         amount, unit = _convert_seconds_to_time(value)
-        # Format amount as int if it's a whole number, otherwise as float
         if isinstance(amount, float) and amount.is_integer():
             amount = int(amount)
+        return f'{func_name}("{frontend_name}") within_last {amount} {unit}'
 
-        # Use operator syntax for output (more readable)
-        return f"{metric_expr} within_last {amount} {unit}"
-
-    # Prepend the function name if the section matches
     if section in section_map_reversed:
         func_name = section_map_reversed[section]
         key_str = f'{func_name}("{frontend_name}")'
@@ -663,14 +645,10 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
     if value is None:
         val_str = "None"
     elif isinstance(value, list):
-        # Properly quote string elements in lists to avoid parse errors
-        formatted_elements = []
+        parts = []
         for v in value:
-            if isinstance(v, str):
-                formatted_elements.append(f"'{v}'")
-            else:
-                formatted_elements.append(str(v))
-        val_str = f"[{', '.join(formatted_elements)}]"
+            parts.append(f"'{v}'" if isinstance(v, str) else str(v))
+        val_str = f"[{', '.join(parts)}]"
     elif isinstance(value, str):
         val_str = f"'{value}'"
     else:
@@ -705,7 +683,6 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
             return f"({expr})" if not is_root and sub_expressions else expr
         else:
             if not filter.key or not filter.key.name:
-                # Skip filters with empty key names
                 return ""
             return _format_filter_leaf(
                 filter.key.section, filter.key.name, filter.op, filter.value
@@ -713,6 +690,10 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
 
     return _convert_filter(filter_obj, is_root)
 
+
+# ---------------------------------------------------------------------------
+# FilterV2 (flat format) → Filters tree conversion
+# ---------------------------------------------------------------------------
 
 FILTER_FORMAT_V2 = "filterV2"
 
@@ -932,8 +913,6 @@ def filters_tree_to_v2(tree: Filters) -> dict:
         items = items[0]["filters"]
     items = _flatten_nested_groups(items)
     return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
-
-
 
 
 def _key_to_server_path(key: Key):
@@ -1305,6 +1284,107 @@ class FilterExpr:
         )
 
 
+FilterItem = Union["FilterExpr", "And", "Or", "Group"]
+
+
+@dataclass(frozen=True)
+class And:
+    """Combine multiple filter items with AND logic.
+
+    Example:
+        >>> And(ws.Config("lr") == 0.01, ws.Metric("State") == "finished")
+    """
+
+    items: tuple
+
+    def __init__(self, *items: FilterItem):
+        object.__setattr__(self, "items", items)
+
+    def __repr__(self) -> str:
+        return f"And({', '.join(repr(i) for i in self.items)})"
+
+    def to_model(self) -> Filters:
+        """Convert to an AND Filters node."""
+        children = []
+        for item in self.items:
+            children.append(item.to_model())
+        return Filters(op="AND", filters=children)
+
+
+@dataclass(frozen=True)
+class Or:
+    """Combine multiple filter items with OR logic.
+
+    Each argument becomes a separate OR branch.  Arguments that are plain
+    ``FilterExpr`` or ``And`` groups are treated as individual AND buckets.
+
+    Example:
+        >>> Or(
+        ...     And(ws.Config("lr") == 0.01, ws.Metric("State") == "finished"),
+        ...     ws.Config("lr") == 0.1,
+        ... )
+    """
+
+    items: tuple
+
+    def __init__(self, *items: FilterItem):
+        object.__setattr__(self, "items", items)
+
+    def __repr__(self) -> str:
+        return f"Or({', '.join(repr(i) for i in self.items)})"
+
+    def to_model(self) -> Filters:
+        """Convert to the canonical OR -> AND -> leaves tree."""
+        buckets = []
+        for item in self.items:
+            node = item.to_model()
+            if node.op == "AND" and node.filters is not None:
+                buckets.append(node)
+            elif node.op == "OR" and node.filters is not None:
+                buckets.extend(node.filters)
+            else:
+                buckets.append(Filters(op="AND", filters=[node]))
+        return Filters(op="OR", filters=buckets)
+
+
+@dataclass(frozen=True)
+class Group:
+    """A parenthesised group of filters, preserving precedence.
+
+    Example:
+        >>> Or(
+        ...     Group(Or(ws.Config("lr") == 0.01, ws.Config("lr") == 0.1)),
+        ...     ws.Metric("State") == "finished",
+        ... )
+    """
+
+    inner: FilterItem
+
+    def __repr__(self) -> str:
+        return f"Group({self.inner!r})"
+
+    def to_model(self) -> Filters:
+        """Delegate to inner item's model."""
+        return self.inner.to_model()
+
+
+def _filter_items_to_filters_tree(items) -> Filters:
+    """Convert a list of FilterExpr / And / Or / Group items to a Filters tree.
+
+    Items in the list are AND'd together.  For OR logic, wrap with ``Or()``.
+    """
+    if not items:
+        return Filters(op="AND", filters=[])
+
+    if len(items) == 1:
+        return items[0].to_model()
+
+    and_children = []
+    for item in items:
+        and_children.append(item.to_model())
+    return Filters(op="AND", filters=and_children)
+
+
 def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     def parse_filter(filter: Filters) -> Optional[FilterExpr]:
         if filter.key is None:
@@ -1326,7 +1406,16 @@ def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     return parse_expression(tree)
 
 
-def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
+def filter_expr_to_filters_tree(filters) -> Filters:
+    """Convert a list of filter items to a Filters tree.
+
+    Accepts ``List[FilterExpr]`` (legacy AND-only) as well as lists containing
+    ``Or``, ``And``, and ``Group`` combinators.
+    """
+    has_combinators = any(isinstance(f, (Or, And, Group)) for f in filters)
+    if has_combinators:
+        return _filter_items_to_filters_tree(filters)
+
     def parse_key(metric: BaseMetric) -> Key:
         section = metric.section
         name = _convert_fe_to_be_metric_name(metric.name)
@@ -1425,6 +1514,9 @@ def normalize_filters_to_string(instance):
         filter_string = filterexpr_list_to_string(instance.filters)
         # Update the filters field
         object.__setattr__(instance, "filters", filter_string)
+    elif isinstance(instance.filters, (Or, And, Group)):
+        tree = filter_expr_to_filters_tree([instance.filters])
+        object.__setattr__(instance, "filters", filters_to_expr(tree))
     return instance
 
 
