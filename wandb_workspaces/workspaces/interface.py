@@ -26,6 +26,7 @@ workspace.save()
 ```
 """
 
+import copy
 import os
 from typing import Dict, Iterable, Literal, Optional, Union
 from typing import List as LList
@@ -452,6 +453,9 @@ class Workspace(Base):
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
 
+    _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
+    _stashed_filter_string: Optional[str] = Field(default=None, init=False, repr=False)
+
     @property
     def auto_generate_panels(self) -> bool:
         return self._auto_generate_panels
@@ -556,8 +560,10 @@ class Workspace(Base):
 
         runset_model = model.spec.section.run_sets[0]
         if isinstance(runset_model.filters, dict) and expr.is_filter_v2(runset_model.filters):
+            stashed_v2 = copy.deepcopy(runset_model.filters)
             filter_string = expr.filters_v2_to_string(runset_model.filters)
         else:
+            stashed_v2 = expr.filters_tree_to_v2(runset_model.filters)
             filter_string = expr.filters_to_expr(runset_model.filters)
 
         # then construct the Workspace object
@@ -587,6 +593,8 @@ class Workspace(Base):
         obj._internal_name = model.name
         obj._internal_id = model.id
         obj._internal_runset_id = runset_model.id
+        obj._stashed_filters_v2 = stashed_v2
+        obj._stashed_filter_string = filter_string
         return obj
 
     def _to_model(self) -> internal.View:
@@ -637,9 +645,13 @@ class Workspace(Base):
             else list(self.runset_settings.pinned_columns)
         )
 
-        filters_value = expr.filters_tree_to_v2(
-            expr.expr_to_filters(self.runset_settings.filters)  # type: ignore[arg-type] # validator ensures this is always str
-        )
+        if (self._stashed_filters_v2 is not None
+                and self.runset_settings.filters == self._stashed_filter_string):
+            filters_value = self._stashed_filters_v2
+        else:
+            filters_value = expr.filters_tree_to_v2(
+                expr.expr_to_filters(self.runset_settings.filters)  # type: ignore[arg-type] # validator ensures this is always str
+            )
 
         return internal.View(
             entity=self.entity,

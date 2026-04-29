@@ -27,6 +27,7 @@ report.save()
 """
 
 import base64
+import copy
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
@@ -1008,9 +1009,8 @@ class Runset(Base):
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
     _selections_root: int = Field(default=1, init=False, repr=False)
 
-    _filters_internal: Optional["expr.Filters"] = Field(
-        default=None, init=False, repr=False
-    )
+    _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
+    _stashed_filter_string: Optional[str] = Field(default=None, init=False, repr=False)
 
     @model_validator(mode="after")
     def merge_custom_run_colors_into_run_settings(self):
@@ -1078,9 +1078,13 @@ class Runset(Base):
                 if settings.disabled
             ]
 
-        filters_value = expr.filters_tree_to_v2(
-            expr.expr_to_filters(self.filters)  # type: ignore[arg-type] # validator ensures this is always str
-        )
+        if (self._stashed_filters_v2 is not None
+                and self.filters == self._stashed_filter_string):
+            filters_value = self._stashed_filters_v2
+        else:
+            filters_value = expr.filters_tree_to_v2(
+                expr.expr_to_filters(self.filters)  # type: ignore[arg-type] # validator ensures this is always str
+            )
 
         obj = internal.Runset(
             project=project,
@@ -1121,8 +1125,10 @@ class Runset(Base):
                     run_settings[child_id] = RunSettings(disabled=is_disabled)
 
         if isinstance(model.filters, dict) and expr.is_filter_v2(model.filters):
+            stashed_v2 = copy.deepcopy(model.filters)
             filter_string = expr.filters_v2_to_string(model.filters)
         else:
+            stashed_v2 = expr.filters_tree_to_v2(model.filters)
             filter_string = expr.filters_to_expr(model.filters)
 
         obj = cls(
@@ -1137,6 +1143,8 @@ class Runset(Base):
         )
         obj._id = model.id
         obj._selections_root = model.selections.root
+        obj._stashed_filters_v2 = stashed_v2
+        obj._stashed_filter_string = filter_string
         return obj
 
 

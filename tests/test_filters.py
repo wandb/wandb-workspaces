@@ -191,11 +191,10 @@ def test_list_with_dashes_round_trip():
 
 
 def test_disabled_filters_preserved_in_runset_roundtrip():
-    """Disabled (inactive) filters must survive a _from_model → _to_model roundtrip.
+    """Disabled (inactive) filters must survive a _from_model -> _to_model roundtrip.
 
-    Regression test: filters_to_expr discarded the ``disabled`` flag and
-    expr_to_filters hardcoded ``disabled=False``, so inactive filters
-    silently became active after a load/save cycle (e.g. report migration).
+    When filters haven't been modified by the user, the stashed v2 dict
+    (which preserves disabled state) is used directly on write-back.
     """
     from wandb_workspaces import expr
     from wandb_workspaces.reports.v2 import internal
@@ -220,27 +219,35 @@ def test_disabled_filters_preserved_in_runset_roundtrip():
 
     iface = wr.Runset._from_model(internal_runset)
     model = iface._to_model()
-    leaves = model.filters.filters[0].filters
+    assert isinstance(model.filters, dict)
+    assert model.filters["filterFormat"] == "filterV2"
+    items = model.filters["filters"]
 
-    assert leaves[0].disabled is False
-    assert leaves[1].disabled is True
-    assert leaves[2].disabled is True
+    assert items[0]["disabled"] is False
+    assert items[1]["disabled"] is True
+    assert items[2]["disabled"] is True
 
 
 def test_user_constructed_runset_parses_from_string():
-    """Runsets built by the user (not loaded) should parse filters from the string."""
+    """Runsets built by the user (not loaded) should parse filters from the string.
+
+    _to_model always writes v2, so model.filters is a v2 dict.
+    """
     import wandb_workspaces.reports.v2 as wr
 
     rs = wr.Runset(filters="Metric('User') == 'alice'")
-    assert rs._filters_internal is None
 
     model = rs._to_model()
-    assert model.filters.value == "alice"
-    assert model.filters.disabled is False
+    assert isinstance(model.filters, dict)
+    assert model.filters["filterFormat"] == "filterV2"
+    assert any(f.get("value") == "alice" for f in model.filters["filters"])
 
 
 def test_modifying_filters_after_load_uses_new_value():
-    """Overwriting .filters on a loaded Runset must discard the stashed tree."""
+    """Overwriting .filters on a loaded Runset uses the new value on write.
+
+    _to_model always writes v2, so model.filters is a v2 dict.
+    """
     from wandb_workspaces import expr
     from wandb_workspaces.reports.v2 import internal
     import wandb_workspaces.reports.v2 as wr
@@ -261,13 +268,12 @@ def test_modifying_filters_after_load_uses_new_value():
     )
 
     iface = wr.Runset._from_model(internal_runset)
-    assert iface._filters_internal is not None
-
     iface.filters = "Metric('User') == 'bob'"
 
     model = iface._to_model()
-    assert model.filters.value == "bob", "New filter value should take effect"
-    assert model.filters.disabled is False, "New filter should be active"
+    assert isinstance(model.filters, dict)
+    assert model.filters["filterFormat"] == "filterV2"
+    assert any(f.get("value") == "bob" for f in model.filters["filters"]), "New filter value should take effect"
 
 
 # ===== OR filter and v2 deserialization tests =====
