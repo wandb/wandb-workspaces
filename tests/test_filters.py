@@ -988,7 +988,12 @@ class TestReportWriteBack:
         assert any(f.get("value") == 0.01 for f in filters_out["filters"])
 
     def test_modified_v2_with_group(self):
-        """Modified v2 filters with a group produce a nested v2 group."""
+        """Modified v2 filters with a group produce a nested v2 group.
+
+        Uses ``(A or B) and C`` because OR inside AND reverses natural
+        precedence and requires a v2 group.  ``A or (B and C)`` would NOT
+        produce a group since AND already binds tighter than OR.
+        """
         v2 = {
             "filterFormat": "filterV2",
             "filters": [
@@ -997,8 +1002,8 @@ class TestReportWriteBack:
         }
         rs = self._make_report_runset_from_v2(v2)
         rs.filters = (
-            'Metric("Name") == "willow"'
-            ' or (Metric("Name") == "folklore" and Metric("State") == "finished")'
+            '(Metric("Name") == "willow" or Metric("Name") == "folklore")'
+            ' and Metric("State") == "finished"'
         )
         filters_out = self._compute_filters(rs)
         assert isinstance(filters_out, dict)
