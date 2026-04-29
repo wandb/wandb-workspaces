@@ -989,7 +989,7 @@ class Runset(Base):
     project: str = ""
     name: str = "Run set"
     query: str = ""
-    filters: Union[str, LList["expr.FilterExpr"]] = ""
+    filters: Union[str, LList["expr.FilterExpr"], "expr.Or", "expr.And", "expr.Group"] = ""
     groupby: LList[str] = Field(default_factory=list)
     order: LList[OrderBy] = Field(
         default_factory=lambda: [OrderBy("CreatedTimestamp", ascending=False)]
@@ -1024,16 +1024,8 @@ class Runset(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string expression for internal processing."""
-        # Inline the normalization logic to avoid circular import with expr module
-        if isinstance(self.filters, list):
-            # Convert FilterExpr list to internal Filters tree
-            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
-            # Convert Filters tree to string expression
-            filter_string = expr.filters_to_expr(filters_tree)
-            # Update the filters field
-            object.__setattr__(self, "filters", filter_string)
-        return self
+        """Convert FilterExpr list or Or/And/Group objects to string expression."""
+        return expr.normalize_filters_to_string(self)
 
     def _to_model(self):
         project = None
@@ -1075,23 +1067,15 @@ class Runset(Base):
                 if settings.disabled
             ]
 
-        # Use the stashed Filters tree when the string hasn't been changed
-        # since loading.  This preserves per-filter metadata (e.g. disabled
-        # state) that the lossy string representation cannot express.
-        filters_unchanged = (
-            self._filters_internal is not None
-            and self.filters == expr.filters_to_expr(self._filters_internal)
+        filters_value = expr.filters_tree_to_v2(
+            expr.expr_to_filters(self.filters)  # type: ignore[arg-type]
         )
-        if filters_unchanged:
-            filters = self._filters_internal
-        else:
-            filters = expr.expr_to_filters(self.filters)
 
         obj = internal.Runset(
             project=project,
             name=self.name,
             search=internal.RunsetSearch(query=self.query),
-            filters=filters,
+            filters=filters_value,
             grouping=[expr.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
             selections=internal.RunsetSelections(
@@ -1125,19 +1109,23 @@ class Runset(Base):
                 for child_id in item.children:
                     run_settings[child_id] = RunSettings(disabled=is_disabled)
 
+        if isinstance(model.filters, dict) and expr.is_filter_v2(model.filters):
+            filter_string = expr.filters_v2_to_string(model.filters)
+        else:
+            filter_string = expr.filters_to_expr(model.filters)
+
         obj = cls(
             entity=entity,
             project=project,
             name=model.name,
             query=model.search.query if model.search else "",
-            filters=expr.filters_to_expr(model.filters),
+            filters=filter_string,
             groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
             run_settings=run_settings,
         )
         obj._id = model.id
         obj._selections_root = model.selections.root
-        obj._filters_internal = model.filters
         return obj
 
 
