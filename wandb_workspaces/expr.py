@@ -722,10 +722,8 @@ def _format_v2_leaf(item: dict) -> Optional[str]:
 
     Returns:
         A formatted string like ``Config("lr") == 0.01``, or None if the
-        item is disabled or has no valid key.
+        item has no valid key.
     """
-    if item.get("disabled", False):
-        return None
     key = item.get("key")
     if not key or not key.get("name"):
         return None
@@ -742,12 +740,10 @@ def _v2_items_to_string(items: list) -> str:
     """Walk a flat v2 filter list and emit a display string.
 
     Handles connectors (AND/OR), nested groups (parentheses), and skips
-    disabled or empty items.
+    empty items. Disabled items are included to match legacy behavior.
     """
     parts: List[str] = []
     for item in items:
-        if item.get("disabled", False):
-            continue
 
         connector = item.get("connector")
 
