@@ -1068,7 +1068,7 @@ class Runset(Base):
             ]
 
         filters_value = expr.filters_tree_to_v2(
-            expr.expr_to_filters(self.filters)  # type: ignore[arg-type]
+            expr.expr_to_filters(self.filters)  # type: ignore[arg-type] # validator ensures this is always str
         )
 
         obj = internal.Runset(
