@@ -615,12 +615,11 @@ def _handle_logical_op(node) -> Filters:
     return Filters(op=op, filters=filters)
 
 
-def filters_to_expr(filter_obj: Any, is_root=True) -> str:
+def filters_to_expr(filter_obj: Any) -> str:
     """Convert an internal Filters tree back to a string expression.
 
     Args:
         filter_obj: An internal Filters tree structure
-        is_root: Whether this is the root of the tree (used internally)
 
     Returns:
         A Python-like filter expression string
@@ -639,10 +638,10 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
         "OR": "or",
     }
 
-    def _convert_filter(filter: Any, is_root: bool) -> str:
+    def _convert_filter(filter: Any) -> str:
         if hasattr(filter, "filters") and filter.filters is not None:
             sub_expressions = [
-                _convert_filter(f, False)
+                _convert_filter(f)
                 for f in filter.filters
                 if f.filters is not None or (f.key and f.key.name)
             ]
@@ -650,8 +649,7 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
                 return ""
 
             joint = " and " if filter.op == "AND" else " or "
-            expr = joint.join(sub_expressions)
-            return f"({expr})" if not is_root and sub_expressions else expr
+            return joint.join(sub_expressions)
         else:
             if not filter.key or not filter.key.name:
                 # Skip filters with empty key names
@@ -711,7 +709,7 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
 
             return f"{key_name} {op_map[filter.op]} {value}"
 
-    return _convert_filter(filter_obj, is_root)
+    return _convert_filter(filter_obj)
 
 
 def _key_to_server_path(key: Key):
