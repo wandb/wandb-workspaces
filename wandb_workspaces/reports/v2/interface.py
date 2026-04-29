@@ -1024,8 +1024,19 @@ class Runset(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list or Or/And/Group objects to string expression."""
-        return expr.normalize_filters_to_string(self)
+        """Convert FilterExpr list to string expression for internal processing."""
+        # Inline the normalization logic to avoid circular import with expr module
+        if isinstance(self.filters, list):
+            # Convert FilterExpr list to internal Filters tree
+            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
+            # Convert Filters tree to string expression
+            filter_string = expr.filters_to_expr(filters_tree)
+            # Update the filters field
+            object.__setattr__(self, "filters", filter_string)
+        elif isinstance(self.filters, (expr.Or, expr.And, expr.Group)):
+            tree = expr.filter_expr_to_filters_tree([self.filters])
+            object.__setattr__(self, "filters", expr.filters_to_expr(tree))
+        return self
 
     def _to_model(self):
         project = None

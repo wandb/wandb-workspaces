@@ -50,13 +50,6 @@ class Filters(ReportAPIBaseModel):
     disabled: Optional[bool] = None
     current: Optional["Filters"] = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_v2_format(cls, data: Any) -> Any:
-        if isinstance(data, dict) and data.get("filterFormat") == "filterV2":
-            raise ValueError("v2 filter dicts are stored as raw dicts, not Filters trees")
-        return data
-
 
 class SortKeyKey(ReportAPIBaseModel):
     section: str = "run"
@@ -360,7 +353,7 @@ def expr_to_filters(expr: str) -> Filters:
             or ``"Metric('State') == 'finished' or Metric('CreatedTimestamp') within_last 5 days"``
 
     Returns:
-        An internal Filters tree structure.
+        An internal Filters tree structure
     """
     if not expr:
         return Filters(op="AND", filters=[])
@@ -372,7 +365,7 @@ def expr_to_filters(expr: str) -> Filters:
     # Preprocess: Replace single '=' with '==' for Python AST parsing
     # But avoid replacing '==', '!=', '<=', '>='
     expr = _preprocess_equality_operators(expr)
-    
+
     # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
     expr = _preprocess_comparison_operators(expr)
 
@@ -625,15 +618,28 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
 
     Shared by both the legacy tree-to-string path and the v2-to-string path.
     """
+    # Convert backend metric name to frontend name
     frontend_name = _convert_be_to_fe_metric_name(name)
 
+    # Special handling for WITHINSECONDS operator
     if op == "WITHINSECONDS":
-        func_name = section_map_reversed.get(section, "Metric")
+        # Prepend the function name if the section matches
+        if section in section_map_reversed:
+            function_name = section_map_reversed[section]
+            metric_expr = f'{function_name}("{frontend_name}")'
+        else:
+            metric_expr = frontend_name
+
+        # Convert seconds back to human-readable format
         amount, unit = _convert_seconds_to_time(value)
+        # Format amount as int if it's a whole number, otherwise as float
         if isinstance(amount, float) and amount.is_integer():
             amount = int(amount)
-        return f'{func_name}("{frontend_name}") within_last {amount} {unit}'
 
+        # Use operator syntax for output (more readable)
+        return f"{metric_expr} within_last {amount} {unit}"
+
+    # Prepend the function name if the section matches
     if section in section_map_reversed:
         func_name = section_map_reversed[section]
         key_str = f'{func_name}("{frontend_name}")'
@@ -645,10 +651,14 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
     if value is None:
         val_str = "None"
     elif isinstance(value, list):
-        parts = []
+        # Properly quote string elements in lists to avoid parse errors
+        formatted_elements = []
         for v in value:
-            parts.append(f"'{v}'" if isinstance(v, str) else str(v))
-        val_str = f"[{', '.join(parts)}]"
+            if isinstance(v, str):
+                formatted_elements.append(f"'{v}'")
+            else:
+                formatted_elements.append(str(v))
+        val_str = f"[{', '.join(formatted_elements)}]"
     elif isinstance(value, str):
         val_str = f"'{value}'"
     else:
@@ -683,6 +693,7 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
             return f"({expr})" if not is_root and sub_expressions else expr
         else:
             if not filter.key or not filter.key.name:
+                # Skip filters with empty key names
                 return ""
             return _format_filter_leaf(
                 filter.key.section, filter.key.name, filter.op, filter.value
