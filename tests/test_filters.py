@@ -613,6 +613,145 @@ class TestV2DirectFilterRoundTrip:
         assert filters.op == "OR"
 
 
+class TestOrStringFilters:
+    """Test OR support via string filter expressions."""
+
+    def test_simple_or(self):
+        """Expected tree:
+        Filters(op="OR", filters=[
+            Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+            Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+        ])
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Metric('State') == 'finished' or Config('lr') == 0.01"
+        )
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].value == "finished"
+        assert tree.filters[1].value == 0.01
+
+    def test_mixed_and_or(self):
+        """AND binds tighter than OR via Python's ast.parse.
+
+        Expected tree:
+        Filters(op="OR", filters=[
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+            ]),
+            Filters(op="=", key=Key(section="config", name="lr"), value=0.1),
+        ])
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Metric('State') == 'finished' and Config('lr') == 0.01 or Config('lr') == 0.1"
+        )
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "AND"
+        assert len(tree.filters[0].filters) == 2
+        assert tree.filters[1].op == "="
+        assert tree.filters[1].value == 0.1
+
+    def test_or_round_trip(self):
+        from wandb_workspaces import expr
+
+        original = "Metric('State') == 'finished' or Config('lr') == 0.01"
+        tree = expr.expr_to_filters(original)
+        result = expr.filters_to_expr(tree)
+        re_tree = expr.expr_to_filters(result)
+        assert len(re_tree.filters) == 2
+
+    def test_parenthesised_or_in_and(self):
+        """Explicit parens override default precedence."""
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "(Config('lr') == 0.01 or Config('lr') == 0.1) and Metric('State') == 'finished'"
+        )
+        assert tree.op == "AND"
+        assert len(tree.filters) == 2
+
+    def test_explicit_group_single_element(self):
+        """Parens around a single expression don't create nesting."""
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "(Metric('State') == 'finished')"
+        )
+        assert tree.op == "="
+        assert tree.value == "finished"
+
+    def test_explicit_group_with_and(self):
+        """Parenthesised AND group inside an OR."""
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Config('lr') == 0.1 or (Metric('State') == 'finished' and Config('lr') == 0.01)"
+        )
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "="
+        assert tree.filters[0].value == 0.1
+        assert tree.filters[1].op == "AND"
+        assert len(tree.filters[1].filters) == 2
+
+    def test_explicit_group_with_or(self):
+        """Parenthesised OR group inside an AND."""
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "(Config('lr') == 0.01 or Config('lr') == 0.1) and Metric('State') == 'finished'"
+        )
+        assert tree.op == "AND"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "OR"
+        assert len(tree.filters[0].filters) == 2
+        assert tree.filters[1].op == "="
+        assert tree.filters[1].value == "finished"
+
+    def test_nested_groups(self):
+        """Groups containing groups — inner parens inside outer parens."""
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Metric('Name') == 'a' or (Metric('Name') == 'b' and Metric('State') == 'finished'"
+            " or (Metric('Name') == 'c' or Metric('Name') == 'd'))"
+        )
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "="
+        assert tree.filters[0].value == "a"
+        inner = tree.filters[1]
+        assert inner.op == "OR"
+        assert len(inner.filters) == 2
+        assert inner.filters[0].op == "AND"
+        assert len(inner.filters[0].filters) == 2
+        assert inner.filters[1].op == "OR"
+        assert len(inner.filters[1].filters) == 2
+
+    def test_nested_groups_v2_raises(self):
+        """Groups nested deeper than 1 level raise ValueError."""
+        import pytest
+
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Metric('Name') == 'a' or (Metric('Name') == 'b' and Metric('State') == 'finished'"
+            " or (Metric('Name') == 'c' or Metric('Name') == 'd'))"
+        )
+        with pytest.raises(ValueError, match="deeper than 1 level"):
+            expr.filters_tree_to_v2(tree)
+
+
+class TestTreeToV2Conversion:
+    """Test Filters tree to v2 flat format conversion."""
+
+
 class TestAlwaysWriteV2:
     """Test tree-to-v2 conversion and Or/And/Group in RunsetSettings."""
 
