@@ -370,21 +370,6 @@ def expr_to_filters(expr: str) -> Filters:
 
 
 
-def wrap_as_legacy_tree(tree: Filters) -> Filters:
-    """Wrap a raw parse tree into the canonical OR → AND → leaves structure.
-
-    The legacy frontend filter reader (legacyFiltersFromJSON) requires filters
-    in the shape ``OR([AND([...leaves...])])``.  This helper normalises any
-    ``Filters`` tree produced by ``expr_to_filters`` into that shape so it can
-    be safely written to the backend for non-v2 workspaces and reports.
-    """
-    if tree.op == "AND" and tree.filters:
-        children = tree.filters
-    else:
-        children = [tree]
-    return Filters(op="OR", filters=[Filters(op="AND", filters=children)])
-
-
 def _parse_node(node) -> Filters:
     # Check if this is a WithinLast function call (not inside a comparison)
     if isinstance(node, ast.Call):
@@ -671,39 +656,6 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
     return f"{key_str} {py_op} {val_str}"
 
 
-def filters_to_expr(filter_obj: Any) -> str:
-    """Convert an internal Filters tree back to a string expression.
-
-    Args:
-        filter_obj: An internal Filters tree structure
-
-    Returns:
-        A Python-like filter expression string
-    """
-
-    def _convert_filter(filter: Any) -> str:
-        if hasattr(filter, "filters") and filter.filters is not None:
-            sub_expressions = [
-                _convert_filter(f)
-                for f in filter.filters
-                if f.filters is not None or (f.key and f.key.name)
-            ]
-            if not sub_expressions:
-                return ""
-
-            joint = " and " if filter.op == "AND" else " or "
-            return joint.join(sub_expressions)
-        else:
-            if not filter.key or not filter.key.name:
-                # Skip filters with empty key names
-                return ""
-            return _format_filter_leaf(
-                filter.key.section, filter.key.name, filter.op, filter.value
-            )
-
-    return _convert_filter(filter_obj)
-
-
 FILTER_FORMAT_V2 = "filterV2"
 
 
@@ -800,12 +752,11 @@ def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
     return item
 
 
+
 _V2_PRECEDENCE = {"AND": 1, "OR": 0}
 
 
-def _tree_node_to_v2_items(
-    node: Filters, depth: int = 0, is_first_in_parent: bool = True
-) -> list:
+def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
     """Recursively convert a Filters tree node into a flat list of v2 items.
 
     Groups are only created when a child operator's precedence is **not**
@@ -831,19 +782,13 @@ def _tree_node_to_v2_items(
     if node.filters is None:
         return []
 
-    if node.op not in ("OR", "AND"):
-        item = _leaf_to_v2_item(node)
-        return [item] if item else []
-
     items: list = []
-    for i, child in enumerate(node.filters):
-        is_first = (i == 0) and is_first_in_parent
-
+    for child in node.filters:
         if child.key is not None:
             child_item = _leaf_to_v2_item(child)
             if child_item is None:
                 continue
-            if not is_first:
+            if items:
                 child_item["connector"] = node.op
             items.append(child_item)
         else:
@@ -857,29 +802,25 @@ def _tree_node_to_v2_items(
                         "Nested groups deeper than 1 level are not supported. "
                         "Use a single level of grouping (parentheses)."
                     )
-                sub_items = _tree_node_to_v2_items(
-                    child, depth=depth + 1, is_first_in_parent=True
-                )
+                sub_items = _tree_node_to_v2_items(child, depth=depth + 1)
                 if not sub_items:
                     continue
                 if len(sub_items) > 1:
                     group: dict = {"filters": sub_items}
-                    if not is_first:
+                    if items:
                         group["connector"] = node.op
                     items.append(group)
                 else:
                     sub = sub_items[0]
-                    if not is_first:
+                    if items:
                         sub = {**sub, "connector": node.op}
                     items.append(sub)
             else:
-                sub_items = _tree_node_to_v2_items(
-                    child, depth=depth, is_first_in_parent=True
-                )
+                sub_items = _tree_node_to_v2_items(child, depth=depth)
                 if not sub_items:
                     continue
                 for j, sub in enumerate(sub_items):
-                    if j == 0 and not is_first:
+                    if j == 0 and items:
                         sub = {**sub, "connector": node.op}
                     items.append(sub)
 
@@ -898,7 +839,7 @@ def filters_tree_to_v2(tree: Filters) -> dict:
     Raises:
         ValueError: If the tree contains groups nested deeper than 1 level.
     """
-    items = _tree_node_to_v2_items(tree, is_first_in_parent=True)
+    items = _tree_node_to_v2_items(tree)
     if (
         len(items) == 1
         and isinstance(items[0], dict)
@@ -1301,26 +1242,6 @@ def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     return parse_expression(tree)
 
 
-def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
-    def parse_key(metric: BaseMetric) -> Key:
-        section = metric.section
-        name = _convert_fe_to_be_metric_name(metric.name)
-        return Key(section=section, name=name)
-
-    def parse_filter(filter: FilterExpr) -> Filters:
-        key = parse_key(filter.key)
-        return Filters(op=filter.op, key=key, value=filter.value, disabled=False)
-
-    return Filters(
-        op="OR",
-        filters=[
-            Filters(
-                op="AND", filters=[parse_filter(f) for f in filters if f is not None]
-            )
-        ],
-    )
-
-
 def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
     """Convert a string filter expression to a list of FilterExpr objects.
 
@@ -1353,8 +1274,8 @@ def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
 def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
     """Convert a list of FilterExpr objects to a string filter expression.
 
-    This is a convenience function that combines filter_expr_to_filters_tree()
-    and filters_to_expr() to provide a direct FilterExpr list → string conversion.
+    Converts through the v2 filter path: FilterExpr list → Filters tree →
+    v2 dict → display string.
 
     Args:
         filters: A list of FilterExpr objects
@@ -1371,36 +1292,22 @@ def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
     if not filters:
         return ""
 
-    # Convert FilterExpr list to internal Filters tree
-    filters_tree = filter_expr_to_filters_tree(filters)
-    # Convert Filters tree to string expression
-    return filters_to_expr(filters_tree)
+    warnings.warn(
+        "Passing a plain list of FilterExpr is deprecated. "
+        "Use And(...) explicitly, e.g. "
+        "filters=And(Config('lr') == 0.01, Metric('State') == 'finished')",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-
-def normalize_filters_to_string(instance):
-    """Shared model validator that normalizes filters to string format.
-
-    Converts List[FilterExpr] → str while preserving string inputs.
-    This creates a unified internal representation across Workspaces and Reports.
-
-    Args:
-        instance: The model instance with a 'filters' attribute
-
-    Returns:
-        The instance with normalized filters
-
-    Usage:
-        @model_validator(mode="after")
-        def convert_filterexpr_list_to_string(self):
-            return normalize_filters_to_string(self)
-    """
-    if isinstance(instance.filters, list):
-        # Convert FilterExpr list to string
-        # This unifies internal representation as string
-        filter_string = filterexpr_list_to_string(instance.filters)
-        # Update the filters field
-        object.__setattr__(instance, "filters", filter_string)
-    return instance
+    parts = []
+    for f in filters:
+        if f is None:
+            continue
+        leaf = _format_filter_leaf(f.key.section, f.key.name, f.op, f.value)
+        if leaf:
+            parts.append(leaf)
+    return " and ".join(parts)
 
 
 def _convert_fe_to_be_metric_name(name: str) -> str:

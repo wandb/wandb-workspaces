@@ -172,8 +172,9 @@ def test_list_with_dashes_round_trip():
         value=["run-one", "two-three", "abc-123-def"],
     )
 
-    # Convert to expression string
-    expr_string = expr.filters_to_expr(filters)
+    # Convert to expression string via v2 path
+    v2_dict = expr.filters_tree_to_v2(expr.Filters(op="AND", filters=[filters]))
+    expr_string = expr.filters_v2_to_string(v2_dict)
 
     # The expression should properly quote the strings
     assert "'run-one'" in expr_string
@@ -232,16 +233,14 @@ def test_disabled_filters_preserved_in_runset_roundtrip():
 def test_user_constructed_runset_parses_from_string():
     """Runsets built by the user (not loaded) should parse filters from the string."""
     import wandb_workspaces.reports.v2 as wr
+    from wandb_workspaces import expr
 
     rs = wr.Runset(filters="Metric('User') == 'alice'")
     assert rs._filters_internal is None
 
     model = rs._to_model()
-    # _to_model wraps in canonical OR → AND → leaves for legacy backend
-    assert model.filters.op == "OR"
-    leaf = model.filters.filters[0].filters[0]
-    assert leaf.value == "alice"
-    assert leaf.disabled is False
+    assert isinstance(model.filters, expr.Filters)
+    assert model.filters.value == "alice"
 
 
 def test_modifying_filters_after_load_uses_new_value():
@@ -271,10 +270,8 @@ def test_modifying_filters_after_load_uses_new_value():
     iface.filters = "Metric('User') == 'bob'"
 
     model = iface._to_model()
-    # _to_model wraps in canonical OR → AND → leaves for legacy backend
-    leaf = model.filters.filters[0].filters[0]
-    assert leaf.value == "bob", "New filter value should take effect"
-    assert leaf.disabled is False, "New filter should be active"
+    assert isinstance(model.filters, expr.Filters)
+    assert model.filters.value == "bob", "New filter value should take effect"
 
 
 # ===== v2 filter read/conversion tests =====
@@ -527,7 +524,8 @@ class TestOrStringFilters:
 
         original = "Metric('State') == 'finished' or Config('lr') == 0.01"
         tree = expr.expr_to_filters(original)
-        result = expr.filters_to_expr(tree)
+        v2_dict = expr.filters_tree_to_v2(tree)
+        result = expr.filters_v2_to_string(v2_dict)
         re_tree = expr.expr_to_filters(result)
         assert len(re_tree.filters) == 2
 
@@ -870,8 +868,8 @@ class TestWorkspaceWriteBack:
         assert filters_out["filterFormat"] == "filterV2"
         assert any(f.get("value") == 0.01 for f in filters_out["filters"])
 
-    def test_legacy_workspace_writes_legacy_tree(self):
-        """A workspace without v2 filters writes a canonical OR → AND → leaves tree."""
+    def test_workspace_always_writes_v2(self):
+        """All workspaces write v2 filter format, even without prior v2 data."""
         from wandb_workspaces.workspaces.interface import RunsetSettings, Workspace
         from wandb_workspaces import expr
 
@@ -885,114 +883,44 @@ class TestWorkspaceWriteBack:
         )
         model = ws._to_model()
         filters_out = model.spec.section.run_sets[0].filters
-        assert isinstance(filters_out, expr.Filters)
-        assert filters_out.op == "OR"
-        assert len(filters_out.filters) == 1
-        assert filters_out.filters[0].op == "AND"
-        assert len(filters_out.filters[0].filters) == 2
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert len(filters_out["filters"]) == 2
 
 
 class TestReportWriteBack:
     """Test report Runset write-back behavior for v2 and legacy filters.
 
     Report _to_model() requires an API call for project lookup, so these tests
-    exercise the filter decision logic directly by simulating the three branches
-    in _to_model.
+    exercise the filter decision logic directly by simulating the two branches
+    in _to_model (unchanged vs modified).
     """
 
     def _compute_filters(self, runset):
         """Extract the filter value that _to_model would write, without the API call."""
         from wandb_workspaces import expr
 
-        if runset._raw_filters_v2 is not None:
-            if runset.filters == runset._original_v2_filter_string:
-                return runset._raw_filters_v2
-            else:
-                tree = expr.expr_to_filters(runset.filters)
-                return expr.filters_tree_to_v2(tree)
-        elif (
+        filters_unchanged = (
             runset._filters_internal is not None
-            and runset.filters == expr.filters_to_expr(runset._filters_internal)
-        ):
+            and runset.filters == expr.filters_v2_to_string(
+                expr.filters_tree_to_v2(runset._filters_internal)
+            )
+        )
+        if filters_unchanged:
             return runset._filters_internal
         else:
-            return expr.wrap_as_legacy_tree(expr.expr_to_filters(runset.filters))
-
-    def _make_report_runset_from_v2(self, v2_filters):
-        """Simulate loading a report runset that has v2 filters."""
-        from copy import deepcopy
-        from wandb_workspaces.reports.v2.interface import Runset
-        from wandb_workspaces import expr
-
-        filter_string = expr.filters_v2_to_string(v2_filters)
-        rs = Runset(filters=filter_string)
-        rs._raw_filters_v2 = deepcopy(v2_filters)
-        rs._original_v2_filter_string = filter_string
-        return rs
+            return expr.expr_to_filters(runset.filters)
 
     def _make_report_runset_from_legacy(self, legacy_filters):
         """Simulate loading a report runset that has legacy filters."""
         from wandb_workspaces.reports.v2.interface import Runset
         from wandb_workspaces import expr
 
-        filter_string = expr.filters_to_expr(legacy_filters)
+        stashed_v2 = expr.filters_tree_to_v2(legacy_filters)
+        filter_string = expr.filters_v2_to_string(stashed_v2)
         rs = Runset(filters=filter_string)
         rs._filters_internal = legacy_filters
         return rs
-
-    def test_unchanged_v2_uses_raw_dict(self):
-        """If v2 filters haven't been modified, write-back uses the raw v2 dict."""
-        v2 = {
-            "filterFormat": "filterV2",
-            "filters": [
-                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
-                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
-            ],
-        }
-        rs = self._make_report_runset_from_v2(v2)
-        filters_out = self._compute_filters(rs)
-        assert isinstance(filters_out, dict)
-        assert filters_out["filterFormat"] == "filterV2"
-        assert filters_out == v2
-
-    def test_modified_v2_reconverts_to_v2(self):
-        """If v2 filters are modified, write-back converts through tree -> v2."""
-        v2 = {
-            "filterFormat": "filterV2",
-            "filters": [
-                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
-            ],
-        }
-        rs = self._make_report_runset_from_v2(v2)
-        rs.filters = "Config('lr') == 0.01"
-        filters_out = self._compute_filters(rs)
-        assert isinstance(filters_out, dict)
-        assert filters_out["filterFormat"] == "filterV2"
-        assert any(f.get("value") == 0.01 for f in filters_out["filters"])
-
-    def test_modified_v2_with_group(self):
-        """Modified v2 filters with a group produce a nested v2 group.
-
-        Uses ``(A or B) and C`` because OR inside AND reverses natural
-        precedence and requires a v2 group.  ``A or (B and C)`` would NOT
-        produce a group since AND already binds tighter than OR.
-        """
-        v2 = {
-            "filterFormat": "filterV2",
-            "filters": [
-                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
-            ],
-        }
-        rs = self._make_report_runset_from_v2(v2)
-        rs.filters = (
-            '(Metric("Name") == "willow" or Metric("Name") == "folklore")'
-            ' and Metric("State") == "finished"'
-        )
-        filters_out = self._compute_filters(rs)
-        assert isinstance(filters_out, dict)
-        assert filters_out["filterFormat"] == "filterV2"
-        has_group = any("filters" in f for f in filters_out["filters"])
-        assert has_group
 
     def test_unchanged_legacy_preserves_tree(self):
         """If legacy filters haven't been modified, write-back uses the stashed Filters tree."""
@@ -1014,39 +942,32 @@ class TestReportWriteBack:
         assert isinstance(filters_out, expr.Filters)
         assert filters_out is legacy
 
-    def test_legacy_report_writes_legacy_tree(self):
-        """A report runset without v2 filters writes a canonical OR -> AND -> leaves tree."""
+    def test_modified_legacy_reconverts(self):
+        """If legacy filters are modified, write-back re-parses the string."""
+        from wandb_workspaces.reports.v2.interface import Runset
+        from wandb_workspaces import expr
+
+        legacy = expr.Filters(
+            op="OR",
+            filters=[
+                expr.Filters(
+                    op="AND",
+                    filters=[
+                        expr.Filters(op="=", key=expr.Key(section="run", name="state"), value="finished"),
+                    ],
+                )
+            ],
+        )
+        rs = self._make_report_runset_from_legacy(legacy)
+        rs.filters = "Config('lr') == 0.01"
+        filters_out = self._compute_filters(rs)
+        assert isinstance(filters_out, expr.Filters)
+
+    def test_new_runset_parses_string(self):
+        """A brand-new report runset parses the filter string."""
         from wandb_workspaces.reports.v2.interface import Runset
         from wandb_workspaces import expr
 
         rs = Runset(filters="Config('lr') == 0.01 and Metric('State') == 'finished'")
         filters_out = self._compute_filters(rs)
         assert isinstance(filters_out, expr.Filters)
-        assert filters_out.op == "OR"
-        assert len(filters_out.filters) == 1
-        assert filters_out.filters[0].op == "AND"
-        assert len(filters_out.filters[0].filters) == 2
-
-    def test_v2_fields_are_separate(self):
-        """_raw_filters_v2 and _filters_internal are separate fields."""
-        v2 = {
-            "filterFormat": "filterV2",
-            "filters": [
-                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
-            ],
-        }
-        rs = self._make_report_runset_from_v2(v2)
-        assert rs._raw_filters_v2 is not None
-        assert rs._filters_internal is None
-
-        from wandb_workspaces import expr
-
-        legacy = expr.Filters(
-            op="OR",
-            filters=[expr.Filters(op="AND", filters=[
-                expr.Filters(op="=", key=expr.Key(section="run", name="state"), value="finished"),
-            ])],
-        )
-        rs2 = self._make_report_runset_from_legacy(legacy)
-        assert rs2._raw_filters_v2 is None
-        assert rs2._filters_internal is not None

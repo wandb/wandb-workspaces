@@ -1026,15 +1026,9 @@ class Runset(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string expression for internal processing."""
-        # Inline the normalization logic to avoid circular import with expr module
+        """Convert FilterExpr list to string expression."""
         if isinstance(self.filters, list):
-            # Convert FilterExpr list to internal Filters tree
-            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
-            # Convert Filters tree to string expression
-            filter_string = expr.filters_to_expr(filters_tree)
-            # Update the filters field
-            object.__setattr__(self, "filters", filter_string)
+            object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
         return self
 
     def _to_model(self):
@@ -1077,23 +1071,19 @@ class Runset(Base):
                 if settings.disabled
             ]
 
-        # Use the stashed filters when the string hasn't been changed since
-        # loading.  For v2 filters this preserves the raw dict; for legacy
-        # filters it preserves per-filter metadata (e.g. disabled state) that
-        # the lossy string representation cannot express.
-        if self._raw_filters_v2 is not None:
-            if self.filters == self._original_v2_filter_string:
-                filters = self._raw_filters_v2
-            else:
-                tree = expr.expr_to_filters(self.filters)
-                filters = expr.filters_tree_to_v2(tree)
-        elif (
+        # Use the stashed Filters tree when the string hasn't been changed
+        # since loading.  This preserves per-filter metadata (e.g. disabled
+        # state) that the lossy string representation cannot express.
+        filters_unchanged = (
             self._filters_internal is not None
-            and self.filters == expr.filters_to_expr(self._filters_internal)
-        ):
+            and self.filters == expr.filters_v2_to_string(
+                expr.filters_tree_to_v2(self._filters_internal)
+            )
+        )
+        if filters_unchanged:
             filters = self._filters_internal
         else:
-            filters = expr.wrap_as_legacy_tree(expr.expr_to_filters(self.filters))
+            filters = expr.expr_to_filters(self.filters)
 
         obj = internal.Runset(
             project=project,
@@ -1136,7 +1126,11 @@ class Runset(Base):
         if isinstance(model.filters, dict) and expr.is_filter_v2(model.filters):
             filter_string = expr.filters_v2_to_string(model.filters)
         else:
-            filter_string = expr.filters_to_expr(model.filters)
+            # Legacy filters: the report was saved before v2 and hasn't been
+            # opened in the UI yet (which does lazy conversion).  Convert the
+            # legacy Filters tree to v2.
+            stashed_v2 = expr.filters_tree_to_v2(model.filters)
+            filter_string = expr.filters_v2_to_string(stashed_v2)
 
         obj = cls(
             entity=entity,
