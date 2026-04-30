@@ -561,6 +561,9 @@ class Workspace(Base):
         if isinstance(runset_model.filters, dict) and expr.is_filter_v2(runset_model.filters):
             filter_string = expr.filters_v2_to_string(runset_model.filters)
         else:
+            # Legacy filters: the workspace was saved before v2 and hasn't been
+            # opened in the UI yet (which does lazy conversion).  Convert the
+            # legacy Filters tree to v2.
             stashed_v2 = expr.filters_tree_to_v2(runset_model.filters)
             filter_string = expr.filters_v2_to_string(stashed_v2)
 

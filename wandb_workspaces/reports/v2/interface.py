@@ -1124,6 +1124,9 @@ class Runset(Base):
         if isinstance(model.filters, dict) and expr.is_filter_v2(model.filters):
             filter_string = expr.filters_v2_to_string(model.filters)
         else:
+            # Legacy filters: the report was saved before v2 and hasn't been
+            # opened in the UI yet (which does lazy conversion).  Convert the
+            # legacy Filters tree to v2.
             stashed_v2 = expr.filters_tree_to_v2(model.filters)
             filter_string = expr.filters_v2_to_string(stashed_v2)
 
