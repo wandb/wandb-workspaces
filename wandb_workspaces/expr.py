@@ -1253,26 +1253,6 @@ def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     return parse_expression(tree)
 
 
-def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
-    def parse_key(metric: BaseMetric) -> Key:
-        section = metric.section
-        name = _convert_fe_to_be_metric_name(metric.name)
-        return Key(section=section, name=name)
-
-    def parse_filter(filter: FilterExpr) -> Filters:
-        key = parse_key(filter.key)
-        return Filters(op=filter.op, key=key, value=filter.value, disabled=False)
-
-    return Filters(
-        op="OR",
-        filters=[
-            Filters(
-                op="AND", filters=[parse_filter(f) for f in filters if f is not None]
-            )
-        ],
-    )
-
-
 def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
     """Convert a string filter expression to a list of FilterExpr objects.
 
@@ -1323,36 +1303,22 @@ def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
     if not filters:
         return ""
 
-    # Convert FilterExpr list to internal Filters tree
-    filters_tree = filter_expr_to_filters_tree(filters)
-    v2_dict = filters_tree_to_v2(filters_tree)
-    return filters_v2_to_string(v2_dict)
+    warnings.warn(
+        "Passing a plain list of FilterExpr is deprecated. "
+        "Use And(...) explicitly, e.g. "
+        "filters=And(Config('lr') == 0.01, Metric('State') == 'finished')",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-
-def normalize_filters_to_string(instance):
-    """Shared model validator that normalizes filters to string format.
-
-    Converts List[FilterExpr] → str while preserving string inputs.
-    This creates a unified internal representation across Workspaces and Reports.
-
-    Args:
-        instance: The model instance with a 'filters' attribute
-
-    Returns:
-        The instance with normalized filters
-
-    Usage:
-        @model_validator(mode="after")
-        def convert_filterexpr_list_to_string(self):
-            return normalize_filters_to_string(self)
-    """
-    if isinstance(instance.filters, list):
-        # Convert FilterExpr list to string
-        # This unifies internal representation as string
-        filter_string = filterexpr_list_to_string(instance.filters)
-        # Update the filters field
-        object.__setattr__(instance, "filters", filter_string)
-    return instance
+    parts = []
+    for f in filters:
+        if f is None:
+            continue
+        leaf = _format_filter_leaf(f.key.section, f.key.name, f.op, f.value)
+        if leaf:
+            parts.append(leaf)
+    return " and ".join(parts)
 
 
 def _convert_fe_to_be_metric_name(name: str) -> str:

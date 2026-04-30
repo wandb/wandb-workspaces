@@ -407,14 +407,9 @@ class RunsetSettings(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string expression (unified internal format)."""
-        # Inline the normalization logic to avoid circular import with expr module
+        """Convert FilterExpr list to string expression."""
         if isinstance(self.filters, list):
-            # Import locally to avoid circular import at module level
-            # Convert FilterExpr list to internal Filters tree
-            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
-            v2_dict = expr.filters_tree_to_v2(filters_tree)
-            object.__setattr__(self, "filters", expr.filters_v2_to_string(v2_dict))
+            object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
         return self
 
 
