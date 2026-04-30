@@ -756,9 +756,7 @@ def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
 _V2_PRECEDENCE = {"AND": 1, "OR": 0}
 
 
-def _tree_node_to_v2_items(
-    node: Filters, depth: int = 0, is_first_in_parent: bool = True
-) -> list:
+def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
     """Recursively convert a Filters tree node into a flat list of v2 items.
 
     Groups are only created when a child operator's precedence is **not**
@@ -784,19 +782,13 @@ def _tree_node_to_v2_items(
     if node.filters is None:
         return []
 
-    if node.op not in ("OR", "AND"):
-        item = _leaf_to_v2_item(node)
-        return [item] if item else []
-
     items: list = []
-    for i, child in enumerate(node.filters):
-        is_first = (i == 0) and is_first_in_parent
-
+    for child in node.filters:
         if child.key is not None:
             child_item = _leaf_to_v2_item(child)
             if child_item is None:
                 continue
-            if not is_first:
+            if items:
                 child_item["connector"] = node.op
             items.append(child_item)
         else:
@@ -810,29 +802,25 @@ def _tree_node_to_v2_items(
                         "Nested groups deeper than 1 level are not supported. "
                         "Use a single level of grouping (parentheses)."
                     )
-                sub_items = _tree_node_to_v2_items(
-                    child, depth=depth + 1, is_first_in_parent=True
-                )
+                sub_items = _tree_node_to_v2_items(child, depth=depth + 1)
                 if not sub_items:
                     continue
                 if len(sub_items) > 1:
                     group: dict = {"filters": sub_items}
-                    if not is_first:
+                    if items:
                         group["connector"] = node.op
                     items.append(group)
                 else:
                     sub = sub_items[0]
-                    if not is_first:
+                    if items:
                         sub = {**sub, "connector": node.op}
                     items.append(sub)
             else:
-                sub_items = _tree_node_to_v2_items(
-                    child, depth=depth, is_first_in_parent=True
-                )
+                sub_items = _tree_node_to_v2_items(child, depth=depth)
                 if not sub_items:
                     continue
                 for j, sub in enumerate(sub_items):
-                    if j == 0 and not is_first:
+                    if j == 0 and items:
                         sub = {**sub, "connector": node.op}
                     items.append(sub)
 
@@ -851,7 +839,7 @@ def filters_tree_to_v2(tree: Filters) -> dict:
     Raises:
         ValueError: If the tree contains groups nested deeper than 1 level.
     """
-    items = _tree_node_to_v2_items(tree, is_first_in_parent=True)
+    items = _tree_node_to_v2_items(tree)
     if (
         len(items) == 1
         and isinstance(items[0], dict)
