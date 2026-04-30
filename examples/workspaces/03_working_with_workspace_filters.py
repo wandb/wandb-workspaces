@@ -66,8 +66,7 @@ workspace_with_string_filters = ws.Workspace(
         ),
     ],
     runset_settings=ws.RunsetSettings(
-        # String filters use "and" to combine conditions as there is no "or" available
-        # Supported operators: ==, =, !=, <, <=, >, >=
+        # Supported operators: ==, =, !=, <, <=, >, >=, and, or
         # Note: < maps to <=, > maps to >=, and = maps to == internally to match existing UX behavior
         filters="SummaryMetric('accuracy') > 0.95 and Config('learning_rate') = 0.001 and Metric('State') == 'finished'"
     ),
@@ -76,7 +75,93 @@ workspace_with_string_filters = ws.Workspace(
 workspace_with_string_filters.save()
 
 # ============================================================================
-# METHOD 3: Time-based filtering with "within last"
+# METHOD 3: Using Or/And objects for OR logic
+# ============================================================================
+# Use ws.Or(...) and ws.And(...) to build filters with OR logic.
+# Nesting Or inside And (or vice versa) creates parenthesised groups.
+
+from wandb_workspaces.expr import Or, And
+
+workspace_or_filters = ws.Workspace(
+    name="Example workspace using Or/And filters",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="OR Filters",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # Show runs with lr=0.01 OR lr=0.1
+        filters=Or(
+            ws.Config("learning_rate") == 0.01,
+            ws.Config("learning_rate") == 0.1,
+        ),
+    ),
+)
+
+workspace_or_filters.save()
+
+# Combining And with Or for grouped conditions
+workspace_grouped_filters = ws.Workspace(
+    name="Example workspace using grouped Or/And filters",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="Grouped Filters",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        # finished AND (lr=0.01 OR lr=0.1)
+        # Nesting Or inside And automatically creates parentheses
+        filters=And(
+            ws.Metric("State") == "finished",
+            Or(
+                ws.Config("learning_rate") == 0.01,
+                ws.Config("learning_rate") == 0.1,
+            ),
+        ),
+    ),
+)
+
+workspace_grouped_filters.save()
+
+# ============================================================================
+# METHOD 4: Using string expressions with OR
+# ============================================================================
+# String filters also support "or" and parentheses
+
+workspace_string_or = ws.Workspace(
+    name="Example workspace using string OR filters",
+    entity=entity,
+    project=project,
+    sections=[
+        ws.Section(
+            name="String OR Filters",
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+            is_open=True,
+        ),
+    ],
+    runset_settings=ws.RunsetSettings(
+        filters="Metric('State') == 'finished' and (Config('learning_rate') == 0.01 or Config('learning_rate') == 0.1)"
+    ),
+)
+
+workspace_string_or.save()
+
+# ============================================================================
+# METHOD 5: Time-based filtering with "within_last"
 # ============================================================================
 # Filter runs by timestamps (e.g., runs created in the last N days/hours/minutes)
 
@@ -175,7 +260,7 @@ workspace_recent_successful_operator = ws.Workspace(
 workspace_recent_successful_operator.save()
 
 # ============================================================================
-# METHOD 4: Filtering by tags
+# METHOD 6: Filtering by tags
 # ============================================================================
 # Filter runs by the tags set via wandb.init(tags=[...])
 # Use ws.Tags().isin([...]) to match runs with any of the specified tags

@@ -990,7 +990,7 @@ class Runset(Base):
     project: str = ""
     name: str = "Run set"
     query: str = ""
-    filters: Union[str, LList["expr.FilterExpr"], "expr.Or", "expr.And", "expr.Group"] = ""
+    filters: Union[str, LList["expr.FilterExpr"], "expr.Or", "expr.And"] = ""
     groupby: LList[str] = Field(default_factory=list)
     order: LList[OrderBy] = Field(
         default_factory=lambda: [OrderBy("CreatedTimestamp", ascending=False)]
@@ -1027,7 +1027,7 @@ class Runset(Base):
         """Convert FilterExpr list to string expression."""
         if isinstance(self.filters, list):
             object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
-        elif isinstance(self.filters, (expr.Or, expr.And, expr.Group)):
+        elif isinstance(self.filters, (expr.Or, expr.And)):
             tree = expr._filter_items_to_filters_tree([self.filters])
             v2 = expr.filters_tree_to_v2(tree)
             object.__setattr__(self, "filters", expr.filters_v2_to_string(v2))

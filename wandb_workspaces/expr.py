@@ -70,10 +70,9 @@ __all__ = [
     "Ordering",
     # Filter expression type (needed for type hints)
     "FilterExpr",
-    # Combinators for OR / nested filter groups
+    # Combinators for OR logic
     "Or",
     "And",
-    "Group",
 ]
 
 Expression = Dict[str, Any]
@@ -1223,7 +1222,7 @@ class FilterExpr:
         )
 
 
-FilterItem = Union["FilterExpr", "And", "Or", "Group"]
+FilterItem = Union["FilterExpr", "And", "Or"]
 
 
 @dataclass(frozen=True)
@@ -1287,29 +1286,8 @@ class Or:
         return Filters(op="OR", filters=children)
 
 
-@dataclass(frozen=True)
-class Group:
-    """A parenthesised group of filters, preserving precedence.
-
-    Example:
-        >>> Or(
-        ...     Group(Or(ws.Config("lr") == 0.01, ws.Config("lr") == 0.1)),
-        ...     ws.Metric("State") == "finished",
-        ... )
-    """
-
-    inner: FilterItem
-
-    def __repr__(self) -> str:
-        return f"Group({self.inner!r})"
-
-    def to_model(self) -> Filters:
-        """Delegate to inner item's model."""
-        return self.inner.to_model()
-
-
 def _filter_items_to_filters_tree(items) -> Filters:
-    """Convert a list of FilterExpr / And / Or / Group items to a Filters tree.
+    """Convert a list of FilterExpr / And / Or items to a Filters tree.
 
     Items in the list are AND'd together.  For OR logic, wrap with ``Or()``.
     """

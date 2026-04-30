@@ -329,7 +329,7 @@ class TestOrStringFilters:
 
 
 class TestOrObjectAPI:
-    """Test OR support via the Or/And/Group object API."""
+    """Test OR support via the Or/And object API."""
 
     def test_or_filterexpr(self):
         from wandb_workspaces import expr
@@ -779,7 +779,7 @@ class TestTreeToV2Conversion:
 
 
 class TestAlwaysWriteV2:
-    """Test tree-to-v2 conversion and Or/And/Group in RunsetSettings."""
+    """Test tree-to-v2 conversion and Or/And in RunsetSettings."""
 
     def test_and_only_tree_converts_to_v2(self):
         from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
