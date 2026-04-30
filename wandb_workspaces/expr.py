@@ -341,38 +341,33 @@ def _preprocess_comparison_operators(expr: str) -> str:
 def expr_to_filters(expr: str) -> Filters:
     """Parse a string filter expression into an internal Filters tree.
 
+    Supports ``and``, ``or``, and parenthesised groups.
+
     Args:
         expr: A Python-like filter expression string, e.g.,
-            "Config('learning_rate') == 0.001 and State == 'finished'"
-            or "Metric('CreatedTimestamp') within_last 5 days"
+            ``"Config('learning_rate') == 0.001 and Metric('State') == 'finished'"``
+            or ``"Metric('State') == 'finished' or Metric('CreatedTimestamp') within_last 5 days"``
 
     Returns:
         An internal Filters tree structure
     """
     if not expr:
-        filters = []
-    else:
-        # Preprocess: Convert within_last operator syntax to function syntax
-        # This must happen first, before other transformations
-        expr = _preprocess_within_last_syntax(expr)
+        return Filters(op="AND", filters=[])
 
-        # Preprocess: Replace single '=' with '==' for Python AST parsing
-        # But avoid replacing '==', '!=', '<=', '>='
-        expr = _preprocess_equality_operators(expr)
+    # Preprocess: Convert within_last operator syntax to function syntax
+    # This must happen first, before other transformations
+    expr = _preprocess_within_last_syntax(expr)
 
-        # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
-        expr = _preprocess_comparison_operators(expr)
+    # Preprocess: Replace single '=' with '==' for Python AST parsing
+    # But avoid replacing '==', '!=', '<=', '>='
+    expr = _preprocess_equality_operators(expr)
 
-        parsed_expr = ast.parse(expr, mode="eval")
-        root_filter = _parse_node(parsed_expr.body)
+    # Preprocess: Replace '<' with '<=' and '>' with '>=' for consistency
+    expr = _preprocess_comparison_operators(expr)
 
-        # If the root operation is an AND, unpack its child filters
-        if root_filter.op == "AND" and root_filter.filters:
-            filters = root_filter.filters
-        else:
-            filters = [root_filter]
+    parsed_expr = ast.parse(expr, mode="eval")
+    return _parse_node(parsed_expr.body)
 
-    return Filters(op="OR", filters=[Filters(op="AND", filters=filters)])
 
 
 def _parse_node(node) -> Filters:
@@ -661,39 +656,6 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
     return f"{key_str} {py_op} {val_str}"
 
 
-def filters_to_expr(filter_obj: Any) -> str:
-    """Convert an internal Filters tree back to a string expression.
-
-    Args:
-        filter_obj: An internal Filters tree structure
-
-    Returns:
-        A Python-like filter expression string
-    """
-
-    def _convert_filter(filter: Any) -> str:
-        if hasattr(filter, "filters") and filter.filters is not None:
-            sub_expressions = [
-                _convert_filter(f)
-                for f in filter.filters
-                if f.filters is not None or (f.key and f.key.name)
-            ]
-            if not sub_expressions:
-                return ""
-
-            joint = " and " if filter.op == "AND" else " or "
-            return joint.join(sub_expressions)
-        else:
-            if not filter.key or not filter.key.name:
-                # Skip filters with empty key names
-                return ""
-            return _format_filter_leaf(
-                filter.key.section, filter.key.name, filter.op, filter.value
-            )
-
-    return _convert_filter(filter_obj)
-
-
 FILTER_FORMAT_V2 = "filterV2"
 
 
@@ -878,6 +840,13 @@ def filters_tree_to_v2(tree: Filters) -> dict:
         ValueError: If the tree contains groups nested deeper than 1 level.
     """
     items = _tree_node_to_v2_items(tree)
+    if (
+        len(items) == 1
+        and isinstance(items[0], dict)
+        and "filters" in items[0]
+        and "connector" not in items[0]
+    ):
+        items = items[0]["filters"]
     return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
 
 
@@ -1273,26 +1242,6 @@ def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
     return parse_expression(tree)
 
 
-def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
-    def parse_key(metric: BaseMetric) -> Key:
-        section = metric.section
-        name = _convert_fe_to_be_metric_name(metric.name)
-        return Key(section=section, name=name)
-
-    def parse_filter(filter: FilterExpr) -> Filters:
-        key = parse_key(filter.key)
-        return Filters(op=filter.op, key=key, value=filter.value, disabled=False)
-
-    return Filters(
-        op="OR",
-        filters=[
-            Filters(
-                op="AND", filters=[parse_filter(f) for f in filters if f is not None]
-            )
-        ],
-    )
-
-
 def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
     """Convert a string filter expression to a list of FilterExpr objects.
 
@@ -1325,8 +1274,8 @@ def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
 def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
     """Convert a list of FilterExpr objects to a string filter expression.
 
-    This is a convenience function that combines filter_expr_to_filters_tree()
-    and filters_to_expr() to provide a direct FilterExpr list → string conversion.
+    Converts through the v2 filter path: FilterExpr list → Filters tree →
+    v2 dict → display string.
 
     Args:
         filters: A list of FilterExpr objects
@@ -1343,36 +1292,22 @@ def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
     if not filters:
         return ""
 
-    # Convert FilterExpr list to internal Filters tree
-    filters_tree = filter_expr_to_filters_tree(filters)
-    # Convert Filters tree to string expression
-    return filters_to_expr(filters_tree)
+    warnings.warn(
+        "Passing a plain list of FilterExpr is deprecated. "
+        "Use And(...) explicitly, e.g. "
+        "filters=And(Config('lr') == 0.01, Metric('State') == 'finished')",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-
-def normalize_filters_to_string(instance):
-    """Shared model validator that normalizes filters to string format.
-
-    Converts List[FilterExpr] → str while preserving string inputs.
-    This creates a unified internal representation across Workspaces and Reports.
-
-    Args:
-        instance: The model instance with a 'filters' attribute
-
-    Returns:
-        The instance with normalized filters
-
-    Usage:
-        @model_validator(mode="after")
-        def convert_filterexpr_list_to_string(self):
-            return normalize_filters_to_string(self)
-    """
-    if isinstance(instance.filters, list):
-        # Convert FilterExpr list to string
-        # This unifies internal representation as string
-        filter_string = filterexpr_list_to_string(instance.filters)
-        # Update the filters field
-        object.__setattr__(instance, "filters", filter_string)
-    return instance
+    parts = []
+    for f in filters:
+        if f is None:
+            continue
+        leaf = _format_filter_leaf(f.key.section, f.key.name, f.op, f.value)
+        if leaf:
+            parts.append(leaf)
+    return " and ".join(parts)
 
 
 def _convert_fe_to_be_metric_name(name: str) -> str:

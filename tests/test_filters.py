@@ -172,8 +172,9 @@ def test_list_with_dashes_round_trip():
         value=["run-one", "two-three", "abc-123-def"],
     )
 
-    # Convert to expression string
-    expr_string = expr.filters_to_expr(filters)
+    # Convert to expression string via v2 path
+    v2_dict = expr.filters_tree_to_v2(expr.Filters(op="AND", filters=[filters]))
+    expr_string = expr.filters_v2_to_string(v2_dict)
 
     # The expression should properly quote the strings
     assert "'run-one'" in expr_string
@@ -185,8 +186,8 @@ def test_list_with_dashes_round_trip():
     assert parsed is not None
 
     # Verify the values survived the round-trip (nested in OR/AND structure)
-    inner_filter = parsed.filters[0].filters[0]
-    assert inner_filter.value == ["run-one", "two-three", "abc-123-def"]
+    assert parsed.op == "IN"
+    assert parsed.value == ["run-one", "two-three", "abc-123-def"]
 
 
 # ===== Disabled filter state preservation tests =====
@@ -237,9 +238,8 @@ def test_user_constructed_runset_parses_from_string():
     assert rs._filters_internal is None
 
     model = rs._to_model()
-    leaves = model.filters.filters[0].filters
-    assert leaves[0].value == "alice"
-    assert leaves[0].disabled is False
+    assert model.filters.value == "alice"
+    assert model.filters.disabled is False
 
 
 def test_modifying_filters_after_load_uses_new_value():
@@ -269,9 +269,8 @@ def test_modifying_filters_after_load_uses_new_value():
     iface.filters = "Metric('User') == 'bob'"
 
     model = iface._to_model()
-    leaves = model.filters.filters[0].filters
-    assert leaves[0].value == "bob", "New filter value should take effect"
-    assert leaves[0].disabled is False, "New filter should be active"
+    assert model.filters.value == "bob", "New filter value should take effect"
+    assert model.filters.disabled is False, "New filter should be active"
 
 
 # ===== v2 filter read/conversion tests =====
@@ -473,3 +472,416 @@ class TestV2DirectFilterRoundTrip:
         filters = parsed_spec.section.run_sets[0].filters
         assert not isinstance(filters, dict)
         assert filters.op == "OR"
+
+
+class TestOrStringFilters:
+    """Test OR support via string filter expressions."""
+
+    def test_simple_or(self):
+        """Expected tree:
+        Filters(op="OR", filters=[
+            Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+            Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+        ])
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Metric('State') == 'finished' or Config('lr') == 0.01"
+        )
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].value == "finished"
+        assert tree.filters[1].value == 0.01
+
+    def test_mixed_and_or(self):
+        """AND binds tighter than OR via Python's ast.parse.
+
+        Expected tree:
+        Filters(op="OR", filters=[
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+            ]),
+            Filters(op="=", key=Key(section="config", name="lr"), value=0.1),
+        ])
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Metric('State') == 'finished' and Config('lr') == 0.01 or Config('lr') == 0.1"
+        )
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "AND"
+        assert len(tree.filters[0].filters) == 2
+        assert tree.filters[1].op == "="
+        assert tree.filters[1].value == 0.1
+
+    def test_or_round_trip(self):
+        from wandb_workspaces import expr
+
+        original = "Metric('State') == 'finished' or Config('lr') == 0.01"
+        tree = expr.expr_to_filters(original)
+        v2_dict = expr.filters_tree_to_v2(tree)
+        result = expr.filters_v2_to_string(v2_dict)
+        re_tree = expr.expr_to_filters(result)
+        assert len(re_tree.filters) == 2
+
+    def test_parenthesised_or_in_and(self):
+        """Explicit parens override default precedence.
+
+        Expected tree:
+        Filters(op="AND", filters=[
+            Filters(op="OR", filters=[
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.1),
+            ]),
+            Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+        ])
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "(Config('lr') == 0.01 or Config('lr') == 0.1) and Metric('State') == 'finished'"
+        )
+        assert tree.op == "AND"
+        assert len(tree.filters) == 2
+
+    def test_explicit_group_single_element(self):
+        """Parens around a single expression don't create nesting.
+
+        Expected tree:
+        Filters(op="=", key=Key(section="run", name="state"), value="finished")
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "(Metric('State') == 'finished')"
+        )
+        assert tree.op == "="
+        assert tree.value == "finished"
+
+    def test_explicit_group_with_and(self):
+        """Parenthesised AND group inside an OR.
+
+        Expected tree:
+        Filters(op="OR", filters=[
+            Filters(op="=", key=Key(section="config", name="lr"), value=0.1),
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+            ]),
+        ])
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Config('lr') == 0.1 or (Metric('State') == 'finished' and Config('lr') == 0.01)"
+        )
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "="
+        assert tree.filters[0].value == 0.1
+        assert tree.filters[1].op == "AND"
+        assert len(tree.filters[1].filters) == 2
+
+    def test_explicit_group_with_or(self):
+        """Parenthesised OR group inside an AND.
+
+        Expected tree:
+        Filters(op="AND", filters=[
+            Filters(op="OR", filters=[
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.1),
+            ]),
+            Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+        ])
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "(Config('lr') == 0.01 or Config('lr') == 0.1) and Metric('State') == 'finished'"
+        )
+        assert tree.op == "AND"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "OR"
+        assert len(tree.filters[0].filters) == 2
+        assert tree.filters[1].op == "="
+        assert tree.filters[1].value == "finished"
+
+    def test_nested_groups(self):
+        """Groups containing groups — inner parens inside outer parens.
+
+        Expected tree:
+        Filters(op="OR", filters=[
+            Filters(op="=", key=Key(section="run", name="displayName"), value="a"),
+            Filters(op="OR", filters=[                          # outer parens
+                Filters(op="AND", filters=[                     # AND binds b, finished
+                    Filters(op="=", key=Key(section="run", name="displayName"), value="b"),
+                    Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+                ]),
+                Filters(op="OR", filters=[                      # inner parens
+                    Filters(op="=", key=Key(section="run", name="displayName"), value="c"),
+                    Filters(op="=", key=Key(section="run", name="displayName"), value="d"),
+                ]),
+            ]),
+        ])
+        """
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Metric('Name') == 'a' or (Metric('Name') == 'b' and Metric('State') == 'finished'"
+            " or (Metric('Name') == 'c' or Metric('Name') == 'd'))"
+        )
+        assert tree.op == "OR"
+        assert len(tree.filters) == 2
+        assert tree.filters[0].op == "="
+        assert tree.filters[0].value == "a"
+        inner = tree.filters[1]
+        assert inner.op == "OR"
+        assert len(inner.filters) == 2
+        assert inner.filters[0].op == "AND"
+        assert len(inner.filters[0].filters) == 2
+        assert inner.filters[1].op == "OR"
+        assert len(inner.filters[1].filters) == 2
+
+    def test_nested_groups_v2_raises(self):
+        """Groups nested deeper than 1 level raise ValueError."""
+        import pytest
+
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "Metric('Name') == 'a' or (Metric('Name') == 'b' and Metric('State') == 'finished'"
+            " or (Metric('Name') == 'c' or Metric('Name') == 'd'))"
+        )
+        with pytest.raises(ValueError, match="deeper than 1 level"):
+            expr.filters_tree_to_v2(tree)
+
+
+class TestTreeToV2Conversion:
+    """Test Filters tree to v2 flat format conversion."""
+
+    def test_and_only_tree_converts_to_v2(self):
+        from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
+
+        tree = Filters(op="OR", filters=[
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+            ])
+        ])
+        v2 = filters_tree_to_v2(tree)
+        assert v2["filterFormat"] == "filterV2"
+        assert len(v2["filters"]) == 1
+        assert v2["filters"][0]["value"] == 0.01
+
+    def test_or_tree_converts_to_v2(self):
+        from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
+
+        tree = Filters(op="OR", filters=[
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.01),
+            ]),
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="config", name="lr"), value=0.1),
+            ]),
+        ])
+        v2 = filters_tree_to_v2(tree)
+        assert v2["filterFormat"] == "filterV2"
+        assert len(v2["filters"]) == 2
+        assert "connector" not in v2["filters"][0]
+        assert v2["filters"][1]["connector"] == "OR"
+
+    def test_and_inside_or_inlines_flat(self):
+        """a or (b and c) — AND inside OR inlines flat (AND binds tighter)."""
+        from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
+
+        tree = Filters(op="OR", filters=[
+            Filters(op="=", key=Key(section="run", name="displayName"), value="a"),
+            Filters(op="AND", filters=[
+                Filters(op="=", key=Key(section="run", name="displayName"), value="b"),
+                Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+            ]),
+        ])
+        v2 = filters_tree_to_v2(tree)
+        assert v2["filterFormat"] == "filterV2"
+        assert len(v2["filters"]) == 3
+        assert v2["filters"][0]["value"] == "a"
+        assert "connector" not in v2["filters"][0]
+        assert v2["filters"][1]["value"] == "b"
+        assert v2["filters"][1]["connector"] == "OR"
+        assert v2["filters"][2]["value"] == "finished"
+        assert v2["filters"][2]["connector"] == "AND"
+
+    def test_or_inside_and_creates_group(self):
+        """a and (b or c) — OR inside AND creates a group."""
+        from wandb_workspaces.expr import Filters, Key, filters_tree_to_v2
+
+        tree = Filters(op="AND", filters=[
+            Filters(op="=", key=Key(section="run", name="displayName"), value="a"),
+            Filters(op="OR", filters=[
+                Filters(op="=", key=Key(section="run", name="displayName"), value="b"),
+                Filters(op="=", key=Key(section="run", name="state"), value="finished"),
+            ]),
+        ])
+        v2 = filters_tree_to_v2(tree)
+        assert v2["filterFormat"] == "filterV2"
+        assert len(v2["filters"]) == 2
+        assert v2["filters"][0]["value"] == "a"
+        assert "connector" not in v2["filters"][0]
+        group = v2["filters"][1]
+        assert group["connector"] == "AND"
+        assert "filters" in group
+        assert len(group["filters"]) == 2
+        assert group["filters"][0]["value"] == "b"
+        assert group["filters"][1]["value"] == "finished"
+        assert group["filters"][1]["connector"] == "OR"
+
+
+class TestV2FullRoundTrip:
+    """Test v2 dict → string → tree → v2 round-trip preserves semantics."""
+
+    def test_v2_group_round_trip(self):
+        """A v2 payload with a group should survive the full round-trip."""
+        from wandb_workspaces.expr import (
+            expr_to_filters,
+            filters_tree_to_v2,
+            filters_v2_to_string,
+        )
+
+        v2_original = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {
+                    "filters": [
+                        {"op": "=", "key": {"section": "run", "name": "host"}, "value": "abc", "disabled": False},
+                        {"op": "=", "key": {"section": "run", "name": "host"}, "value": "xyz", "disabled": False, "connector": "OR"},
+                    ],
+                    "connector": "AND",
+                },
+            ],
+        }
+        s = filters_v2_to_string(v2_original)
+        tree = expr_to_filters(s)
+        v2_out = filters_tree_to_v2(tree)
+
+        assert v2_out["filterFormat"] == "filterV2"
+        assert len(v2_out["filters"]) == 2
+        assert v2_out["filters"][0]["value"] == "finished"
+        group = v2_out["filters"][1]
+        assert "filters" in group
+        assert group["connector"] == "AND"
+        assert len(group["filters"]) == 2
+        assert group["filters"][0]["value"] == "abc"
+        assert group["filters"][1]["value"] == "xyz"
+        assert group["filters"][1]["connector"] == "OR"
+
+    def test_v2_flat_mixed_round_trip_is_semantically_stable(self):
+        """Flat mixed AND/OR: round-trip may add parens to make precedence explicit.
+
+        Input string:  A and B or C       (implicit AND precedence)
+        Output string: (A and B) or C     (explicit group for the AND)
+
+        A second round-trip should then be completely stable.
+        """
+        from wandb_workspaces.expr import (
+            expr_to_filters,
+            filters_tree_to_v2,
+            filters_v2_to_string,
+        )
+
+        v2_original = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.1, "disabled": False, "connector": "OR"},
+            ],
+        }
+        # First round-trip
+        s1 = filters_v2_to_string(v2_original)
+        tree1 = expr_to_filters(s1)
+        v2_rt1 = filters_tree_to_v2(tree1)
+        s2 = filters_v2_to_string(v2_rt1)
+
+        # Second round-trip should be fully stable
+        tree2 = expr_to_filters(s2)
+        v2_rt2 = filters_tree_to_v2(tree2)
+        s3 = filters_v2_to_string(v2_rt2)
+        assert s2 == s3
+
+
+class TestWorkspaceWriteBack:
+    """Test Workspace._to_model() write-back behavior for v2 and legacy filters."""
+
+    def _make_workspace_from_v2(self, v2_filters):
+        """Simulate loading a workspace that has v2 filters."""
+        from copy import deepcopy
+
+        from wandb_workspaces.workspaces.interface import RunsetSettings, Workspace
+        from wandb_workspaces import expr
+
+        filter_string = expr.filters_v2_to_string(v2_filters)
+        ws = Workspace(
+            entity="test",
+            project="test",
+            name="test workspace",
+            runset_settings=RunsetSettings(filters=filter_string),
+        )
+        ws._raw_filters_v2 = deepcopy(v2_filters)
+        ws._original_v2_filter_string = filter_string
+        return ws
+
+    def test_unchanged_v2_uses_raw_dict(self):
+        """If filters haven't been modified, _to_model uses the raw v2 dict."""
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
+            ],
+        }
+        ws = self._make_workspace_from_v2(v2)
+        model = ws._to_model()
+        assert isinstance(model.spec.section.run_sets[0].filters, dict)
+        assert model.spec.section.run_sets[0].filters["filterFormat"] == "filterV2"
+        assert model.spec.section.run_sets[0].filters == v2
+
+    def test_modified_v2_reconverts_to_v2(self):
+        """If filters are modified, _to_model converts through tree → v2."""
+        from wandb_workspaces import expr
+
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+            ],
+        }
+        ws = self._make_workspace_from_v2(v2)
+        ws.runset_settings.filters = "Config('lr') == 0.01"
+        model = ws._to_model()
+        filters_out = model.spec.section.run_sets[0].filters
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert any(f.get("value") == 0.01 for f in filters_out["filters"])
+
+    def test_workspace_always_writes_v2(self):
+        """All workspaces write v2 filter format, even without prior v2 data."""
+        from wandb_workspaces.workspaces.interface import RunsetSettings, Workspace
+        from wandb_workspaces import expr
+
+        ws = Workspace(
+            entity="test",
+            project="test",
+            name="test workspace",
+            runset_settings=RunsetSettings(
+                filters="Config('lr') == 0.01 and Metric('State') == 'finished'"
+            ),
+        )
+        model = ws._to_model()
+        filters_out = model.spec.section.run_sets[0].filters
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert len(filters_out["filters"]) == 2

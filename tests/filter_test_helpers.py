@@ -65,20 +65,19 @@ def verify_operator_mapping_string_filters(container_factory: Callable):
     container1 = container_factory(filters='Metric("loss") < 1.0')
     with pytest.warns(UserWarning, match="'<' operator.*mapped to '<='"):
         parsed1 = expr_to_filters(container1.filters)
-    assert parsed1.filters[0].filters[0].op == "<="
+    assert parsed1.op == "<="
 
     # Test > operator (should map to >= with warning during parsing)
     container2 = container_factory(filters='Metric("accuracy") > 0.9')
     with pytest.warns(UserWarning, match="'>' operator.*mapped to '>='"):
         parsed2 = expr_to_filters(container2.filters)
-    assert parsed2.filters[0].filters[0].op == ">="
+    assert parsed2.op == ">="
 
     # Test <= and >= operators (should NOT trigger warnings)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         container3 = container_factory(filters='Metric("loss") <= 1.0')
         parsed3 = expr_to_filters(container3.filters)
-        # Filter for warnings that contain both "operator" and "mapped to"
         relevant_warnings = [
             warning
             for warning in w
@@ -86,7 +85,7 @@ def verify_operator_mapping_string_filters(container_factory: Callable):
             and "mapped to" in str(warning.message).lower()
         ]
         assert len(relevant_warnings) == 0
-        assert parsed3.filters[0].filters[0].op == "<="
+        assert parsed3.op == "<="
 
 
 def verify_operator_mapping_filterexpr(container_factory: Callable):
@@ -340,9 +339,12 @@ def test_expression_parsing():
 
     for expr_str, expected_filters in test_cases:
         result = expr_to_filters(expr_str)
-        expected = Filters(
-            op="OR", filters=[Filters(op="AND", filters=expected_filters)]
-        )
+        if not expected_filters:
+            expected = Filters(op="AND", filters=[])
+        elif len(expected_filters) == 1:
+            expected = expected_filters[0]
+        else:
+            expected = Filters(op="AND", filters=expected_filters)
         assert result == expected, f"Failed for expression: {expr_str}"
 
 
@@ -423,24 +425,24 @@ def verify_within_last_string_filters(container_factory: Callable):
         filters="WithinLast(Metric('CreatedTimestamp'), 5, 'days')"
     )
     parsed1 = expr_to_filters(container1.filters)
-    assert parsed1.filters[0].filters[0].op == "WITHINSECONDS"
-    assert parsed1.filters[0].filters[0].value == 432000  # 5 days in seconds
+    assert parsed1.op == "WITHINSECONDS"
+    assert parsed1.value == 432000  # 5 days in seconds
 
     # Test WithinLast with hours
     container2 = container_factory(
         filters="WithinLast(Metric('CreatedTimestamp'), 2, 'hours')"
     )
     parsed2 = expr_to_filters(container2.filters)
-    assert parsed2.filters[0].filters[0].op == "WITHINSECONDS"
-    assert parsed2.filters[0].filters[0].value == 7200  # 2 hours in seconds
+    assert parsed2.op == "WITHINSECONDS"
+    assert parsed2.value == 7200  # 2 hours in seconds
 
     # Test WithinLast with minutes
     container3 = container_factory(
         filters="WithinLast(Metric('CreatedTimestamp'), 30, 'minutes')"
     )
     parsed3 = expr_to_filters(container3.filters)
-    assert parsed3.filters[0].filters[0].op == "WITHINSECONDS"
-    assert parsed3.filters[0].filters[0].value == 1800  # 30 minutes in seconds
+    assert parsed3.op == "WITHINSECONDS"
+    assert parsed3.value == 1800  # 30 minutes in seconds
 
 
 def verify_within_last_operator_syntax(container_factory: Callable):
@@ -452,41 +454,42 @@ def verify_within_last_operator_syntax(container_factory: Callable):
         filters="Metric('CreatedTimestamp') within_last 5 days"
     )
     parsed1 = expr_to_filters(container1.filters)
-    assert parsed1.filters[0].filters[0].op == "WITHINSECONDS"
-    assert parsed1.filters[0].filters[0].value == 432000  # 5 days in seconds
+    assert parsed1.op == "WITHINSECONDS"
+    assert parsed1.value == 432000  # 5 days in seconds
 
     # Test with hours
     container2 = container_factory(
         filters="Metric('CreatedTimestamp') within_last 2 hours"
     )
     parsed2 = expr_to_filters(container2.filters)
-    assert parsed2.filters[0].filters[0].op == "WITHINSECONDS"
-    assert parsed2.filters[0].filters[0].value == 7200  # 2 hours in seconds
+    assert parsed2.op == "WITHINSECONDS"
+    assert parsed2.value == 7200  # 2 hours in seconds
 
     # Test with minutes
     container3 = container_factory(
         filters="Metric('CreatedTimestamp') within_last 30 minutes"
     )
     parsed3 = expr_to_filters(container3.filters)
-    assert parsed3.filters[0].filters[0].op == "WITHINSECONDS"
-    assert parsed3.filters[0].filters[0].value == 1800  # 30 minutes in seconds
+    assert parsed3.op == "WITHINSECONDS"
+    assert parsed3.value == 1800  # 30 minutes in seconds
 
     # Test combined with other filters
     container4 = container_factory(
         filters="Metric('CreatedTimestamp') within_last 7 days and State == 'finished'"
     )
     parsed4 = expr_to_filters(container4.filters)
-    assert len(parsed4.filters[0].filters) == 2
-    assert parsed4.filters[0].filters[0].op == "WITHINSECONDS"
-    assert parsed4.filters[0].filters[1].op == "="
+    assert parsed4.op == "AND"
+    assert len(parsed4.filters) == 2
+    assert parsed4.filters[0].op == "WITHINSECONDS"
+    assert parsed4.filters[1].op == "="
 
     # Test with singular unit names
     container5 = container_factory(
         filters="Metric('CreatedTimestamp') within_last 1 day"
     )
     parsed5 = expr_to_filters(container5.filters)
-    assert parsed5.filters[0].filters[0].op == "WITHINSECONDS"
-    assert parsed5.filters[0].filters[0].value == 86400  # 1 day in seconds
+    assert parsed5.op == "WITHINSECONDS"
+    assert parsed5.value == 86400  # 1 day in seconds
 
 
 def test_within_last_time_conversion():
@@ -529,15 +532,13 @@ def test_within_last_round_trip():
     """Test that FilterExpr → string → FilterExpr preserves semantics."""
     from wandb_workspaces.expr import (
         expr_to_filters,
-        filters_to_expr,
-        filter_expr_to_filters_tree,
+        filterexpr_list_to_string,
         filters_tree_to_filter_expr,
     )
 
     # Test round-trip with FilterExpr
     original_filters = [expr.Metric("CreatedTimestamp").within_last(5, "days")]
-    filters_tree = filter_expr_to_filters_tree(original_filters)
-    string_expr = filters_to_expr(filters_tree)
+    string_expr = filterexpr_list_to_string(original_filters)
 
     # Verify it outputs operator syntax
     assert "within_last" in string_expr
@@ -580,7 +581,7 @@ def test_within_last_validation():
 
     # Should work
     valid = expr_to_filters("Metric('CreatedTimestamp') within_last 5 days")
-    assert valid.filters[0].filters[0].op == "WITHINSECONDS"
+    assert valid.op == "WITHINSECONDS"
 
     # Should fail
     with pytest.raises(ValueError, match="only available for CreatedTimestamp"):
