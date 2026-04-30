@@ -373,6 +373,7 @@ class Runset(ReportAPIBaseModel):
     @field_validator("filters", mode="wrap")
     @classmethod
     def _keep_v2_as_dict(cls, v, handler):
+        """Keep v2 filter dicts as raw dicts instead of parsing as Filters."""
         if isinstance(v, dict) and is_filter_v2(v):
             return v
         return handler(v)
