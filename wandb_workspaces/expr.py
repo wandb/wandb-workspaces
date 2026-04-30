@@ -819,28 +819,27 @@ def _flatten_tree_to_v2_items(node: Filters, connector: str) -> list:
     return items
 
 
-def _tree_node_to_v2_items(node: Filters) -> list:
-    """Convert a Filters tree node into a flat list of v2 items (one level of groups max).
+_V2_PRECEDENCE = {"AND": 1, "OR": 0}
 
-    Groups in the v2 output arise from two sources:
 
-    1. Explicit parentheses in the filter string — e.g. ``(A or B) and C``
-       creates an OR subtree nested inside an AND, which becomes a v2 group.
+def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
+    """Recursively convert a Filters tree node into a flat list of v2 items.
 
-    2. Python's ast.parse operator precedence — AND binds tighter than OR,
-       so ``A and B or C`` is parsed as ``Or([And([A, B]), C])``.  The AND
-       subtree has multiple children under an OR parent, so it also becomes
-       a v2 group.  This matches the frontend's own precedence behavior.
+    Groups are only created when a child operator's precedence is **not**
+    strictly higher than the parent's:
 
-    The frontend already applies its own AND-before-OR precedence when
-    reading flat v2 items, so the groups from case (2) are redundant — but
-    they are unavoidable because Python's ast.parse groups AND operands
-    into their own node when mixed with OR (e.g. ``A and B or C`` becomes
-    ``Or([And([A, B]), C])``).  The frontend handles them correctly either
-    way.
+    - AND inside OR  -> inline (AND already binds tighter, no group needed)
+    - OR inside AND  -> group (semantically required)
+    - OR inside OR   -> group (explicit parentheses in source)
+    - AND inside AND -> group (explicit parentheses in source)
 
-    In both cases, any child node with multiple sub-filters becomes a v2
-    group (``{"filters": [...]}``) while leaf nodes are inlined directly.
+    This avoids turning the implicit AND subtrees that Python's ``ast.parse``
+    produces (e.g. ``A or B and C`` -> ``Or([A, And([B, C])])``) into v2
+    groups, since the frontend already applies AND-before-OR precedence.
+
+    Raises:
+        ValueError: If the tree contains groups nested deeper than 1 level,
+            which the UI cannot display or edit.
     """
     if node.key is not None:
         item = _leaf_to_v2_item(node)
@@ -848,6 +847,10 @@ def _tree_node_to_v2_items(node: Filters) -> list:
 
     if node.filters is None:
         return []
+
+    if node.op not in ("OR", "AND"):
+        item = _leaf_to_v2_item(node)
+        return [item] if item else []
 
     items: list = []
     for i, child in enumerate(node.filters):
@@ -859,15 +862,29 @@ def _tree_node_to_v2_items(node: Filters) -> list:
                 item["connector"] = node.op
             items.append(item)
         elif child.filters and len(child.filters) > 1:
-            # V2 supports at most one level of group nesting, so we flatten
-            # the entire subtree into v2 items and wrap them in a single group.
-            group_items = _flatten_tree_to_v2_items(child, child.op)
-            if not group_items:
-                continue
-            group: dict = {"filters": group_items}
-            if items:
-                group["connector"] = node.op
-            items.append(group)
+            child_prec = _V2_PRECEDENCE.get(child.op, 0)
+            parent_prec = _V2_PRECEDENCE.get(node.op, 0)
+            needs_group = child_prec <= parent_prec
+
+            if needs_group:
+                if depth >= 1:
+                    raise ValueError(
+                        "Nested groups deeper than 1 level are not supported. "
+                        "Use a single level of grouping (parentheses)."
+                    )
+                group_items = _tree_node_to_v2_items(child, depth=depth + 1)
+                if not group_items:
+                    continue
+                group: dict = {"filters": group_items}
+                if items:
+                    group["connector"] = node.op
+                items.append(group)
+            else:
+                sub_items = _tree_node_to_v2_items(child, depth=depth)
+                for j, si in enumerate(sub_items):
+                    if j == 0 and items:
+                        si["connector"] = node.op
+                    items.append(si)
         else:
             # Single-child or empty node — no point wrapping in a group,
             # just inline the flattened items directly.
@@ -888,6 +905,9 @@ def filters_tree_to_v2(tree: Filters) -> dict:
 
     Returns:
         A dict with ``filterFormat`` and a flat ``filters`` list.
+
+    Raises:
+        ValueError: If the tree contains groups nested deeper than 1 level.
     """
     items = _tree_node_to_v2_items(tree)
     return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
