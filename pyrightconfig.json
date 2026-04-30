@@ -1,5 +1,0 @@
-{
-  "include": ["wandb_workspaces"],
-  "pythonVersion": "3.9",
-  "pythonPlatform": "Darwin"
-}
