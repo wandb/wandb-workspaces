@@ -790,24 +790,6 @@ def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
     return item
 
 
-def _flatten_tree_to_v2_items(node: Filters, connector: str) -> list:
-    """Flatten a Filters tree node into v2 items with the given connector. No groups."""
-    if node.key is not None:
-        item = _leaf_to_v2_item(node)
-        return [item] if item else []
-
-    if node.filters is None:
-        return []
-
-    items: list = []
-    for child in node.filters:
-        sub_items = _flatten_tree_to_v2_items(child, node.op)
-        for si in sub_items:
-            if items and "connector" not in si:
-                si["connector"] = node.op
-            items.append(si)
-    return items
-
 
 _V2_PRECEDENCE = {"AND": 1, "OR": 0}
 
@@ -838,20 +820,16 @@ def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
     if node.filters is None:
         return []
 
-    if node.op not in ("OR", "AND"):
-        item = _leaf_to_v2_item(node)
-        return [item] if item else []
-
     items: list = []
-    for i, child in enumerate(node.filters):
+    for child in node.filters:
         if child.key is not None:
-            item = _leaf_to_v2_item(child)
-            if item is None:
+            child_item = _leaf_to_v2_item(child)
+            if child_item is None:
                 continue
             if items:
-                item["connector"] = node.op
-            items.append(item)
-        elif child.filters and len(child.filters) > 1:
+                child_item["connector"] = node.op
+            items.append(child_item)
+        else:
             child_prec = _V2_PRECEDENCE.get(child.op, 0)
             parent_prec = _V2_PRECEDENCE.get(node.op, 0)
             needs_group = child_prec <= parent_prec
@@ -862,27 +840,27 @@ def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
                         "Nested groups deeper than 1 level are not supported. "
                         "Use a single level of grouping (parentheses)."
                     )
-                group_items = _tree_node_to_v2_items(child, depth=depth + 1)
-                if not group_items:
+                sub_items = _tree_node_to_v2_items(child, depth=depth + 1)
+                if not sub_items:
                     continue
-                group: dict = {"filters": group_items}
-                if items:
-                    group["connector"] = node.op
-                items.append(group)
+                if len(sub_items) > 1:
+                    group: dict = {"filters": sub_items}
+                    if items:
+                        group["connector"] = node.op
+                    items.append(group)
+                else:
+                    sub = sub_items[0]
+                    if items:
+                        sub = {**sub, "connector": node.op}
+                    items.append(sub)
             else:
                 sub_items = _tree_node_to_v2_items(child, depth=depth)
-                for j, si in enumerate(sub_items):
+                if not sub_items:
+                    continue
+                for j, sub in enumerate(sub_items):
                     if j == 0 and items:
-                        si["connector"] = node.op
-                    items.append(si)
-        else:
-            # Single-child or empty node — no point wrapping in a group,
-            # just inline the flattened items directly.
-            sub_items = _flatten_tree_to_v2_items(child, node.op)
-            for j, si in enumerate(sub_items):
-                if j == 0 and items:
-                    si["connector"] = node.op
-                items.append(si)
+                        sub = {**sub, "connector": node.op}
+                    items.append(sub)
 
     return items
 
