@@ -413,10 +413,8 @@ class RunsetSettings(Base):
             # Import locally to avoid circular import at module level
             # Convert FilterExpr list to internal Filters tree
             filters_tree = expr.filter_expr_to_filters_tree(self.filters)
-            # Convert Filters tree to string expression
-            filter_string = expr.filters_to_expr(filters_tree)
-            # Update the filters field
-            object.__setattr__(self, "filters", filter_string)
+            v2_dict = expr.filters_tree_to_v2(filters_tree)
+            object.__setattr__(self, "filters", expr.filters_v2_to_string(v2_dict))
         return self
 
 
@@ -568,7 +566,8 @@ class Workspace(Base):
         if isinstance(runset_model.filters, dict) and expr.is_filter_v2(runset_model.filters):
             filter_string = expr.filters_v2_to_string(runset_model.filters)
         else:
-            filter_string = expr.filters_to_expr(runset_model.filters)
+            stashed_v2 = expr.filters_tree_to_v2(runset_model.filters)
+            filter_string = expr.filters_v2_to_string(stashed_v2)
 
         # then construct the Workspace object
         obj = cls(
@@ -650,19 +649,14 @@ class Workspace(Base):
             else list(self.runset_settings.pinned_columns)
         )
 
-        if self._raw_filters_v2 is not None:
-            if self.runset_settings.filters == self._original_v2_filter_string:
-                filters_value = self._raw_filters_v2
-            else:
-                tree = expr.expr_to_filters(
-                    self.runset_settings.filters  # type: ignore[arg-type] # validator ensures this is always str
-                )
-                filters_value = expr.filters_tree_to_v2(tree)
+        if (self._raw_filters_v2 is not None
+                and self.runset_settings.filters == self._original_v2_filter_string):
+            filters_value = self._raw_filters_v2
         else:
             tree = expr.expr_to_filters(
                 self.runset_settings.filters  # type: ignore[arg-type] # validator ensures this is always str
             )
-            filters_value = expr.wrap_as_legacy_tree(tree)
+            filters_value = expr.filters_tree_to_v2(tree)
 
         return internal.View(
             entity=self.entity,

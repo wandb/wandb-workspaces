@@ -172,8 +172,9 @@ def test_list_with_dashes_round_trip():
         value=["run-one", "two-three", "abc-123-def"],
     )
 
-    # Convert to expression string
-    expr_string = expr.filters_to_expr(filters)
+    # Convert to expression string via v2 path
+    v2_dict = expr.filters_tree_to_v2(expr.Filters(op="AND", filters=[filters]))
+    expr_string = expr.filters_v2_to_string(v2_dict)
 
     # The expression should properly quote the strings
     assert "'run-one'" in expr_string
@@ -522,7 +523,8 @@ class TestOrStringFilters:
 
         original = "Metric('State') == 'finished' or Config('lr') == 0.01"
         tree = expr.expr_to_filters(original)
-        result = expr.filters_to_expr(tree)
+        v2_dict = expr.filters_tree_to_v2(tree)
+        result = expr.filters_v2_to_string(v2_dict)
         re_tree = expr.expr_to_filters(result)
         assert len(re_tree.filters) == 2
 
@@ -865,8 +867,8 @@ class TestWorkspaceWriteBack:
         assert filters_out["filterFormat"] == "filterV2"
         assert any(f.get("value") == 0.01 for f in filters_out["filters"])
 
-    def test_legacy_workspace_writes_legacy_tree(self):
-        """A workspace without v2 filters writes a canonical OR → AND → leaves tree."""
+    def test_workspace_always_writes_v2(self):
+        """All workspaces write v2 filter format, even without prior v2 data."""
         from wandb_workspaces.workspaces.interface import RunsetSettings, Workspace
         from wandb_workspaces import expr
 
@@ -880,8 +882,6 @@ class TestWorkspaceWriteBack:
         )
         model = ws._to_model()
         filters_out = model.spec.section.run_sets[0].filters
-        assert isinstance(filters_out, expr.Filters)
-        assert filters_out.op == "OR"
-        assert len(filters_out.filters) == 1
-        assert filters_out.filters[0].op == "AND"
-        assert len(filters_out.filters[0].filters) == 2
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert len(filters_out["filters"]) == 2

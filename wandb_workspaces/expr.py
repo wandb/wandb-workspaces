@@ -370,21 +370,6 @@ def expr_to_filters(expr: str) -> Filters:
 
 
 
-def wrap_as_legacy_tree(tree: Filters) -> Filters:
-    """Wrap a raw parse tree into the canonical OR → AND → leaves structure.
-
-    The legacy frontend filter reader (legacyFiltersFromJSON) requires filters
-    in the shape ``OR([AND([...leaves...])])``.  This helper normalises any
-    ``Filters`` tree produced by ``expr_to_filters`` into that shape so it can
-    be safely written to the backend for non-v2 workspaces and reports.
-    """
-    if tree.op == "AND" and tree.filters:
-        children = tree.filters
-    else:
-        children = [tree]
-    return Filters(op="OR", filters=[Filters(op="AND", filters=children)])
-
-
 def _parse_node(node) -> Filters:
     # Check if this is a WithinLast function call (not inside a comparison)
     if isinstance(node, ast.Call):
@@ -669,39 +654,6 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
         val_str = str(value)
 
     return f"{key_str} {py_op} {val_str}"
-
-
-def filters_to_expr(filter_obj: Any) -> str:
-    """Convert an internal Filters tree back to a string expression.
-
-    Args:
-        filter_obj: An internal Filters tree structure
-
-    Returns:
-        A Python-like filter expression string
-    """
-
-    def _convert_filter(filter: Any) -> str:
-        if hasattr(filter, "filters") and filter.filters is not None:
-            sub_expressions = [
-                _convert_filter(f)
-                for f in filter.filters
-                if f.filters is not None or (f.key and f.key.name)
-            ]
-            if not sub_expressions:
-                return ""
-
-            joint = " and " if filter.op == "AND" else " or "
-            return joint.join(sub_expressions)
-        else:
-            if not filter.key or not filter.key.name:
-                # Skip filters with empty key names
-                return ""
-            return _format_filter_leaf(
-                filter.key.section, filter.key.name, filter.op, filter.value
-            )
-
-    return _convert_filter(filter_obj)
 
 
 FILTER_FORMAT_V2 = "filterV2"
@@ -1353,8 +1305,8 @@ def string_to_filterexpr_list(filter_string: str) -> List[FilterExpr]:
 def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
     """Convert a list of FilterExpr objects to a string filter expression.
 
-    This is a convenience function that combines filter_expr_to_filters_tree()
-    and filters_to_expr() to provide a direct FilterExpr list → string conversion.
+    Converts through the v2 filter path: FilterExpr list → Filters tree →
+    v2 dict → display string.
 
     Args:
         filters: A list of FilterExpr objects
@@ -1373,8 +1325,8 @@ def filterexpr_list_to_string(filters: List[FilterExpr]) -> str:
 
     # Convert FilterExpr list to internal Filters tree
     filters_tree = filter_expr_to_filters_tree(filters)
-    # Convert Filters tree to string expression
-    return filters_to_expr(filters_tree)
+    v2_dict = filters_tree_to_v2(filters_tree)
+    return filters_v2_to_string(v2_dict)
 
 
 def normalize_filters_to_string(instance):
