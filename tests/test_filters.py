@@ -194,11 +194,10 @@ def test_list_with_dashes_round_trip():
 
 
 def test_disabled_filters_preserved_in_runset_roundtrip():
-    """Disabled (inactive) filters must survive a _from_model → _to_model roundtrip.
+    """Disabled (inactive) filters must survive a _from_model -> _to_model roundtrip.
 
-    Regression test: filters_to_expr discarded the ``disabled`` flag and
-    expr_to_filters hardcoded ``disabled=False``, so inactive filters
-    silently became active after a load/save cycle (e.g. report migration).
+    When filters haven't been modified by the user, the stashed v2 dict
+    (which preserves disabled state) is used directly on write-back.
     """
     from wandb_workspaces import expr
     from wandb_workspaces.reports.v2 import internal
@@ -223,28 +222,35 @@ def test_disabled_filters_preserved_in_runset_roundtrip():
 
     iface = wr.Runset._from_model(internal_runset)
     model = iface._to_model()
-    leaves = model.filters.filters[0].filters
+    assert isinstance(model.filters, dict)
+    assert model.filters["filterFormat"] == "filterV2"
+    items = model.filters["filters"]
 
-    assert leaves[0].disabled is False
-    assert leaves[1].disabled is True
-    assert leaves[2].disabled is True
+    assert items[0]["disabled"] is False
+    assert items[1]["disabled"] is True
+    assert items[2]["disabled"] is True
 
 
 def test_user_constructed_runset_parses_from_string():
-    """Runsets built by the user (not loaded) should parse filters from the string."""
+    """Runsets built by the user (not loaded) should parse filters from the string.
+
+    _to_model always writes v2, so model.filters is a v2 dict.
+    """
     import wandb_workspaces.reports.v2 as wr
-    from wandb_workspaces import expr
 
     rs = wr.Runset(filters="Metric('User') == 'alice'")
-    assert rs._filters_internal is None
 
     model = rs._to_model()
-    assert isinstance(model.filters, expr.Filters)
-    assert model.filters.value == "alice"
+    assert isinstance(model.filters, dict)
+    assert model.filters["filterFormat"] == "filterV2"
+    assert any(f.get("value") == "alice" for f in model.filters["filters"])
 
 
 def test_modifying_filters_after_load_uses_new_value():
-    """Overwriting .filters on a loaded Runset must discard the stashed tree."""
+    """Overwriting .filters on a loaded Runset must discard the stashed v2 dict.
+
+    _to_model always writes v2, so model.filters is a v2 dict.
+    """
     from wandb_workspaces import expr
     from wandb_workspaces.reports.v2 import internal
     import wandb_workspaces.reports.v2 as wr
@@ -265,13 +271,14 @@ def test_modifying_filters_after_load_uses_new_value():
     )
 
     iface = wr.Runset._from_model(internal_runset)
-    assert iface._filters_internal is not None
+    assert iface._stashed_filters_v2 is not None
 
     iface.filters = "Metric('User') == 'bob'"
 
     model = iface._to_model()
-    assert isinstance(model.filters, expr.Filters)
-    assert model.filters.value == "bob", "New filter value should take effect"
+    assert isinstance(model.filters, dict)
+    assert model.filters["filterFormat"] == "filterV2"
+    assert any(f.get("value") == "bob" for f in model.filters["filters"]), "New filter value should take effect"
 
 
 # ===== v2 filter read/conversion tests =====
@@ -831,8 +838,8 @@ class TestWorkspaceWriteBack:
             name="test workspace",
             runset_settings=RunsetSettings(filters=filter_string),
         )
-        ws._raw_filters_v2 = deepcopy(v2_filters)
-        ws._original_v2_filter_string = filter_string
+        ws._stashed_filters_v2 = deepcopy(v2_filters)
+        ws._stashed_filter_string = filter_string
         return ws
 
     def test_unchanged_v2_uses_raw_dict(self):
@@ -892,24 +899,32 @@ class TestReportWriteBack:
     """Test report Runset write-back behavior for v2 and legacy filters.
 
     Report _to_model() requires an API call for project lookup, so these tests
-    exercise the filter decision logic directly by simulating the two branches
-    in _to_model (unchanged vs modified).
+    exercise the filter decision logic directly by simulating the write path.
     """
 
     def _compute_filters(self, runset):
         """Extract the filter value that _to_model would write, without the API call."""
         from wandb_workspaces import expr
 
-        filters_unchanged = (
-            runset._filters_internal is not None
-            and runset.filters == expr.filters_v2_to_string(
-                expr.filters_tree_to_v2(runset._filters_internal)
-            )
-        )
-        if filters_unchanged:
-            return runset._filters_internal
+        if (runset._stashed_filters_v2 is not None
+                and runset.filters == runset._stashed_filter_string):
+            return runset._stashed_filters_v2
         else:
-            return expr.expr_to_filters(runset.filters)
+            return expr.filters_tree_to_v2(
+                expr.expr_to_filters(runset.filters)
+            )
+
+    def _make_report_runset_from_v2(self, v2_filters):
+        """Simulate loading a report runset that has v2 filters."""
+        from copy import deepcopy
+        from wandb_workspaces.reports.v2.interface import Runset
+        from wandb_workspaces import expr
+
+        filter_string = expr.filters_v2_to_string(v2_filters)
+        rs = Runset(filters=filter_string)
+        rs._stashed_filters_v2 = deepcopy(v2_filters)
+        rs._stashed_filter_string = filter_string
+        return rs
 
     def _make_report_runset_from_legacy(self, legacy_filters):
         """Simulate loading a report runset that has legacy filters."""
@@ -919,11 +934,42 @@ class TestReportWriteBack:
         stashed_v2 = expr.filters_tree_to_v2(legacy_filters)
         filter_string = expr.filters_v2_to_string(stashed_v2)
         rs = Runset(filters=filter_string)
-        rs._filters_internal = legacy_filters
+        rs._stashed_filters_v2 = stashed_v2
+        rs._stashed_filter_string = filter_string
         return rs
 
-    def test_unchanged_legacy_preserves_tree(self):
-        """If legacy filters haven't been modified, write-back uses the stashed Filters tree."""
+    def test_unchanged_v2_uses_raw_dict(self):
+        """If v2 filters haven't been modified, write-back uses the stashed v2 dict."""
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
+            ],
+        }
+        rs = self._make_report_runset_from_v2(v2)
+        filters_out = self._compute_filters(rs)
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert filters_out == v2
+
+    def test_modified_v2_reconverts_to_v2(self):
+        """If v2 filters are modified, write-back converts through tree -> v2."""
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+            ],
+        }
+        rs = self._make_report_runset_from_v2(v2)
+        rs.filters = "Config('lr') == 0.01"
+        filters_out = self._compute_filters(rs)
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert any(f.get("value") == 0.01 for f in filters_out["filters"])
+
+    def test_unchanged_legacy_preserves_stashed_v2(self):
+        """If legacy filters haven't been modified, write-back uses the stashed v2 dict."""
         from wandb_workspaces import expr
 
         legacy = expr.Filters(
@@ -939,12 +985,11 @@ class TestReportWriteBack:
         )
         rs = self._make_report_runset_from_legacy(legacy)
         filters_out = self._compute_filters(rs)
-        assert isinstance(filters_out, expr.Filters)
-        assert filters_out is legacy
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
 
     def test_modified_legacy_reconverts(self):
-        """If legacy filters are modified, write-back re-parses the string."""
-        from wandb_workspaces.reports.v2.interface import Runset
+        """If legacy filters are modified, write-back re-parses and converts to v2."""
         from wandb_workspaces import expr
 
         legacy = expr.Filters(
@@ -961,13 +1006,15 @@ class TestReportWriteBack:
         rs = self._make_report_runset_from_legacy(legacy)
         rs.filters = "Config('lr') == 0.01"
         filters_out = self._compute_filters(rs)
-        assert isinstance(filters_out, expr.Filters)
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert any(f.get("value") == 0.01 for f in filters_out["filters"])
 
-    def test_new_runset_parses_string(self):
-        """A brand-new report runset parses the filter string."""
+    def test_new_runset_writes_v2(self):
+        """A brand-new report runset writes v2 format."""
         from wandb_workspaces.reports.v2.interface import Runset
-        from wandb_workspaces import expr
 
         rs = Runset(filters="Config('lr') == 0.01 and Metric('State') == 'finished'")
         filters_out = self._compute_filters(rs)
-        assert isinstance(filters_out, expr.Filters)
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"

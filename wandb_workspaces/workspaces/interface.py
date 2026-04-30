@@ -26,6 +26,7 @@ workspace.save()
 ```
 """
 
+import copy
 import os
 from typing import Dict, Iterable, Literal, Optional, Union
 from typing import List as LList
@@ -452,8 +453,8 @@ class Workspace(Base):
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
 
-    _raw_filters_v2: Optional[dict] = Field(None, init=False, repr=False)
-    _original_v2_filter_string: str = Field("", init=False, repr=False)
+    _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
+    _stashed_filter_string: Optional[str] = Field(default=None, init=False, repr=False)
 
     @property
     def auto_generate_panels(self) -> bool:
@@ -559,6 +560,7 @@ class Workspace(Base):
 
         runset_model = model.spec.section.run_sets[0]
         if isinstance(runset_model.filters, dict) and expr.is_filter_v2(runset_model.filters):
+            stashed_v2 = copy.deepcopy(runset_model.filters)
             filter_string = expr.filters_v2_to_string(runset_model.filters)
         else:
             # Legacy filters: the workspace was saved before v2 and hasn't been
@@ -594,9 +596,8 @@ class Workspace(Base):
         obj._internal_name = model.name
         obj._internal_id = model.id
         obj._internal_runset_id = runset_model.id
-        if isinstance(runset_model.filters, dict):
-            obj._raw_filters_v2 = runset_model.filters
-            obj._original_v2_filter_string = filter_string
+        obj._stashed_filters_v2 = stashed_v2
+        obj._stashed_filter_string = filter_string
         return obj
 
     def _to_model(self) -> internal.View:
@@ -647,14 +648,13 @@ class Workspace(Base):
             else list(self.runset_settings.pinned_columns)
         )
 
-        if (self._raw_filters_v2 is not None
-                and self.runset_settings.filters == self._original_v2_filter_string):
-            filters_value = self._raw_filters_v2
+        if (self._stashed_filters_v2 is not None
+                and self.runset_settings.filters == self._stashed_filter_string):
+            filters_value = self._stashed_filters_v2
         else:
-            tree = expr.expr_to_filters(
-                self.runset_settings.filters  # type: ignore[arg-type] # validator ensures this is always str
+            filters_value = expr.filters_tree_to_v2(
+                expr.expr_to_filters(self.runset_settings.filters)  # type: ignore[arg-type] # validator ensures this is always str
             )
-            filters_value = expr.filters_tree_to_v2(tree)
 
         return internal.View(
             entity=self.entity,
