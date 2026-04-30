@@ -365,8 +365,8 @@ class TestOrObjectAPI:
         assert len(tree.filters) == 2
         assert tree.filters[0].op == "AND"
         assert len(tree.filters[0].filters) == 2
-        assert tree.filters[1].op == "AND"
-        assert len(tree.filters[1].filters) == 1
+        assert tree.filters[1].op == "="
+        assert tree.filters[1].key.name == "lr"
 
     def test_or_in_runset_settings(self):
         import wandb_workspaces.workspaces as ws
@@ -738,16 +738,38 @@ class TestOrStringFilters:
         assert inner.filters[1].op == "OR"
         assert len(inner.filters[1].filters) == 2
 
+    def test_same_op_nesting_flattened(self):
+        """Same-op nesting (OR inside OR) is flattened instead of grouped."""
+        from wandb_workspaces import expr
+
+        tree = expr.expr_to_filters(
+            "(Config('lr') == 0.01 or Config('batch') == 32) or Metric('State') == 'finished'"
+        )
+        v2 = expr.filters_tree_to_v2(tree)
+        assert len(v2["filters"]) == 3
+
     def test_nested_groups_v2_raises(self):
-        """Groups nested deeper than 1 level raise ValueError."""
+        """Mixed-op groups nested deeper than 1 level raise ValueError."""
         import pytest
 
         from wandb_workspaces import expr
 
-        tree = expr.expr_to_filters(
-            "Metric('Name') == 'a' or (Metric('Name') == 'b' and Metric('State') == 'finished'"
-            " or (Metric('Name') == 'c' or Metric('Name') == 'd'))"
-        )
+        # OR inside AND inside AND — the inner OR creates a group at depth 0,
+        # and the outer AND-inside-AND... actually we need mixed ops at 2 levels.
+        # Build a tree manually: AND -> [leaf, OR -> [leaf, AND -> [leaf, OR -> [leaf, leaf]]]]
+        tree = expr.Filters(op="AND", filters=[
+            expr.Filters(op="=", key=expr.Key(section="run", name="state"), value="finished"),
+            expr.Filters(op="OR", filters=[
+                expr.Filters(op="=", key=expr.Key(section="config", name="lr"), value=0.01),
+                expr.Filters(op="AND", filters=[
+                    expr.Filters(op="=", key=expr.Key(section="config", name="batch"), value=32),
+                    expr.Filters(op="OR", filters=[
+                        expr.Filters(op="=", key=expr.Key(section="config", name="epochs"), value=10),
+                        expr.Filters(op="=", key=expr.Key(section="config", name="seed"), value=42),
+                    ]),
+                ]),
+            ]),
+        ])
         with pytest.raises(ValueError, match="deeper than 1 level"):
             expr.filters_tree_to_v2(tree)
 

@@ -763,13 +763,13 @@ _V2_PRECEDENCE = {"AND": 1, "OR": 0}
 def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
     """Recursively convert a Filters tree node into a flat list of v2 items.
 
-    Groups are only created when a child operator's precedence is **not**
-    strictly higher than the parent's:
+    Groups are only created when a child operator's precedence is strictly
+    **lower** than the parent's:
 
-    - AND inside OR  -> inline (AND already binds tighter, no group needed)
+    - AND inside OR  -> inline (AND binds tighter, no group needed)
     - OR inside AND  -> group (semantically required)
-    - OR inside OR   -> group (explicit parentheses in source)
-    - AND inside AND -> group (explicit parentheses in source)
+    - OR inside OR   -> inline (same-op nesting is redundant, flatten)
+    - AND inside AND -> inline (same-op nesting is redundant, flatten)
 
     This avoids turning the implicit AND subtrees that Python's ``ast.parse``
     produces (e.g. ``A or B and C`` -> ``Or([A, And([B, C])])``) into v2
@@ -798,7 +798,7 @@ def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
         else:
             child_prec = _V2_PRECEDENCE.get(child.op, 0)
             parent_prec = _V2_PRECEDENCE.get(node.op, 0)
-            needs_group = child_prec <= parent_prec
+            needs_group = child_prec < parent_prec
 
             if needs_group:
                 if depth >= 1:
@@ -1246,7 +1246,12 @@ class And:
         """Convert to an AND Filters node."""
         children = []
         for item in self.items:
-            children.append(item.to_model())
+            node = item.to_model()
+            if node.op == "AND" and node.filters is not None:
+                # AND inside AND is redundant, flatten.
+                children.extend(node.filters)
+            else:
+                children.append(node)
         return Filters(op="AND", filters=children)
 
 
@@ -1254,13 +1259,10 @@ class And:
 class Or:
     """Combine multiple filter items with OR logic.
 
-    Each argument becomes a separate OR branch.  Arguments that are plain
-    ``FilterExpr`` or ``And`` groups are treated as individual AND buckets.
-
     Example:
         >>> Or(
-        ...     And(ws.Config("lr") == 0.01, ws.Metric("State") == "finished"),
-        ...     ws.Config("lr") == 0.1,
+        ...     And(Config("lr") == 0.01, Metric("State") == "finished"),
+        ...     Config("lr") == 0.1,
         ... )
     """
 
@@ -1273,17 +1275,16 @@ class Or:
         return f"Or({', '.join(repr(i) for i in self.items)})"
 
     def to_model(self) -> Filters:
-        """Convert to the canonical OR -> AND -> leaves tree."""
-        buckets = []
+        children = []
         for item in self.items:
             node = item.to_model()
-            if node.op == "AND" and node.filters is not None:
-                buckets.append(node)
-            elif node.op == "OR" and node.filters is not None:
-                buckets.extend(node.filters)
+            if node.op == "OR" and node.filters is not None:
+                # OR inside OR is redundant (a OR (b OR c) == a OR b OR c),
+                # so flatten the children into this level.
+                children.extend(node.filters)
             else:
-                buckets.append(Filters(op="AND", filters=[node]))
-        return Filters(op="OR", filters=buckets)
+                children.append(node)
+        return Filters(op="OR", filters=children)
 
 
 @dataclass(frozen=True)
