@@ -532,15 +532,13 @@ def test_within_last_round_trip():
     """Test that FilterExpr → string → FilterExpr preserves semantics."""
     from wandb_workspaces.expr import (
         expr_to_filters,
-        filters_to_expr,
-        filter_expr_to_filters_tree,
+        filterexpr_list_to_string,
         filters_tree_to_filter_expr,
     )
 
     # Test round-trip with FilterExpr
     original_filters = [expr.Metric("CreatedTimestamp").within_last(5, "days")]
-    filters_tree = filter_expr_to_filters_tree(original_filters)
-    string_expr = filters_to_expr(filters_tree)
+    string_expr = filterexpr_list_to_string(original_filters)
 
     # Verify it outputs operator syntax
     assert "within_last" in string_expr

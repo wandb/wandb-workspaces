@@ -172,8 +172,9 @@ def test_list_with_dashes_round_trip():
         value=["run-one", "two-three", "abc-123-def"],
     )
 
-    # Convert to expression string
-    expr_string = expr.filters_to_expr(filters)
+    # Convert to expression string via v2 path
+    v2_dict = expr.filters_tree_to_v2(expr.Filters(op="AND", filters=[filters]))
+    expr_string = expr.filters_v2_to_string(v2_dict)
 
     # The expression should properly quote the strings
     assert "'run-one'" in expr_string
@@ -234,6 +235,7 @@ def test_user_constructed_runset_parses_from_string():
     _to_model always writes v2, so model.filters is a v2 dict.
     """
     import wandb_workspaces.reports.v2 as wr
+    from wandb_workspaces import expr
 
     rs = wr.Runset(filters="Metric('User') == 'alice'")
 
@@ -662,7 +664,8 @@ class TestOrStringFilters:
 
         original = "Metric('State') == 'finished' or Config('lr') == 0.01"
         tree = expr.expr_to_filters(original)
-        result = expr.filters_to_expr(tree)
+        v2_dict = expr.filters_tree_to_v2(tree)
+        result = expr.filters_v2_to_string(v2_dict)
         re_tree = expr.expr_to_filters(result)
         assert len(re_tree.filters) == 2
 
@@ -944,3 +947,75 @@ class TestV2FullRoundTrip:
         v2_rt2 = filters_tree_to_v2(tree2)
         s3 = filters_v2_to_string(v2_rt2)
         assert s2 == s3
+
+
+
+class TestReportWriteBack:
+    """Test report Runset write-back behavior for v2 and legacy filters.
+
+    Report _to_model() requires an API call for project lookup, so these tests
+    exercise the filter decision logic directly by simulating the write path.
+    """
+
+    def _compute_filters(self, runset):
+        """Extract the filter value that _to_model would write, without the API call."""
+        from wandb_workspaces import expr
+
+        if (runset._stashed_filters_v2 is not None
+                and runset.filters == runset._stashed_filter_string):
+            return runset._stashed_filters_v2
+        else:
+            return expr.filters_tree_to_v2(
+                expr.expr_to_filters(runset.filters)
+            )
+
+    def _make_report_runset_from_v2(self, v2_filters):
+        """Simulate loading a report runset that has v2 filters."""
+        from copy import deepcopy
+        from wandb_workspaces.reports.v2.interface import Runset
+        from wandb_workspaces import expr
+
+        filter_string = expr.filters_v2_to_string(v2_filters)
+        rs = Runset(filters=filter_string)
+        rs._stashed_filters_v2 = deepcopy(v2_filters)
+        rs._stashed_filter_string = filter_string
+        return rs
+
+    def test_unchanged_v2_uses_raw_dict(self):
+        """If v2 filters haven't been modified, write-back uses the stashed v2 dict."""
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+                {"op": "=", "key": {"section": "config", "name": "lr"}, "value": 0.01, "disabled": False, "connector": "AND"},
+            ],
+        }
+        rs = self._make_report_runset_from_v2(v2)
+        filters_out = self._compute_filters(rs)
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert filters_out == v2
+
+    def test_modified_v2_reconverts_to_v2(self):
+        """If v2 filters are modified, write-back converts through tree -> v2."""
+        v2 = {
+            "filterFormat": "filterV2",
+            "filters": [
+                {"op": "=", "key": {"section": "run", "name": "state"}, "value": "finished", "disabled": False},
+            ],
+        }
+        rs = self._make_report_runset_from_v2(v2)
+        rs.filters = "Config('lr') == 0.01"
+        filters_out = self._compute_filters(rs)
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"
+        assert any(f.get("value") == 0.01 for f in filters_out["filters"])
+
+    def test_new_runset_writes_v2(self):
+        """A brand-new report runset writes v2 format."""
+        from wandb_workspaces.reports.v2.interface import Runset
+
+        rs = Runset(filters="Config('lr') == 0.01 and Metric('State') == 'finished'")
+        filters_out = self._compute_filters(rs)
+        assert isinstance(filters_out, dict)
+        assert filters_out["filterFormat"] == "filterV2"

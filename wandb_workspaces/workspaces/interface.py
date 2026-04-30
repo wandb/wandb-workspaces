@@ -410,8 +410,14 @@ class RunsetSettings(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list / Or / And / Group to string (unified internal format)."""
-        return expr.normalize_filters_to_string(self)
+        """Convert FilterExpr list or Or/And/Group to string expression."""
+        if isinstance(self.filters, list):
+            object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
+        elif isinstance(self.filters, (expr.Or, expr.And, expr.Group)):
+            tree = expr._filter_items_to_filters_tree([self.filters])
+            v2 = expr.filters_tree_to_v2(tree)
+            object.__setattr__(self, "filters", expr.filters_v2_to_string(v2))
+        return self
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -563,8 +569,11 @@ class Workspace(Base):
             stashed_v2 = copy.deepcopy(runset_model.filters)
             filter_string = expr.filters_v2_to_string(runset_model.filters)
         else:
+            # Legacy filters: the workspace was saved before v2 and hasn't been
+            # opened in the UI yet (which does lazy conversion).  Convert the
+            # legacy Filters tree to v2.
             stashed_v2 = expr.filters_tree_to_v2(runset_model.filters)
-            filter_string = expr.filters_to_expr(runset_model.filters)
+            filter_string = expr.filters_v2_to_string(stashed_v2)
 
         # then construct the Workspace object
         obj = cls(
