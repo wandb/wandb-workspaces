@@ -618,28 +618,21 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
 
     Shared by both the legacy tree-to-string path and the v2-to-string path.
     """
-    # Convert backend metric name to frontend name
     frontend_name = _convert_be_to_fe_metric_name(name)
 
-    # Special handling for WITHINSECONDS operator
     if op == "WITHINSECONDS":
-        # Prepend the function name if the section matches
         if section in section_map_reversed:
             function_name = section_map_reversed[section]
             metric_expr = f'{function_name}("{frontend_name}")'
         else:
             metric_expr = frontend_name
 
-        # Convert seconds back to human-readable format
         amount, unit = _convert_seconds_to_time(value)
-        # Format amount as int if it's a whole number, otherwise as float
         if isinstance(amount, float) and amount.is_integer():
             amount = int(amount)
 
-        # Use operator syntax for output (more readable)
         return f"{metric_expr} within_last {amount} {unit}"
 
-    # Prepend the function name if the section matches
     if section in section_map_reversed:
         func_name = section_map_reversed[section]
         key_str = f'{func_name}("{frontend_name}")'
@@ -651,7 +644,6 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
     if value is None:
         val_str = "None"
     elif isinstance(value, list):
-        # Properly quote string elements in lists to avoid parse errors
         formatted_elements = []
         for v in value:
             if isinstance(v, str):
@@ -667,21 +659,20 @@ def _format_filter_leaf(section: str, name: str, op: str, value: Any) -> str:
     return f"{key_str} {py_op} {val_str}"
 
 
-def filters_to_expr(filter_obj: Any, is_root=True) -> str:
+def filters_to_expr(filter_obj: Any) -> str:
     """Convert an internal Filters tree back to a string expression.
 
     Args:
         filter_obj: An internal Filters tree structure
-        is_root: Whether this is the root of the tree (used internally)
 
     Returns:
         A Python-like filter expression string
     """
 
-    def _convert_filter(filter: Any, is_root: bool) -> str:
+    def _convert_filter(filter: Any) -> str:
         if hasattr(filter, "filters") and filter.filters is not None:
             sub_expressions = [
-                _convert_filter(f, False)
+                _convert_filter(f)
                 for f in filter.filters
                 if f.filters is not None or (f.key and f.key.name)
             ]
@@ -689,8 +680,7 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
                 return ""
 
             joint = " and " if filter.op == "AND" else " or "
-            expr = joint.join(sub_expressions)
-            return f"({expr})" if not is_root and sub_expressions else expr
+            return joint.join(sub_expressions)
         else:
             if not filter.key or not filter.key.name:
                 # Skip filters with empty key names
@@ -699,7 +689,7 @@ def filters_to_expr(filter_obj: Any, is_root=True) -> str:
                 filter.key.section, filter.key.name, filter.op, filter.value
             )
 
-    return _convert_filter(filter_obj, is_root)
+    return _convert_filter(filter_obj)
 
 
 # ---------------------------------------------------------------------------
@@ -724,10 +714,8 @@ def _format_v2_leaf(item: dict) -> Optional[str]:
 
     Returns:
         A formatted string like ``Config("lr") == 0.01``, or None if the
-        item is disabled or has no valid key.
+        item has no valid key.
     """
-    if item.get("disabled", False):
-        return None
     key = item.get("key")
     if not key or not key.get("name"):
         return None
@@ -744,12 +732,10 @@ def _v2_items_to_string(items: list) -> str:
     """Walk a flat v2 filter list and emit a display string.
 
     Handles connectors (AND/OR), nested groups (parentheses), and skips
-    disabled or empty items.
+    empty items. Disabled items are included to match legacy behavior.
     """
     parts: List[str] = []
     for item in items:
-        if item.get("disabled", False):
-            continue
 
         connector = item.get("connector")
 
@@ -809,23 +795,26 @@ def _leaf_to_v2_item(leaf: Filters) -> Optional[dict]:
 _V2_PRECEDENCE = {"AND": 1, "OR": 0}
 
 
-def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
+def _tree_node_to_v2_items(
+    node: Filters, depth: int = 0, is_first_in_parent: bool = True
+) -> list:
     """Recursively convert a Filters tree node into a flat list of v2 items.
-
-    We already handle AND/OR precedence in the UI by forming the tree there,
-    but Python's ``ast.parse`` produces nested nodes for each ``and`` operator
-    (e.g. ``A or B and C`` → ``Or([A, And([B, C])])``).  Without this logic
-    those implicit AND nodes would become v2 groups, which is both confusing
-    for users (they see a group they didn't explicitly create) and problematic
-    because our UI only supports up to 1 level of grouping.
 
     Groups are only created when a child operator's precedence is **not**
     strictly higher than the parent's:
 
-    - OR inside AND  → group (semantically required)
-    - OR inside OR   → group (explicit parentheses in source)
-    - AND inside AND → group (explicit parentheses in source)
-    - AND inside OR  → inline (AND already binds tighter, no group needed)
+    - AND inside OR  -> inline (AND already binds tighter, no group needed)
+    - OR inside AND  -> group (semantically required)
+    - OR inside OR   -> group (explicit parentheses in source)
+    - AND inside AND -> group (explicit parentheses in source)
+
+    This avoids turning the implicit AND subtrees that Python's ``ast.parse``
+    produces (e.g. ``A or B and C`` -> ``Or([A, And([B, C])])``) into v2
+    groups, since the frontend already applies AND-before-OR precedence.
+
+    Raises:
+        ValueError: If the tree contains groups nested deeper than 1 level,
+            which the UI cannot display or edit.
     """
     if node.key is not None:
         item = _leaf_to_v2_item(node)
@@ -850,59 +839,43 @@ def _tree_node_to_v2_items(node: Filters, is_first_in_parent: bool) -> list:
                 child_item["connector"] = node.op
             items.append(child_item)
         else:
-            sub_items = _tree_node_to_v2_items(child, is_first_in_parent=True)
-            if not sub_items:
-                continue
-
             child_prec = _V2_PRECEDENCE.get(child.op, 0)
             parent_prec = _V2_PRECEDENCE.get(node.op, 0)
-            needs_group = len(sub_items) > 1 and child_prec <= parent_prec
+            needs_group = child_prec <= parent_prec
 
             if needs_group:
-                group: dict = {"filters": sub_items}
-                if not is_first:
-                    group["connector"] = node.op
-                items.append(group)
+                if depth >= 1:
+                    raise ValueError(
+                        "Nested groups deeper than 1 level are not supported. "
+                        "Use a single level of grouping (parentheses)."
+                    )
+                sub_items = _tree_node_to_v2_items(
+                    child, depth=depth + 1, is_first_in_parent=True
+                )
+                if not sub_items:
+                    continue
+                if len(sub_items) > 1:
+                    group: dict = {"filters": sub_items}
+                    if not is_first:
+                        group["connector"] = node.op
+                    items.append(group)
+                else:
+                    sub = sub_items[0]
+                    if not is_first:
+                        sub = {**sub, "connector": node.op}
+                    items.append(sub)
             else:
+                sub_items = _tree_node_to_v2_items(
+                    child, depth=depth, is_first_in_parent=True
+                )
+                if not sub_items:
+                    continue
                 for j, sub in enumerate(sub_items):
                     if j == 0 and not is_first:
                         sub = {**sub, "connector": node.op}
                     items.append(sub)
 
     return items
-
-
-def _flatten_nested_groups(items: list) -> list:
-    """Flatten groups that contain nested groups into a single level.
-
-    The v2 UI only supports one level of nesting.  If a group's ``filters``
-    list itself contains a group, inline that inner group's items so the
-    result never exceeds depth 1.
-    """
-    result: list = []
-    for item in items:
-        if "filters" in item and "key" not in item:
-            inner = item["filters"]
-            has_nested = any(
-                "filters" in sub and "key" not in sub for sub in inner
-            )
-            if has_nested:
-                flat_inner: list = []
-                for sub in inner:
-                    if "filters" in sub and "key" not in sub:
-                        for k, nested_item in enumerate(sub["filters"]):
-                            entry = {**nested_item}
-                            if k == 0 and sub.get("connector"):
-                                entry["connector"] = sub["connector"]
-                            flat_inner.append(entry)
-                    else:
-                        flat_inner.append(sub)
-                result.append({**item, "filters": flat_inner})
-            else:
-                result.append(item)
-        else:
-            result.append(item)
-    return result
 
 
 def filters_tree_to_v2(tree: Filters) -> dict:
@@ -913,6 +886,9 @@ def filters_tree_to_v2(tree: Filters) -> dict:
 
     Returns:
         A dict with ``filterFormat`` and a flat ``filters`` list.
+
+    Raises:
+        ValueError: If the tree contains groups nested deeper than 1 level.
     """
     items = _tree_node_to_v2_items(tree, is_first_in_parent=True)
     if (
@@ -922,7 +898,6 @@ def filters_tree_to_v2(tree: Filters) -> dict:
         and "connector" not in items[0]
     ):
         items = items[0]["filters"]
-    items = _flatten_nested_groups(items)
     return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
 
 
