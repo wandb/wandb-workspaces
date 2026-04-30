@@ -644,35 +644,18 @@ class TestOrStringFilters:
         assert inner.filters[1].op == "OR"
         assert len(inner.filters[1].filters) == 2
 
-    def test_nested_groups_v2_output(self):
-        """Groups containing groups flatten to one level of nesting in v2.
+    def test_nested_groups_v2_raises(self):
+        """Groups nested deeper than 1 level raise ValueError."""
+        import pytest
 
-        Expected v2:
-        {"filterFormat": "filterV2", "filters": [
-            {"key": {"section": "run", "name": "displayName"}, "op": "=", "value": "a"},
-            {"connector": "OR", "filters": [
-                {"key": {"section": "run", "name": "displayName"}, "op": "=", "value": "b"},
-                {"key": {"section": "run", "name": "state"}, "op": "=", "value": "finished", "connector": "AND"},
-                {"key": {"section": "run", "name": "displayName"}, "op": "=", "value": "c", "connector": "OR"},
-                {"key": {"section": "run", "name": "displayName"}, "op": "=", "value": "d", "connector": "OR"},
-            ]},
-        ]}
-        """
         from wandb_workspaces import expr
 
         tree = expr.expr_to_filters(
             "Metric('Name') == 'a' or (Metric('Name') == 'b' and Metric('State') == 'finished'"
             " or (Metric('Name') == 'c' or Metric('Name') == 'd'))"
         )
-        v2 = expr.filters_tree_to_v2(tree)
-        items = v2["filters"]
-        assert len(items) == 2
-        assert items[0]["value"] == "a"
-        assert "filters" in items[1]
-        group_items = items[1]["filters"]
-        assert len(group_items) == 4
-        for gi in group_items:
-            assert "filters" not in gi
+        with pytest.raises(ValueError, match="deeper than 1 level"):
+            expr.filters_tree_to_v2(tree)
 
 
 class TestTreeToV2Conversion:
