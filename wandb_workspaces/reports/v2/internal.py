@@ -337,6 +337,7 @@ class RunFeed(ReportAPIBaseModel):
     column_order: LList[str] = Field(default_factory=list)
     page_size: int = 10
     only_show_selected: bool = False
+    lock_columns: Optional[bool] = None
 
 
 class Sort(ReportAPIBaseModel):

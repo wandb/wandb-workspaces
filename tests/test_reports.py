@@ -1565,6 +1565,481 @@ class TestRunsetRunSettings:
         assert result.selections.tree == ["hidden-run"]
 
 
+class TestRunsetColumnConfig:
+    """Round-trip and behavior tests for Runset column configuration."""
+
+    @pytest.fixture(autouse=True)
+    def mock_api(self, monkeypatch):
+        mock_client = Mock()
+        mock_client.execute.return_value = {
+            "project": {"internalId": "test-project-id"}
+        }
+        monkeypatch.setattr(
+            "wandb_workspaces.reports.v2.interface._get_api",
+            lambda: type("MockApi", (), {"client": mock_client})(),
+        )
+
+    def test_pinned_columns_serialize(self):
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:accuracy", "summary:loss"],
+        )
+        model = runset._to_model()
+
+        assert model.run_feed.column_pinned == {
+            "summary:accuracy": True,
+            "summary:loss": True,
+        }
+        # Pinned cols MUST be in column_visible with True — Reports render
+        # with hideNewKey=true, which strips missing cols when the modified
+        # flag is set.
+        assert model.run_feed.column_visible == {
+            "summary:accuracy": True,
+            "summary:loss": True,
+        }
+        assert model.run_feed.column_order == ["summary:accuracy", "summary:loss"]
+
+    def test_visible_and_hidden_lists_consolidate_to_column_visible(self):
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            visible_columns=["summary:accuracy"],
+            hidden_columns=["config:internal_flag"],
+        )
+        model = runset._to_model()
+
+        assert model.run_feed.column_visible == {
+            "summary:accuracy": True,
+            "config:internal_flag": False,
+        }
+
+    def test_visible_columns_appear_in_default_column_order(self):
+        """The FE renders from column_order, not column_visible. visible_columns
+        entries MUST appear in the default column_order so they actually render
+        (especially under lock_columns=True). Hidden cols stay out of the
+        order entirely."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:accuracy"],
+            visible_columns=["summary:loss", "summary:f1_score"],
+            hidden_columns=["config:noise_param"],
+            lock_columns=True,
+        )
+        model = runset._to_model()
+
+        # Pinned first, then visible (in declared order). Hidden col absent.
+        assert model.run_feed.column_order == [
+            "summary:accuracy",
+            "summary:loss",
+            "summary:f1_score",
+        ]
+        # column_visible carries the full picture (including the hidden col).
+        assert model.run_feed.column_visible == {
+            "config:noise_param": False,
+            "summary:loss": True,
+            "summary:f1_score": True,
+            "summary:accuracy": True,
+        }
+
+    def test_explicit_column_order_with_curated_cols_appends_missing(self):
+        """Explicit column_order preserves the user's layout preference but
+        curated cols (pinned + visible) missing from it are appended to the
+        end — otherwise they'd ghost out, since column_order is the FE's
+        render gate."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:accuracy"],
+            visible_columns=["summary:loss", "summary:f1_score"],
+            column_order=["summary:loss", "summary:accuracy"],  # f1_score omitted
+        )
+        model = runset._to_model()
+        # f1_score gets appended; user's order for loss/accuracy is preserved.
+        assert model.run_feed.column_order == [
+            "summary:loss",
+            "summary:accuracy",
+            "summary:f1_score",
+        ]
+
+    def test_explicit_column_order_alone_used_verbatim(self):
+        """When no curated cols are specified, explicit column_order is
+        written verbatim."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            column_order=["summary:a", "summary:b", "summary:c"],
+        )
+        model = runset._to_model()
+        assert model.run_feed.column_order == [
+            "summary:a",
+            "summary:b",
+            "summary:c",
+        ]
+
+    def test_hidden_col_excluded_from_column_order(self):
+        """A col in both column_order and hidden_columns should not render
+        (hidden wins over column_order alone, since column_order isn't an
+        explicit 'keep visible' directive)."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            column_order=["summary:a", "summary:b", "summary:c"],
+            hidden_columns=["summary:b"],
+        )
+        model = runset._to_model()
+        # b excluded from column_order; column_visible carries the False.
+        assert model.run_feed.column_order == ["summary:a", "summary:c"]
+        assert model.run_feed.column_visible == {
+            "summary:b": False,
+            "summary:a": True,
+            "summary:c": True,
+        }
+
+    def test_hidden_wins_over_pinned_columns(self):
+        """Hide is absolute: a col in both pinned_columns and hidden_columns
+        is stripped from column_pinned and not rendered. We don't silently
+        keep something the user said to hide."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:accuracy"],
+            hidden_columns=["summary:accuracy"],
+        )
+        model = runset._to_model()
+        assert model.run_feed.column_visible == {"summary:accuracy": False}
+        assert model.run_feed.column_pinned == {}
+        assert model.run_feed.column_order == []
+
+    def test_hidden_wins_over_visible_columns(self):
+        """Hide is absolute: a col in both visible_columns and hidden_columns
+        is stripped from column_visible's True entries and from column_order."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            visible_columns=["summary:loss", "summary:f1_score"],
+            hidden_columns=["summary:loss"],
+        )
+        model = runset._to_model()
+        assert model.run_feed.column_visible == {
+            "summary:loss": False,
+            "summary:f1_score": True,
+        }
+        assert model.run_feed.column_order == ["summary:f1_score"]
+
+    def test_locked_mode_drops_column_order_only_cols(self):
+        """Under lock_columns=True, cols in column_order but not in
+        pinned_columns / visible_columns are dropped — locked mode requires
+        explicit declaration of what's visible. Layout preference alone is
+        not enough."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:accuracy"],
+            visible_columns=["summary:loss"],
+            column_order=[
+                "summary:accuracy",
+                "summary:noise",  # not declared anywhere else
+                "summary:loss",
+            ],
+            lock_columns=True,
+        )
+        model = runset._to_model()
+        # noise is dropped from column_order under locked mode.
+        assert model.run_feed.column_order == [
+            "summary:accuracy",
+            "summary:loss",
+        ]
+        assert model.run_feed.column_visible == {
+            "summary:accuracy": True,
+            "summary:loss": True,
+        }
+
+    def test_triple_combo_locked_pin_order_hide(self):
+        """Full combo under locked mode:
+        - pinned col stays (and renders)
+        - hidden col strips from column_order entirely
+        - column_order-only col (not pinned/visible) drops under locked mode
+        Verifies hide and lock-mode precedence rules both apply in one pass."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:accuracy"],
+            hidden_columns=["summary:noise"],
+            column_order=[
+                "summary:accuracy",
+                "summary:noise",  # hidden — drops
+                "summary:layout_only",  # not curated, locked → drops
+            ],
+            lock_columns=True,
+        )
+        model = runset._to_model()
+        assert model.run_feed.column_order == ["summary:accuracy"]
+        assert model.run_feed.column_visible == {
+            "summary:noise": False,
+            "summary:accuracy": True,
+        }
+        assert model.run_feed.column_pinned == {"summary:accuracy": True}
+
+    def test_triple_combo_permissive_pin_order_hide(self):
+        """Full combo under non-locked mode:
+        - pinned col stays
+        - hidden col strips from column_order
+        - column_order-only col (not pinned/visible) is kept (permissive)
+        Verifies non-locked mode is permissive about column_order entries."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:accuracy"],
+            hidden_columns=["summary:noise"],
+            column_order=[
+                "summary:accuracy",
+                "summary:noise",  # hidden — drops
+                "summary:layout_only",  # not curated, permissive → kept
+            ],
+        )
+        model = runset._to_model()
+        assert model.run_feed.column_order == [
+            "summary:accuracy",
+            "summary:layout_only",
+        ]
+        assert model.run_feed.column_visible == {
+            "summary:noise": False,
+            "summary:accuracy": True,
+            "summary:layout_only": True,
+        }
+        assert model.run_feed.column_pinned == {"summary:accuracy": True}
+
+    def test_pinned_col_not_in_column_order_appends(self):
+        """A pinned col not listed in column_order gets appended to the wire's
+        column_order. The FE anchors it visually to the left via column_pinned;
+        the wire position is just metadata for if pinning changes."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:b"],
+            column_order=["summary:a"],
+        )
+        model = runset._to_model()
+        # b appended after a; visual rendering anchors b left via column_pinned.
+        assert model.run_feed.column_order == ["summary:a", "summary:b"]
+        assert model.run_feed.column_pinned == {"summary:b": True}
+
+    def test_permissive_keeps_column_order_only_cols(self):
+        """Without lock_columns, cols in column_order render even if not
+        listed in pinned/visible — non-locked mode is permissive."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            column_order=["summary:a", "summary:b"],
+        )
+        model = runset._to_model()
+        assert model.run_feed.column_order == ["summary:a", "summary:b"]
+        assert model.run_feed.column_visible == {
+            "summary:a": True,
+            "summary:b": True,
+        }
+
+    def test_round_trip_preserves_three_lists(self):
+        """Round-trip reflects what the wire ends up rendering, not the
+        user's original typed inputs. visible_columns on reload includes
+        any col that's True in column_visible (i.e., in column_order and
+        not pinned). column_order on reload is the full effective render
+        list (explicit order + appended curated cols)."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:accuracy"],
+            visible_columns=["summary:f1_score"],
+            hidden_columns=["config:internal_flag"],
+            column_order=["summary:accuracy", "summary:loss"],
+        )
+        model = runset._to_model()
+        reconstructed = wr.Runset._from_model(model)
+
+        assert reconstructed.pinned_columns == ["summary:accuracy"]
+        # summary:loss came from column_order (not visible_columns) but
+        # ends up True in column_visible to match the FE's invariant —
+        # so it surfaces in visible_columns on round-trip.
+        assert sorted(reconstructed.visible_columns) == sorted(
+            ["summary:f1_score", "summary:loss"]
+        )
+        assert reconstructed.hidden_columns == ["config:internal_flag"]
+        # column_order includes the appended f1_score from visible_columns.
+        assert reconstructed.column_order == [
+            "summary:accuracy",
+            "summary:loss",
+            "summary:f1_score",
+        ]
+
+    def test_duplicates_in_list_fields_are_deduped_on_serialize(self):
+        """Duplicate entries in list fields would render duplicate columns;
+        _to_model must dedupe while preserving order."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:a", "summary:a", "summary:b"],
+            column_order=["summary:a", "summary:b", "summary:a"],
+        )
+        model = runset._to_model()
+
+        assert model.run_feed.column_pinned == {
+            "summary:a": True,
+            "summary:b": True,
+        }
+        assert model.run_feed.column_order == ["summary:a", "summary:b"]
+
+    def test_column_widths_round_trip(self):
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            column_widths={"summary:accuracy": 200, "summary:loss": 150},
+        )
+        model = runset._to_model()
+
+        assert model.run_feed.column_widths == {
+            "summary:accuracy": 200,
+            "summary:loss": 150,
+        }
+
+        reconstructed = wr.Runset._from_model(model)
+        assert reconstructed.column_widths == {
+            "summary:accuracy": 200,
+            "summary:loss": 150,
+        }
+
+    def test_lock_columns_default_is_none(self):
+        """Default permissive — lock_columns left unset is None on the wire."""
+        runset = wr.Runset(entity="e", project="p", pinned_columns=["summary:a"])
+        model = runset._to_model()
+        assert model.run_feed.lock_columns is None
+
+    def test_lock_columns_true_round_trip(self):
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            visible_columns=["summary:a", "summary:b"],
+            lock_columns=True,
+        )
+        model = runset._to_model()
+        assert model.run_feed.lock_columns is True
+
+        reconstructed = wr.Runset._from_model(model)
+        assert reconstructed.lock_columns is True
+        assert reconstructed.visible_columns == ["summary:a", "summary:b"]
+
+    def test_lock_columns_false_round_trip(self):
+        """Explicit False is the GM 'pin without losing the rest' case."""
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            pinned_columns=["summary:a"],
+            lock_columns=False,
+        )
+        model = runset._to_model()
+        assert model.run_feed.lock_columns is False
+
+        reconstructed = wr.Runset._from_model(model)
+        assert reconstructed.lock_columns is False
+
+    def test_from_model_extracts_default_seed_entries(self):
+        """Default RunFeed carries {'run:name': False} on the wire; _from_model
+        surfaces it as hidden_columns."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(name="rs")
+        assert "run:name" in model.run_feed.column_visible
+
+        runset = wr.Runset._from_model(model)
+        assert runset.pinned_columns == []
+        assert runset.visible_columns == []
+        assert runset.hidden_columns == ["run:name"]
+
+    def test_noop_round_trip_preserves_runfeed_verbatim(self):
+        """Loading and re-saving without touching column fields writes the
+        stashed RunFeed back verbatim (preserves legacy seed entries)."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(name="rs")
+        assert model.run_feed.column_visible == {"run:name": False}
+
+        runset = wr.Runset._from_model(model)
+        re_model = runset._to_model()
+
+        assert re_model.run_feed.column_visible == {"run:name": False}
+
+    def test_from_model_extracts_column_order_only_cols_as_visible(self):
+        """If a wire spec has a col in column_order but missing from
+        column_visible (e.g. hand-edited or non-canonical spec), _from_model
+        should still surface it in visible_columns — column_order is the
+        actual render gate."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(
+            name="rs",
+            run_feed=internal.RunFeed(
+                column_visible={"summary:a": True},  # only a, b missing
+                column_order=["summary:a", "summary:b"],  # both render
+            ),
+        )
+        runset = wr.Runset._from_model(model)
+        assert sorted(runset.visible_columns) == ["summary:a", "summary:b"]
+
+    def test_round_trip_preserves_non_column_runfeed_fields(self):
+        """RunFeed fields the SDK doesn't expose (page_size, only_show_selected)
+        survive round-trip via the stash, even when the user changes column
+        config after loading."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(
+            name="rs",
+            run_feed=internal.RunFeed(page_size=42, only_show_selected=True),
+        )
+        runset = wr.Runset._from_model(model)
+        runset.pinned_columns = ["summary:accuracy"]  # touch a column field
+        re_model = runset._to_model()
+
+        assert re_model.run_feed.page_size == 42
+        assert re_model.run_feed.only_show_selected is True
+        assert re_model.run_feed.column_pinned == {"summary:accuracy": True}
+
+    def test_modified_runfeed_round_trip(self):
+        """Loaded runset with curated columns round-trips its column config
+        verbatim."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(
+            name="rs",
+            run_feed=internal.RunFeed(
+                column_visible={"summary:a": True, "summary:b": False},
+                column_pinned={"summary:a": True},
+                column_order=["summary:a"],
+            ),
+        )
+
+        runset = wr.Runset._from_model(model)
+        re_model = runset._to_model()
+
+        assert re_model.run_feed.column_visible == {
+            "summary:a": True,
+            "summary:b": False,
+        }
+        assert re_model.run_feed.column_pinned == {"summary:a": True}
+
+    def test_user_change_after_load_reflected_in_wire(self):
+        """After loading, mutating a column field flows through to the wire."""
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.Runset(name="rs")
+        runset = wr.Runset._from_model(model)
+
+        runset.pinned_columns = ["summary:accuracy"]
+        re_model = runset._to_model()
+
+        assert re_model.run_feed.column_pinned == {"summary:accuracy": True}
+
+
 class TestReportSharing:
     """Tests for Report magic link sharing methods."""
 
