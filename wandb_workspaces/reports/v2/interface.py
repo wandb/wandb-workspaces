@@ -969,37 +969,29 @@ class Runset(Base):
             Use this to set colors and/or hide individual runs. See `RunSettings`.
         pinned_columns (LList[str]): Column accessors to pin to the left of
             the runs table (e.g. `["summary:accuracy", "config:lr.value"]`).
-            A col also listed in `hidden_columns` is stripped from this list
-            on save — hide is absolute and wins over pin.
-        visible_columns (LList[str]): Column accessors to force-show without
-            pinning. Main use case: curating the visible set in locked mode
-            (combine with `lock_columns=True`). A col also listed in
-            `hidden_columns` is stripped on save.
-        hidden_columns (LList[str]): Column accessors to hide. Hide takes
-            precedence over `pinned_columns`, `visible_columns`, and entries
-            in `column_order` — a hidden col never renders, regardless of
-            where else it appears.
-        column_order (LList[str]): Left-to-right order of columns. Entries are
-            written to the wire's column_order and (under permissive mode)
-            cause the col to render. Under `lock_columns=True`, entries
-            here that are not also in `pinned_columns` / `visible_columns`
-            are dropped — locked mode requires explicit declaration of intent.
+            Cols also in `hidden_columns` are stripped on save.
+        visible_columns (LList[str]): Column accessors to force-show. Use with
+            `lock_columns=True` to curate the visible set. On reload, this
+            also includes cols set only via `column_order`.
+        hidden_columns (LList[str]): Column accessors to hide. Takes
+            precedence over `pinned_columns`, `visible_columns`, and
+            `column_order`. On reload, may include server-seeded entries
+            like `run:name`.
+        column_order (LList[str]): Left-to-right column order. Under
+            `lock_columns=True`, entries not in `pinned_columns` or
+            `visible_columns` are dropped.
         column_widths (Dict[str, int]): Per-column pixel widths.
-        lock_columns (Optional[bool]): Opt-in toggle to lock the runs-table
-            column set to whatever's listed in `pinned_columns` /
-            `visible_columns`. `True` enables locked mode (only listed cols
-            render; auto-discovered config and summary keys are hidden).
-            `False` and `None` (default) are both permissive — all known 
-            and future columns appear, `hidden_columns`/`visible_columns` 
-            act as overrides. The lock icon in the runs-table toolbar 
-            (Reports edit mode) toggles this same flag.
+        lock_columns (Optional[bool]): Opt-in lock for the runs-table column
+            set. `True` shows only `pinned_columns` and `visible_columns`;
+            `False` or `None` (default) is permissive. Matches the lock icon
+            in the runs-table toolbar.
 
     Column format:
         Columns are addressed as `"<section>:<name>"`:
-            - `run:<attr>`        — built-in run properties (e.g. `run:state`, `run:createdAt`)
-            - `config:<key>.value` — config keys (note the `.value` suffix from nested config)
-            - `summary:<key>`     — summary metrics
-            - `tags:__ALL__`      — run tags
+            - `run:<attr>`: built-in run properties (e.g. `run:state`)
+            - `config:<key>.value`: config keys (note the `.value` suffix)
+            - `summary:<key>`: summary metrics
+            - `tags:__ALL__`: run tags
 
     Example:
         ```python
