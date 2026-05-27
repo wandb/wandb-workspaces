@@ -1,3 +1,4 @@
+import base64
 import os
 import sys
 from typing import Any, Dict, Generic, Type, TypeVar
@@ -452,3 +453,155 @@ def test_workspace_lineplot_metric_regex():
     workspace2 = ws.Workspace._from_model(model)
     panel2 = workspace2.sections[0].panels[0]
     assert panel2.metric_regex == "train/.*"
+
+
+# Baseline / Pinned Runs Tests
+
+
+def test_baseline_and_pinned_runs_roundtrip():
+    """Both baseline_run and pinned_runs round-trip through _to_model /
+    _from_model: slugs in, base64-encoded `Run:v1:` GIDs on the wire (the
+    format the viewspec stores), slugs back out on read."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(
+            baseline_run="1mbku38n",
+            pinned_runs=["1mbku38n", "2u1g3j1c"],
+        ),
+    )
+
+    model = workspace._to_model()
+    runset = model.spec.section.run_sets[0]
+
+    expected_baseline_gid = base64.b64encode(
+        b"Run:v1:1mbku38n:test-project:test-entity"
+    ).decode()
+    expected_pinned_gids = [
+        base64.b64encode(b"Run:v1:1mbku38n:test-project:test-entity").decode(),
+        base64.b64encode(b"Run:v1:2u1g3j1c:test-project:test-entity").decode(),
+    ]
+    assert runset.baseline_run_id == expected_baseline_gid
+    assert runset.pinned_run_ids == expected_pinned_gids
+
+    # Verify the camelCase keys land in the dumped spec JSON
+    dumped = model.spec.model_dump(by_alias=True, exclude_none=True)
+    rs_dump = dumped["section"]["runSets"][0]
+    assert rs_dump["baselineRunId"] == expected_baseline_gid
+    assert rs_dump["pinnedRunIds"] == expected_pinned_gids
+
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.baseline_run == "1mbku38n"
+    assert workspace2.runset_settings.pinned_runs == ["1mbku38n", "2u1g3j1c"]
+
+
+def test_pinned_runs_encoded_with_workspace_project_and_entity():
+    """The encoded GID embeds the workspace's own (project, entity), so the
+    same slug used in two workspaces produces two different GIDs."""
+    ws_a = ws.Workspace(
+        entity="entity-a",
+        project="project-a",
+        runset_settings=ws.RunsetSettings(pinned_runs=["g0dpjzew"]),
+    )
+    ws_b = ws.Workspace(
+        entity="entity-b",
+        project="project-b",
+        runset_settings=ws.RunsetSettings(pinned_runs=["g0dpjzew"]),
+    )
+
+    gid_a = ws_a._to_model().spec.section.run_sets[0].pinned_run_ids[0]
+    gid_b = ws_b._to_model().spec.section.run_sets[0].pinned_run_ids[0]
+
+    assert gid_a != gid_b
+    assert base64.b64decode(gid_a).decode() == "Run:v1:g0dpjzew:project-a:entity-a"
+    assert base64.b64decode(gid_b).decode() == "Run:v1:g0dpjzew:project-b:entity-b"
+
+
+def test_from_model_decodes_legacy_gid_inputs():
+    """`_from_model` decodes GID-encoded pinned/baseline values into slugs,
+    so users always see the slug form on read regardless of what the spec
+    happens to hold today."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(
+            baseline_run="1mbku38n",
+            pinned_runs=["1mbku38n", "2u1g3j1c"],
+        ),
+    )
+    model = workspace._to_model()
+
+    # Round-trip through the encoded GID form back to slugs
+    decoded = ws.Workspace._from_model(model)
+    assert decoded.runset_settings.baseline_run == "1mbku38n"
+    assert decoded.runset_settings.pinned_runs == ["1mbku38n", "2u1g3j1c"]
+
+
+def test_encode_passthrough_for_already_encoded_gid():
+    """If the user happens to pass an already-encoded `Run:v1:` GID (e.g.
+    from legacy code that did the base64 encoding by hand), the encoder
+    leaves it alone instead of double-encoding it."""
+    legacy_gid = base64.b64encode(
+        b"Run:v1:g0dpjzew:legacy-project:legacy-entity"
+    ).decode()
+    workspace = ws.Workspace(
+        entity="new-entity",
+        project="new-project",
+        runset_settings=ws.RunsetSettings(pinned_runs=[legacy_gid]),
+    )
+
+    pinned = workspace._to_model().spec.section.run_sets[0].pinned_run_ids
+    assert pinned == [legacy_gid]
+
+
+def test_baseline_run_auto_added_to_pinned():
+    """Setting only baseline_run auto-adds it to pinned_runs (mirrors the W&B
+    app's setRunPinnedAndBaseline write path)."""
+    runset_settings = ws.RunsetSettings(baseline_run="1mbku38n")
+    assert runset_settings.pinned_runs == ["1mbku38n"]
+
+
+def test_baseline_already_in_pinned_not_duplicated():
+    """If the user already includes the baseline in pinned_runs, the validator
+    leaves the list untouched."""
+    runset_settings = ws.RunsetSettings(
+        baseline_run="1mbku38n",
+        pinned_runs=["1mbku38n", "2u1g3j1c"],
+    )
+    assert runset_settings.pinned_runs == ["1mbku38n", "2u1g3j1c"]
+
+
+def test_empty_baseline_and_pinned():
+    """Defaults serialize cleanly: no baselineRunId / pinnedRunIds keys in the
+    dumped spec, and round-trip yields the same defaults."""
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(),
+    )
+
+    model = workspace._to_model()
+    runset = model.spec.section.run_sets[0]
+    assert runset.baseline_run_id is None
+    assert runset.pinned_run_ids is None
+
+    dumped = model.spec.model_dump(by_alias=True, exclude_none=True)
+    rs_dump = dumped["section"]["runSets"][0]
+    assert "baselineRunId" not in rs_dump
+    assert "pinnedRunIds" not in rs_dump
+
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.baseline_run is None
+    assert workspace2.runset_settings.pinned_runs == []
+
+
+def test_pinned_runs_over_cap_warns():
+    """Exceeding the app's MAX_PINNED_RUNS (20) emits a termwarn but still
+    serializes every entry the user provided."""
+    too_many = [f"run{i}" for i in range(21)]
+    with patch("wandb_workspaces.workspaces.interface.wandb.termwarn") as warn:
+        runset_settings = ws.RunsetSettings(pinned_runs=too_many)
+
+    warn.assert_called_once()
+    assert "21" in warn.call_args.args[0]
+    assert runset_settings.pinned_runs == too_many

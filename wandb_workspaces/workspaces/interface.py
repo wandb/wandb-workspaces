@@ -26,6 +26,7 @@ workspace.save()
 ```
 """
 
+import base64
 import os
 from typing import Dict, Iterable, Literal, Optional, Union
 from typing import List as LList
@@ -42,6 +43,41 @@ from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
 from . import internal
+
+
+def _encode_run_gid(slug: str, project: str, entity: str) -> str:
+    """Encode a run slug into the GraphQL Relay GID form the viewspec stores.
+
+    The W&B app's viewspec stores pinned/baseline runs as base64-encoded
+    `Run:v1:<slug>:<project>:<entity>` GIDs (see `gorilla.RunID`). The SDK
+    accepts the user-friendly slug (the value of `wandb.Run.id`) and encodes
+    here at the serialization boundary, so users never see the GID form.
+
+    If the input already looks like a v1 Run GID, it's passed through
+    unchanged so users with pre-existing GID values aren't broken.
+    """
+    if _decode_run_gid(slug) != slug:
+        return slug
+    payload = f"Run:v1:{slug}:{project}:{entity}".encode("utf-8")
+    return base64.b64encode(payload).decode("ascii")
+
+
+def _decode_run_gid(value: Optional[str]) -> Optional[str]:
+    """Inverse of `_encode_run_gid`: extract the slug from a v1 Run GID.
+
+    Non-GID inputs (already-decoded slugs, garbage strings) are returned
+    unchanged so the read path is forgiving across spec format transitions.
+    """
+    if not value:
+        return value
+    try:
+        decoded = base64.b64decode(value, validate=True).decode("utf-8")
+    except Exception:
+        return value
+    parts = decoded.split(":")
+    if len(parts) >= 5 and parts[0] in ("Run", "BucketType") and parts[1] == "v1":
+        return ":".join(parts[2:-2])
+    return value
 
 __all__ = [
     "SectionLayoutSettings",
@@ -337,6 +373,18 @@ class RunsetSettings(Base):
             Column names use format: "run:displayName", "summary:metric", "config:param".
             run:displayName is automatically added if not present.
             Example: ["summary:accuracy", "summary:loss"]
+        baseline_run (Optional[str]): W&B run slug of the baseline run (the
+            value of `wandb.Run.id`, e.g. `"1mbku38n"` — also the last path
+            segment of a run URL). Used for delta columns and comparison
+            styling. When set, the baseline run is automatically added to
+            `pinned_runs` to match the W&B app's behavior. Must refer to a
+            run in the workspace's own project — cross-project pins are not
+            supported by this SDK yet (see the W&B app's "Add cross-project
+            runs" drawer for the UI equivalent).
+        pinned_runs (LList[str]): Ordered list of W&B run slugs to keep
+            visible in the run selector and always fetched for plots. Pass
+            slug strings (`wandb.Run.id`), not GraphQL IDs. The W&B app
+            caps this at 20 entries.
 
     Example:
         ```python
@@ -344,6 +392,8 @@ class RunsetSettings(Base):
         RunsetSettings(
             filters="Config('learning_rate') = 0.001 and State = 'finished'",
             pinned_columns=["summary:accuracy", "summary:loss"],
+            baseline_run="1mbku38n",  # wandb.Run.id (the slug from the URL)
+            pinned_runs=["1mbku38n", "2u1g3j1c"],
         )
 
         # Using FilterExpr list (original way)
@@ -381,6 +431,10 @@ class RunsetSettings(Base):
     # Column management
     pinned_columns: LList[str] = Field(default_factory=list)
 
+    # Baseline / pinned runs
+    baseline_run: Optional[str] = None
+    pinned_runs: LList[str] = Field(default_factory=list)
+
     # Internal fields for backend serialization (not user-facing)
     _visible_columns: LList[str] = Field(default_factory=list, init=False, repr=False)
     _column_order: LList[str] = Field(default_factory=list, init=False, repr=False)
@@ -403,6 +457,26 @@ class RunsetSettings(Base):
             object.__setattr__(self, "_visible_columns", list(self.pinned_columns))
             object.__setattr__(self, "_column_order", list(self.pinned_columns))
 
+        return self
+
+    @model_validator(mode="after")
+    def ensure_baseline_pinned(self):
+        """Mirror the W&B app's invariant: a baseline run is always also pinned.
+
+        The frontend's `setBaselineRun` action handler routes through
+        `setRunPinnedAndBaseline`, so any spec produced by the UI has the
+        baseline ID present in `pinnedRunIds`. We enforce the same here so
+        SDK-produced specs match.
+        """
+        if self.baseline_run and self.baseline_run not in self.pinned_runs:
+            new_pinned = list(self.pinned_runs)
+            new_pinned.append(self.baseline_run)
+            object.__setattr__(self, "pinned_runs", new_pinned)
+        if len(self.pinned_runs) > 20:
+            wandb.termwarn(
+                f"pinned_runs has {len(self.pinned_runs)} entries; "
+                "the W&B app caps pinned runs at 20."
+            )
         return self
 
     @model_validator(mode="after")
@@ -585,6 +659,15 @@ class Workspace(Base):
                 ],
                 run_settings=run_settings,
                 pinned_columns=pinned_columns,
+                baseline_run=_decode_run_gid(
+                    model.spec.section.run_sets[0].baseline_run_id
+                ),
+                pinned_runs=[
+                    _decode_run_gid(rid) or rid
+                    for rid in (
+                        model.spec.section.run_sets[0].pinned_run_ids or []
+                    )
+                ],
             ),
         )
         obj._internal_name = model.name
@@ -686,6 +769,23 @@ class Workspace(Base):
                                     for id, config in self.runset_settings.run_settings.items()
                                     if config.disabled
                                 ],
+                            ),
+                            baseline_run_id=(
+                                _encode_run_gid(
+                                    self.runset_settings.baseline_run,
+                                    self.project,
+                                    self.entity,
+                                )
+                                if self.runset_settings.baseline_run
+                                else None
+                            ),
+                            pinned_run_ids=(
+                                [
+                                    _encode_run_gid(s, self.project, self.entity)
+                                    for s in self.runset_settings.pinned_runs
+                                ]
+                                if self.runset_settings.pinned_runs
+                                else None
                             ),
                         ),
                     ],
