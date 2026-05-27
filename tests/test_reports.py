@@ -582,6 +582,43 @@ def test_media_browser_explicit_mode_with_both_axes():
     assert restored.mode == "grid"
 
 
+def test_media_browser_extra_config_round_trip():
+    """Known MediaBrowser panels must preserve frontend-owned config fields."""
+    from wandb_workspaces.reports.v2 import internal
+
+    payload = {
+        "viewType": "Media Browser",
+        "config": {
+            "chartTitle": "Image Samples",
+            "columnCount": 5,
+            "mediaKeys": ["examples/image"],
+            "mode": "grid",
+            "gridSettings": {"xAxis": "step", "yAxis": "run"},
+            "actualSize": True,
+            "fitToDimension": "width",
+            "pixelated": True,
+            "stepIndex": 5,
+            "maxGalleryItems": 100,
+            "maxRuns": 20,
+            "videoPlaybackSyncEnabled": True,
+        },
+        "layout": {"x": 0, "y": 0, "w": 12, "h": 8},
+    }
+
+    parsed = internal._validate_panel_from_dict(payload)
+    assert isinstance(parsed, internal.MediaBrowser)
+
+    round_tripped = wr.MediaBrowser._from_model(parsed)._to_model()
+    config = round_tripped.config.model_dump(by_alias=True, exclude_none=True)
+    assert config["actualSize"] is True
+    assert config["fitToDimension"] == "width"
+    assert config["pixelated"] is True
+    assert config["stepIndex"] == 5
+    assert config["maxGalleryItems"] == 100
+    assert config["maxRuns"] == 20
+    assert config["videoPlaybackSyncEnabled"] is True
+
+
 def test_runset_query_parameter():
     """Test that Runset query parameter is properly passed through to internal model"""
     from wandb_workspaces.reports.v2 import internal
@@ -611,6 +648,142 @@ def test_runset_query_parameter():
     mock_runset_empty_search = internal.Runset(name="test", search=mock_empty_search)
     reconstructed_empty_search = wr.Runset._from_model(mock_runset_empty_search)
     assert reconstructed_empty_search.query == ""
+
+
+def test_runset_round_trip_preserves_unmodeled_fields():
+    """Loaded runset fields without public SDK attrs should not reset on save."""
+    from wandb_workspaces.reports.v2 import internal
+
+    model = internal.Runset.model_validate(
+        {
+            "id": "rs-test",
+            "runFeed": {
+                "version": 2,
+                "columnVisible": {"run:name": True, "config:lr": True},
+                "columnPinned": {"run:displayName": True, "config:lr": True},
+                "columnWidths": {"run:name": 200},
+                "columnOrder": ["run:displayName", "config:lr"],
+                "pageSize": 25,
+                "onlyShowSelected": True,
+            },
+            "enabled": False,
+            "name": "Custom Run Set",
+            "search": {"query": "best", "isRegex": True},
+            "filters": {"op": "OR", "filters": [{"op": "AND", "filters": []}]},
+            "grouping": [{"section": "config", "name": "epochs"}],
+            "sort": {
+                "keys": [
+                    {"key": {"section": "summary", "name": "loss"}, "ascending": True}
+                ]
+            },
+            "selections": {
+                "root": 1,
+                "bounds": [{"key": {"section": "run", "name": "createdAt"}}],
+                "tree": ["run-abc"],
+            },
+            "expandedRowAddresses": ["0/run-abc"],
+        }
+    )
+
+    round_tripped = wr.Runset._from_model(model)._to_model()
+    dumped = round_tripped.model_dump(by_alias=True, exclude_none=True)
+
+    assert dumped["runFeed"]["columnVisible"] == {
+        "run:name": True,
+        "config:lr": True,
+    }
+    assert dumped["runFeed"]["columnPinned"] == {
+        "run:displayName": True,
+        "config:lr": True,
+    }
+    assert dumped["runFeed"]["columnWidths"] == {"run:name": 200}
+    assert dumped["runFeed"]["columnOrder"] == ["run:displayName", "config:lr"]
+    assert dumped["runFeed"]["pageSize"] == 25
+    assert dumped["runFeed"]["onlyShowSelected"] is True
+    assert dumped["enabled"] is False
+    assert dumped["search"]["isRegex"] is True
+    assert dumped["grouping"] == [{"section": "config", "name": "epochs"}]
+    assert dumped["selections"]["bounds"] == [
+        {"key": {"section": "run", "name": "createdAt"}}
+    ]
+    assert dumped["expandedRowAddresses"] == ["0/run-abc"]
+
+
+def test_runset_additive_selection_tree_round_trip_preserves_shape():
+    """Additive grouped selections should not be flattened on an unchanged save."""
+    from wandb_workspaces.reports.v2 import internal
+
+    model = internal.Runset.model_validate(
+        {
+            "id": "rs-test",
+            "selections": {
+                "root": 0,
+                "bounds": [],
+                "tree": [
+                    {
+                        "value": "group-a",
+                        "children": ["run-a", "run-b"],
+                        "skip": False,
+                    }
+                ],
+            },
+        }
+    )
+
+    round_tripped = wr.Runset._from_model(model)._to_model()
+    dumped = round_tripped.model_dump(by_alias=True, exclude_none=True)
+
+    assert dumped["selections"]["root"] == 0
+    assert dumped["selections"]["tree"] == [
+        {
+            "value": "group-a",
+            "children": ["run-a", "run-b"],
+            "skip": False,
+        }
+    ]
+
+
+def test_runset_config_sort_preserves_backend_value_position():
+    """Config sort keys should keep exact backend paths unless order changes."""
+    from wandb_workspaces.reports.v2 import internal
+
+    model = internal.Runset.model_validate(
+        {
+            "id": "rs-test",
+            "sort": {
+                "keys": [
+                    {
+                        "key": {
+                            "section": "config",
+                            "name": "pbt.workspace.value",
+                        },
+                        "ascending": True,
+                    },
+                    {
+                        "key": {
+                            "section": "config",
+                            "name": "pbt.value.workspace",
+                        },
+                        "ascending": False,
+                    },
+                ]
+            },
+        }
+    )
+
+    round_tripped = wr.Runset._from_model(model)._to_model()
+    dumped = round_tripped.model_dump(by_alias=True, exclude_none=True)
+
+    assert dumped["sort"]["keys"] == [
+        {
+            "key": {"section": "config", "name": "pbt.workspace.value"},
+            "ascending": True,
+        },
+        {
+            "key": {"section": "config", "name": "pbt.value.workspace"},
+            "ascending": False,
+        },
+    ]
 
 
 def test_metric_to_backend_groupby():

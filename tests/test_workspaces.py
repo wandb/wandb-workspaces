@@ -251,6 +251,307 @@ def test_save_workspace():
         assert gql_definition.operation == "mutation"
 
 
+def test_workspace_viewspec_preserves_frontend_owned_fields():
+    """Workspace parsing should not drop current frontend-owned spec fields."""
+    from wandb_workspaces.workspaces import internal
+
+    spec = internal.WorkspaceViewspec.model_validate(
+        {
+            "section": {
+                "version": 9,
+                "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
+                "panelBankSectionConfig": {},
+                "customRunColors": {},
+                "customRunNames": {"run-a": "Best Run"},
+                "workspaceSettings": {
+                    "linePlot": {"showLegend": False},
+                    "media": {"maxRuns": 5},
+                },
+                "semanticLegendSettings": {
+                    "runColorOptions": "semantic-legend",
+                    "excludedRunColor": "#cccccc",
+                },
+                "settings": {"shouldAutoGeneratePanels": "pending"},
+                "runSets": [{"id": "rs1"}],
+            },
+            "vizExpanded": True,
+            "libraryExpanded": False,
+            "slowWarningHiddenAt": "2026-01-01T00:00:00Z",
+        }
+    )
+
+    dumped = spec.model_dump(by_alias=True, exclude_none=True)
+    assert dumped["section"]["version"] == 9
+    assert dumped["section"]["customRunNames"] == {"run-a": "Best Run"}
+    assert dumped["section"]["workspaceSettings"]["linePlot"]["showLegend"] is False
+    assert dumped["section"]["workspaceSettings"]["media"]["maxRuns"] == 5
+    assert (
+        dumped["section"]["semanticLegendSettings"]["runColorOptions"]
+        == "semantic-legend"
+    )
+    assert dumped["section"]["settings"]["shouldAutoGeneratePanels"] == "pending"
+    assert dumped["slowWarningHiddenAt"] == "2026-01-01T00:00:00Z"
+
+
+def test_panel_bank_sparse_overrides_validate_and_round_trip():
+    """Current frontend sparse override fields are structured objects, not colors."""
+    model = _wr.PanelBankConfig.model_validate(
+        {
+            "state": 1,
+            "settings": {},
+            "sections": [],
+            "panelPlacementOverrides": {
+                "loss": {"sectionId": "section-1", "orderKey": "a0"}
+            },
+            "panelConfigOverrides": {
+                "loss": {
+                    "config": {"chartTitle": "Loss"},
+                    "layout": {"w": 8},
+                }
+            },
+        }
+    )
+
+    dumped = model.model_dump(by_alias=True, exclude_none=True)
+    assert dumped["panelPlacementOverrides"] == {
+        "loss": {"sectionId": "section-1", "orderKey": "a0"}
+    }
+    assert dumped["panelConfigOverrides"] == {
+        "loss": {"config": {"chartTitle": "Loss"}, "layout": {"w": 8}}
+    }
+
+
+def test_loaded_workspace_round_trip_preserves_frontend_state():
+    """Saving a loaded workspace should preserve fields the SDK does not expose."""
+    from wandb_workspaces.workspaces import internal
+
+    spec = internal.WorkspaceViewspec.model_validate(
+        {
+            "section": {
+                "name": "Original Wrapper",
+                "version": 9,
+                "panelBankConfig": {
+                    "state": 1,
+                    "settings": {
+                        "autoOrganizePrefix": 1,
+                        "showEmptySections": True,
+                        "sortAlphabetically": True,
+                        "searchQuery": "loss",
+                    },
+                    "panelPlacementOverrides": {
+                        "loss": {"sectionId": "section-1", "orderKey": "a0"}
+                    },
+                    "sections": [
+                        {
+                            "__id__": "section-1",
+                            "defaultName": "Charts",
+                            "name": "Charts",
+                            "isOpen": True,
+                            "type": "flow",
+                            "flowConfig": {
+                                "snapToColumns": False,
+                                "columnsPerPage": 4,
+                                "rowsPerPage": 5,
+                                "gutterWidth": 24,
+                                "boxWidth": 500,
+                                "boxHeight": 320,
+                                "mobileColumnsPerPage": 1,
+                            },
+                            "sorted": 1,
+                            "localPanelSettings": {
+                                "smoothingWeight": 9,
+                                "smoothingType": "gaussian",
+                                "xAxis": "_runtime",
+                                "ignoreOutliers": True,
+                            },
+                            "sectionSettings": {"linePlot": {"showLegend": False}},
+                            "panels": [],
+                            "pinned": True,
+                        }
+                    ],
+                },
+                "panelBankSectionConfig": {"pinned": False},
+                "customRunColors": {"run-a": "#ff0000"},
+                "customRunNames": {"run-a": "Best Run"},
+                "workspaceSettings": {
+                    "linePlot": {"showLegend": False},
+                    "media": {"maxRuns": 5},
+                },
+                "semanticLegendSettings": {
+                    "runColorOptions": "semantic-legend",
+                    "excludedRunColor": "#cccccc",
+                },
+                "runSets": [
+                    {
+                        "id": "rs1",
+                        "enabled": False,
+                        "runFeed": {
+                            "version": 2,
+                            "columnVisible": {"run:name": True, "config:lr": True},
+                            "columnPinned": {
+                                "run:displayName": True,
+                                "config:lr": True,
+                            },
+                            "columnWidths": {"run:name": 222},
+                            "columnOrder": [
+                                "run:displayName",
+                                "config:lr",
+                                "summary:loss",
+                            ],
+                            "pageSize": 50,
+                            "onlyShowSelected": True,
+                        },
+                        "search": {"query": "abc", "isRegex": True},
+                        "filters": {"op": "OR", "filters": [{"op": "AND"}]},
+                        "grouping": [],
+                        "sort": {
+                            "keys": [
+                                {
+                                    "key": {
+                                        "section": "run",
+                                        "name": "createdAt",
+                                    },
+                                    "ascending": False,
+                                }
+                            ]
+                        },
+                        "selections": {
+                            "root": 1,
+                            "bounds": [
+                                {"key": {"section": "run", "name": "createdAt"}}
+                            ],
+                            "tree": ["run-b"],
+                        },
+                        "expandedRowAddresses": ["0/run-b"],
+                    }
+                ],
+                "settings": {
+                    "xAxis": "_runtime",
+                    "xAxisMin": 1,
+                    "xAxisMax": 9,
+                    "smoothingType": "gaussian",
+                    "smoothingWeight": 4,
+                    "ignoreOutliers": True,
+                    "shouldAutoGeneratePanels": "pending",
+                },
+                "openRunSet": 3,
+                "openViz": False,
+            },
+            "vizExpanded": True,
+            "libraryExpanded": False,
+            "slowWarningHiddenAt": "2026-01-01T00:00:00Z",
+        }
+    )
+    view = internal.View(
+        entity="test-entity",
+        project="test-project",
+        display_name="Loaded Workspace",
+        name="nw-loaded-v",
+        id="view-id",
+        spec=spec,
+    )
+
+    workspace = ws.Workspace._from_model(view)
+    dumped = workspace._to_model().spec.model_dump(by_alias=True, exclude_none=True)
+    section = dumped["section"]
+    runset = section["runSets"][0]
+    run_feed = runset["runFeed"]
+
+    assert dumped["vizExpanded"] is True
+    assert dumped["libraryExpanded"] is False
+    assert dumped["slowWarningHiddenAt"] == "2026-01-01T00:00:00Z"
+    assert section["version"] == 9
+    assert section["openRunSet"] == 3
+    assert section["openViz"] is False
+    assert section["customRunNames"] == {"run-a": "Best Run"}
+    assert section["workspaceSettings"]["linePlot"]["showLegend"] is False
+    assert section["semanticLegendSettings"]["excludedRunColor"] == "#cccccc"
+    assert section["settings"]["shouldAutoGeneratePanels"] == "pending"
+    assert section["panelBankConfig"]["settings"]["showEmptySections"] is True
+    assert section["panelBankConfig"]["settings"]["searchQuery"] == "loss"
+    assert section["panelBankConfig"]["panelPlacementOverrides"] == {
+        "loss": {"sectionId": "section-1", "orderKey": "a0"}
+    }
+    assert (
+        section["panelBankConfig"]["sections"][0]["flowConfig"]["snapToColumns"]
+        is False
+    )
+    assert (
+        section["panelBankConfig"]["sections"][0]["flowConfig"]["mobileColumnsPerPage"]
+        == 1
+    )
+    assert section["panelBankConfig"]["sections"][0]["sorted"] == 1
+    assert section["panelBankConfig"]["sections"][0]["sectionSettings"] == {
+        "linePlot": {"showLegend": False}
+    }
+    assert runset["enabled"] is False
+    assert runset["expandedRowAddresses"] == ["0/run-b"]
+    assert runset["selections"]["bounds"] == [
+        {"key": {"section": "run", "name": "createdAt"}}
+    ]
+    assert run_feed["columnVisible"] == {"run:name": True, "config:lr": True}
+    assert run_feed["columnWidths"] == {"run:name": 222}
+    assert run_feed["pageSize"] == 50
+    assert run_feed["onlyShowSelected"] is True
+    assert section["customRunColors"] == {"run-a": "#ff0000"}
+
+
+def test_loaded_workspace_preserves_additive_selection_tree():
+    """Color-only run settings should not flatten additive grouped selections."""
+    from wandb_workspaces.workspaces import internal
+
+    spec = internal.WorkspaceViewspec.model_validate(
+        {
+            "section": {
+                "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
+                "panelBankSectionConfig": {},
+                "customRunColors": {"run-color": "#00ff00"},
+                "runSets": [
+                    {
+                        "id": "rs1",
+                        "selections": {
+                            "root": 0,
+                            "bounds": [],
+                            "tree": [
+                                {
+                                    "value": "group-a",
+                                    "children": ["run-a", "run-b"],
+                                    "skip": False,
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        }
+    )
+    view = internal.View(
+        entity="test-entity",
+        project="test-project",
+        display_name="Loaded Workspace",
+        name="nw-loaded-v",
+        id="view-id",
+        spec=spec,
+    )
+
+    dumped = (
+        ws.Workspace._from_model(view)
+        ._to_model()
+        .spec.model_dump(by_alias=True, exclude_none=True)
+    )
+    selections = dumped["section"]["runSets"][0]["selections"]
+
+    assert selections["root"] == 0
+    assert selections["tree"] == [
+        {
+            "value": "group-a",
+            "children": ["run-a", "run-b"],
+            "skip": False,
+        }
+    ]
+    assert dumped["section"]["customRunColors"] == {"run-color": "#00ff00"}
+
+
 @pytest.mark.parametrize(
     "example, should_pass",
     [

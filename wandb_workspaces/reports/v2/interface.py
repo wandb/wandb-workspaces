@@ -943,6 +943,59 @@ class OrderBy(Base):
         )
 
 
+def _groupby_key_to_frontend(key: internal.Key) -> str:
+    if key.section == "config":
+        parts = key.name.split(".")
+        if "value" in parts:
+            parts.remove("value")
+        return f"config.{'.'.join(parts)}"
+    if key.section == "summary":
+        return f"summary.{expr.to_frontend_name(key.name)}"
+    if key.section == "run":
+        return expr.to_frontend_name(key.name)
+    return f"{key.section}.{expr.to_frontend_name(key.name)}"
+
+
+def _order_by_identity(order: OrderBy) -> Tuple[str, str, bool]:
+    name = order.name
+    if isinstance(name, Config):
+        return ("config", name.name, order.ascending)
+    if isinstance(name, SummaryMetric):
+        return ("summary", name.name, order.ascending)
+    if isinstance(name, Metric):
+        return ("run", name.name, order.ascending)
+    return ("run", str(name), order.ascending)
+
+
+def _sort_key_to_order_identity(sort_key: internal.SortKey) -> Tuple[str, str, bool]:
+    return _order_by_identity(OrderBy._from_model(sort_key))
+
+
+def _selection_disabled_map(
+    selections: internal.RunsetSelections,
+) -> Dict[str, bool]:
+    is_disabled = selections.root != 0
+    disabled = {}
+    for item in selections.tree:
+        if isinstance(item, str):
+            disabled[item] = is_disabled
+        else:
+            for child_id in item.children:
+                disabled[child_id] = is_disabled
+    return disabled
+
+
+def _current_selection_disabled_map(
+    run_settings: Dict[str, "RunSettings"],
+    original_disabled: Dict[str, bool],
+) -> Dict[str, bool]:
+    return {
+        run_id: settings.disabled
+        for run_id, settings in run_settings.items()
+        if settings.disabled or run_id in original_disabled
+    }
+
+
 @dataclass(config=dataclass_config, repr=False)
 class Runset(Base):
     """A set of runs to display in a panel grid.
@@ -1009,6 +1062,9 @@ class Runset(Base):
     _selections_root: int = Field(default=1, init=False, repr=False)
 
     _filters_internal: Optional["expr.Filters"] = Field(
+        default=None, init=False, repr=False
+    )
+    _runset_internal: Optional[internal.Runset] = Field(
         default=None, init=False, repr=False
     )
 
@@ -1087,17 +1143,53 @@ class Runset(Base):
         else:
             filters = expr.expr_to_filters(self.filters)
 
-        obj = internal.Runset(
-            project=project,
-            name=self.name,
-            search=internal.RunsetSearch(query=self.query),
-            filters=filters,
-            grouping=[expr.groupby_str_to_key(g) for g in self.groupby],
-            sort=internal.Sort(keys=[o._to_model() for o in self.order]),
-            selections=internal.RunsetSelections(
-                root=self._selections_root, tree=tree_ids
-            ),
+        obj = (
+            self._runset_internal.model_copy(deep=True)
+            if self._runset_internal is not None
+            else internal.Runset()
         )
+        obj.project = project
+        obj.name = self.name
+
+        search = (
+            obj.search.model_copy(deep=True)
+            if obj.search is not None
+            else internal.RunsetSearch()
+        )
+        search.query = self.query
+        obj.search = search
+
+        grouping_unchanged = self._runset_internal is not None and self.groupby == [
+            _groupby_key_to_frontend(k) for k in self._runset_internal.grouping
+        ]
+        if not grouping_unchanged:
+            obj.grouping = [expr.groupby_str_to_key(g) for g in self.groupby]
+
+        selections = (
+            obj.selections.model_copy(deep=True)
+            if obj.selections is not None
+            else internal.RunsetSelections()
+        )
+        original_disabled = (
+            _selection_disabled_map(self._runset_internal.selections)
+            if self._runset_internal is not None
+            else {}
+        )
+        current_disabled = _current_selection_disabled_map(
+            self.run_settings, original_disabled
+        )
+        if self._runset_internal is None or current_disabled != original_disabled:
+            selections.root = self._selections_root
+            selections.tree = tree_ids
+
+        sort_unchanged = self._runset_internal is not None and [
+            _order_by_identity(o) for o in self.order
+        ] == [_sort_key_to_order_identity(s) for s in self._runset_internal.sort.keys]
+        if not sort_unchanged:
+            obj.sort = internal.Sort(keys=[o._to_model() for o in self.order])
+
+        obj.filters = filters
+        obj.selections = selections
         obj.id = self._id
         return obj
 
@@ -1131,13 +1223,14 @@ class Runset(Base):
             name=model.name,
             query=model.search.query if model.search else "",
             filters=expr.filters_to_expr(model.filters),
-            groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
+            groupby=[_groupby_key_to_frontend(k) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
             run_settings=run_settings,
         )
         obj._id = model.id
         obj._selections_root = model.selections.root
         obj._filters_internal = model.filters
+        obj._runset_internal = model
         return obj
 
 
@@ -1189,6 +1282,9 @@ class PanelGrid(Block):
     _panel_bank_sections: LList[Dict] = Field(
         default_factory=list, init=False, repr=False
     )
+    _metadata_internal: Optional[internal.PanelGridMetadata] = Field(
+        default=None, init=False, repr=False
+    )
 
     def _to_model(self):
         # Merge custom_run_colors from runsets, with PanelGrid colors taking precedence
@@ -1202,20 +1298,26 @@ class PanelGrid(Block):
             merged_colors.update(rs.custom_run_colors)
         merged_colors.update(self.custom_run_colors)
 
-        return internal.PanelGrid(
-            metadata=internal.PanelGridMetadata(
-                run_sets=[rs._to_model() for rs in self.runsets],
-                hide_run_sets=self.hide_run_sets,
-                panel_bank_section_config=internal.PanelBankSectionConfig(
-                    panels=[p._to_model() for p in self.panels],
-                ),
-                panels=internal.PanelGridMetadataPanels(
-                    panel_bank_config=internal.PanelBankConfig(),
-                    open_viz=self._open_viz,
-                ),
-                custom_run_colors=_to_color_dict(merged_colors, self.runsets),
-            )
+        metadata = (
+            self._metadata_internal.model_copy(deep=True)
+            if self._metadata_internal is not None
+            else internal.PanelGridMetadata()
         )
+        panel_bank_section_config = (
+            metadata.panel_bank_section_config.model_copy(deep=True)
+            if metadata.panel_bank_section_config is not None
+            else internal.PanelBankSectionConfig()
+        )
+        panel_bank_section_config.panels = [p._to_model() for p in self.panels]
+
+        metadata.run_sets = [rs._to_model() for rs in self.runsets]
+        metadata.hide_run_sets = self.hide_run_sets
+        metadata.open_run_set = self.active_runset
+        metadata.open_viz = self._open_viz
+        metadata.panel_bank_section_config = panel_bank_section_config
+        metadata.custom_run_colors = _to_color_dict(merged_colors, self.runsets)
+
+        return internal.PanelGrid(metadata=metadata)
 
     @classmethod
     def _from_model(cls, model: internal.PanelGrid):
@@ -1250,6 +1352,7 @@ class PanelGrid(Block):
             # _panel_bank_sections=model.metadata.panel_bank_config.sections,
         )
         obj._open_viz = model.metadata.open_viz
+        obj._metadata_internal = model.metadata
         return obj
 
     @validator("panels")
@@ -2015,46 +2118,54 @@ class LinePlot(Panel):
     line_colors: Optional[Dict[str, Any]] = None
     line_widths: Optional[Dict[str, float]] = None
     line_marks: Optional[Dict[str, Mark]] = None
+    _config_internal: Optional[internal.LinePlotConfig] = Field(
+        default=None, init=False, repr=False
+    )
 
     def _to_model(self):
+        config = (
+            self._config_internal.model_copy(deep=True)
+            if self._config_internal is not None
+            else internal.LinePlotConfig()
+        )
+        config.chart_title = self.title
+        config.x_axis = _metric_to_backend(self.x)
+        config.metrics = [_metric_to_backend(name) for name in _listify(self.y)]
+        config.x_axis_min = self.range_x[0]
+        config.x_axis_max = self.range_x[1]
+        config.y_axis_min = self.range_y[0]
+        config.y_axis_max = self.range_y[1]
+        config.x_log_scale = self.log_x
+        config.y_log_scale = self.log_y
+        config.x_axis_title = self.title_x
+        config.y_axis_title = self.title_y
+        config.ignore_outliers = self.ignore_outliers
+        config.group_by = _metric_to_backend_groupby(self.groupby)
+        config.group_agg = self.groupby_aggfunc
+        config.group_area = self.groupby_rangefunc
+        config.smoothing_weight = self.smoothing_factor
+        config.smoothing_type = self.smoothing_type
+        config.show_original_after_smoothing = self.smoothing_show_original
+        config.limit = self.max_runs_to_show
+        config.expressions = self.custom_expressions
+        config.plot_type = self.plot_type
+        config.font_size = self.font_size
+        config.legend_position = self.legend_position
+        config.legend_template = self.legend_template
+        config.aggregate = self.groupby not in (None, "None") or self.aggregate
+        config.x_expression = self.xaxis_expression
+        config.x_axis_format = self.xaxis_format
+        config.legend_fields = self.legend_fields
+        config.metric_regex = self.metric_regex
+        config.use_metric_regex = True if self.metric_regex else None
+        config.point_visualization_method = self.point_visualization_method
+        config.override_series_titles = self.line_titles
+        config.override_colors = _normalize_color_overrides(self.line_colors)
+        config.override_line_widths = self.line_widths
+        config.override_marks = self.line_marks
+
         return internal.LinePlot(
-            config=internal.LinePlotConfig(
-                chart_title=self.title,
-                x_axis=_metric_to_backend(self.x),
-                metrics=[_metric_to_backend(name) for name in _listify(self.y)],
-                x_axis_min=self.range_x[0],
-                x_axis_max=self.range_x[1],
-                y_axis_min=self.range_y[0],
-                y_axis_max=self.range_y[1],
-                x_log_scale=self.log_x,
-                y_log_scale=self.log_y,
-                x_axis_title=self.title_x,
-                y_axis_title=self.title_y,
-                ignore_outliers=self.ignore_outliers,
-                group_by=_metric_to_backend_groupby(self.groupby),
-                group_agg=self.groupby_aggfunc,
-                group_area=self.groupby_rangefunc,
-                smoothing_weight=self.smoothing_factor,
-                smoothing_type=self.smoothing_type,
-                show_original_after_smoothing=self.smoothing_show_original,
-                limit=self.max_runs_to_show,
-                expressions=self.custom_expressions,
-                plot_type=self.plot_type,
-                font_size=self.font_size,
-                legend_position=self.legend_position,
-                legend_template=self.legend_template,
-                aggregate=self.groupby not in (None, "None") or self.aggregate,
-                x_expression=self.xaxis_expression,
-                x_axis_format=self.xaxis_format,
-                legend_fields=self.legend_fields,
-                metric_regex=self.metric_regex,
-                use_metric_regex=True if self.metric_regex else None,
-                point_visualization_method=self.point_visualization_method,
-                override_series_titles=self.line_titles,
-                override_colors=_normalize_color_overrides(self.line_colors),
-                override_line_widths=self.line_widths,
-                override_marks=self.line_marks,
-            ),
+            config=config,
             id=self._id,
             layout=self.layout._to_model(),
         )
@@ -2110,6 +2221,7 @@ class LinePlot(Panel):
         object.__setattr__(obj, "line_colors", model.config.override_colors)
         object.__setattr__(obj, "line_widths", model.config.override_line_widths)
         object.__setattr__(obj, "line_marks", model.config.override_marks)
+        object.__setattr__(obj, "_config_internal", model.config)
         return obj
 
 
@@ -2158,35 +2270,43 @@ class ScatterPlot(Panel):
     gradient: Optional[LList[GradientPoint]] = None
     font_size: Optional[FontSize] = None
     regression: Optional[bool] = None
+    _config_internal: Optional[internal.ScatterPlotConfig] = Field(
+        default=None, init=False, repr=False
+    )
 
     def _to_model(self):
         custom_gradient = self.gradient
         if custom_gradient is not None:
             custom_gradient = [cgp._to_model() for cgp in self.gradient]
 
+        config = (
+            self._config_internal.model_copy(deep=True)
+            if self._config_internal is not None
+            else internal.ScatterPlotConfig()
+        )
+        config.chart_title = self.title
+        config.x_axis = _metric_to_backend_pc(self.x)
+        config.y_axis = _metric_to_backend_pc(self.y)
+        config.z_axis = _metric_to_backend_pc(self.z)
+        config.x_axis_min = self.range_x[0]
+        config.x_axis_max = self.range_x[1]
+        config.y_axis_min = self.range_y[0]
+        config.y_axis_max = self.range_y[1]
+        config.z_axis_min = self.range_z[0]
+        config.z_axis_max = self.range_z[1]
+        config.x_axis_log_scale = self.log_x
+        config.y_axis_log_scale = self.log_y
+        config.z_axis_log_scale = self.log_z
+        config.show_min_y_axis_line = self.running_ymin
+        config.show_max_y_axis_line = self.running_ymax
+        config.show_avg_y_axis_line = self.running_ymean
+        config.legend_template = self.legend_template
+        config.custom_gradient = custom_gradient
+        config.font_size = self.font_size
+        config.show_linear_regression = self.regression
+
         return internal.ScatterPlot(
-            config=internal.ScatterPlotConfig(
-                chart_title=self.title,
-                x_axis=_metric_to_backend_pc(self.x),
-                y_axis=_metric_to_backend_pc(self.y),
-                z_axis=_metric_to_backend_pc(self.z),
-                x_axis_min=self.range_x[0],
-                x_axis_max=self.range_x[1],
-                y_axis_min=self.range_y[0],
-                y_axis_max=self.range_y[1],
-                z_axis_min=self.range_z[0],
-                z_axis_max=self.range_z[1],
-                x_axis_log_scale=self.log_x,
-                y_axis_log_scale=self.log_y,
-                z_axis_log_scale=self.log_z,
-                show_min_y_axis_line=self.running_ymin,
-                show_max_y_axis_line=self.running_ymax,
-                show_avg_y_axis_line=self.running_ymean,
-                legend_template=self.legend_template,
-                custom_gradient=custom_gradient,
-                font_size=self.font_size,
-                show_linear_regression=self.regression,
-            ),
+            config=config,
             layout=self.layout._to_model(),
             id=self._id,
         )
@@ -2218,6 +2338,7 @@ class ScatterPlot(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._config_internal = model.config
         return obj
 
 
@@ -2267,29 +2388,37 @@ class BarPlot(Panel):
     line_titles: Optional[dict] = None
     line_colors: Optional[dict] = None
     aggregate: Optional[bool] = None
+    _config_internal: Optional[internal.BarPlotConfig] = Field(
+        default=None, init=False, repr=False
+    )
 
     def _to_model(self):
+        config = (
+            self._config_internal.model_copy(deep=True)
+            if self._config_internal is not None
+            else internal.BarPlotConfig()
+        )
+        config.chart_title = self.title
+        config.metrics = [_metric_to_backend(name) for name in _listify(self.metrics)]
+        config.vertical = self.orientation == "v"
+        config.x_axis_min = self.range_x[0]
+        config.x_axis_max = self.range_x[1]
+        config.x_axis_title = self.title_x
+        config.y_axis_title = self.title_y
+        config.group_by = _metric_to_backend_groupby(self.groupby)
+        config.group_agg = self.groupby_aggfunc
+        config.group_area = self.groupby_rangefunc
+        config.limit = self.max_runs_to_show
+        config.bar_limit = self.max_bars_to_show
+        config.expressions = self.custom_expressions
+        config.legend_template = self.legend_template
+        config.font_size = self.font_size
+        config.override_series_titles = self.line_titles
+        config.override_colors = _normalize_color_overrides(self.line_colors)
+        config.aggregate = self.groupby not in (None, "None") or self.aggregate
+
         return internal.BarPlot(
-            config=internal.BarPlotConfig(
-                chart_title=self.title,
-                metrics=[_metric_to_backend(name) for name in _listify(self.metrics)],
-                vertical=self.orientation == "v",
-                x_axis_min=self.range_x[0],
-                x_axis_max=self.range_x[1],
-                x_axis_title=self.title_x,
-                y_axis_title=self.title_y,
-                group_by=_metric_to_backend_groupby(self.groupby),
-                group_agg=self.groupby_aggfunc,
-                group_area=self.groupby_rangefunc,
-                limit=self.max_runs_to_show,
-                bar_limit=self.max_bars_to_show,
-                expressions=self.custom_expressions,
-                legend_template=self.legend_template,
-                font_size=self.font_size,
-                override_series_titles=self.line_titles,
-                override_colors=_normalize_color_overrides(self.line_colors),
-                aggregate=self.groupby not in (None, "None") or self.aggregate,
-            ),
+            config=config,
             layout=self.layout._to_model(),
             id=self._id,
         )
@@ -2317,6 +2446,7 @@ class BarPlot(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._config_internal = model.config
         return obj
 
 
@@ -2591,6 +2721,9 @@ class MediaBrowser(Panel):
     gallery_axis: Optional[Literal["step", "index", "run"]] = None
     grid_x_axis: Optional[Literal["step", "index", "run"]] = None
     grid_y_axis: Optional[Literal["step", "index", "run"]] = None
+    _config_internal: Optional[internal.MediaBrowserConfig] = Field(
+        default=None, init=False, repr=False
+    )
 
     def _to_model(self):
         gallery_settings = None
@@ -2620,15 +2753,20 @@ class MediaBrowser(Panel):
             if mode is None:
                 mode = "grid"
 
+        config = (
+            self._config_internal.model_copy(deep=True)
+            if self._config_internal is not None
+            else internal.MediaBrowserConfig()
+        )
+        config.chart_title = self.title
+        config.column_count = self.num_columns
+        config.media_keys = self.media_keys
+        config.mode = mode
+        config.gallery_settings = gallery_settings
+        config.grid_settings = grid_settings
+
         return internal.MediaBrowser(
-            config=internal.MediaBrowserConfig(
-                chart_title=self.title,
-                column_count=self.num_columns,
-                media_keys=self.media_keys,
-                mode=mode,
-                gallery_settings=gallery_settings,
-                grid_settings=grid_settings,
-            ),
+            config=config,
             layout=self.layout._to_model(),
             id=self._id,
         )
@@ -2657,6 +2795,7 @@ class MediaBrowser(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._config_internal = model.config
 
         return obj
 

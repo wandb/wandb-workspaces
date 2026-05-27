@@ -127,6 +127,7 @@ class ReportAPIBaseModel(BaseModel):
         validate_assignment=True,
         populate_by_name=True,
         arbitrary_types_allowed=True,
+        extra="allow",
     )
 
 
@@ -259,12 +260,19 @@ class PanelBankConfig(ReportAPIBaseModel):
     sections: LList[PanelBankConfigSectionsItem] = Field(
         default_factory=lambda: [PanelBankConfigSectionsItem()]
     )
+    panel_placement_overrides: Optional[Dict[str, dict]] = None
+    panel_config_overrides: Optional[Dict[str, dict]] = None
 
     # Run keys are arbitrarily added here, so add some type checking for safety
     # All run keys have the shape (key:str, value:colour)
     @root_validator(pre=True)
     def check_arbitrary_keys(cls, values):  # noqa: N805
-        fixed_keys = cls.__annotations__.keys()
+        fixed_keys = set(cls.__annotations__.keys())
+        fixed_keys.update(
+            field.alias
+            for field in cls.model_fields.values()
+            if field.alias is not None
+        )
         ignored_keys = {"ref"}
         for k, v in values.items():
             if k not in fixed_keys and k not in ignored_keys and not isinstance(v, str):

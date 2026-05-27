@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional, Union
 from typing import List as LList
 
 import wandb
@@ -32,6 +32,7 @@ class WorkspaceAPIBaseModel(BaseModel):
         validate_assignment=True,
         populate_by_name=True,
         arbitrary_types_allowed=True,
+        extra="allow",
     )
 
 
@@ -48,7 +49,7 @@ class ViewspecSectionSettings(WorkspaceAPIBaseModel):
     point_visualization_method: Optional[PointVizMethod] = None
     suppress_legends: Optional[bool] = None
     tooltip_number_of_runs: Optional[TooltipNumberOfRuns] = None
-    should_auto_generate_panels: bool = False
+    should_auto_generate_panels: Union[bool, Literal["pending"]] = False
 
     @computed_field  # type: ignore[misc]
     @property
