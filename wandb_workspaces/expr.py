@@ -404,6 +404,7 @@ def _parse_node(node) -> Filters:
                 # Construct the Filters object
                 op = _map_op(node.ops[0])
                 right_operand = _extract_value(node.comparators[0])
+                right_operand = _normalize_filter_value(key, right_operand)
                 return Filters(op=op, key=key, value=right_operand, disabled=False)
             # If func_call_data is falsy, fall back to standard comparison handling
             return _handle_comparison(node)
@@ -453,9 +454,13 @@ def _handle_comparison(node) -> Filters:
     if left_operand:
         left_operand = _convert_fe_to_be_metric_name(left_operand)
 
+    key = _server_path_to_key(left_operand) if left_operand else None
+    if key is not None:
+        right_operand = _normalize_filter_value(key, right_operand)
+
     return Filters(
         op=op_map.get(operation),
-        key=_server_path_to_key(left_operand) if left_operand else None,
+        key=key,
         value=right_operand,
         disabled=False,
     )
@@ -739,6 +744,15 @@ def _server_path_to_key(path):
         return Key(section="tags", name=path.split("tags.", 1)[1])
     else:
         return Key(section="run", name=path)
+
+
+def _normalize_filter_value(key: Key, value: Any) -> Any:
+    if key.section == "run" and key.name == "state":
+        if isinstance(value, str):
+            return value.lower()
+        if isinstance(value, list):
+            return [v.lower() if isinstance(v, str) else v for v in value]
+    return value
 
 
 class CustomNodeVisitor(ast.NodeVisitor):
@@ -1072,11 +1086,13 @@ class FilterExpr:
     def to_model(self) -> Filters:
         section = self.key.section
         name = _convert_fe_to_be_metric_name(self.key.name)
+        key = Key(section=section, name=name)
+        value = _normalize_filter_value(key, self.value)
 
         return Filters(
             op=self.op,
-            key=Key(section=section, name=name),
-            value=self.value,
+            key=key,
+            value=value,
             disabled=False,
         )
 
@@ -1110,7 +1126,8 @@ def filter_expr_to_filters_tree(filters: List[FilterExpr]) -> Filters:
 
     def parse_filter(filter: FilterExpr) -> Filters:
         key = parse_key(filter.key)
-        return Filters(op=filter.op, key=key, value=filter.value, disabled=False)
+        value = _normalize_filter_value(key, filter.value)
+        return Filters(op=filter.op, key=key, value=value, disabled=False)
 
     return Filters(
         op="OR",
