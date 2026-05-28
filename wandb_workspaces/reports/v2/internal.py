@@ -20,12 +20,13 @@ from pydantic import (
     Field,
     StringConstraints,
     computed_field,
+    field_validator,
     root_validator,
     validator,
 )
 from pydantic.alias_generators import to_camel
 
-from ...expr import Filters, Key, SortKey, SortKeyKey
+from ...expr import Filters, Key, SortKey, SortKeyKey, is_filter_v2
 
 
 def _generate_name(length: int = 12) -> str:
@@ -361,7 +362,7 @@ class Runset(ReportAPIBaseModel):
     project: Optional[Project] = None
     name: str = "Run set"
     search: RunsetSearch = Field(default_factory=RunsetSearch)
-    filters: Filters = Field(
+    filters: Union[Filters, dict] = Field(
         default_factory=lambda: Filters(filters=[Filters(op="AND")])
     )
     grouping: LList[Key] = Field(default_factory=list)
@@ -370,6 +371,14 @@ class Runset(ReportAPIBaseModel):
     expanded_row_addresses: list = Field(default_factory=list)
     baseline_run_id: Optional[str] = None
     pinned_run_ids: Optional[LList[str]] = None
+
+    @field_validator("filters", mode="wrap")
+    @classmethod
+    def _keep_v2_as_dict(cls, v, handler):
+        """Keep v2 filter dicts as raw dicts instead of parsing as Filters."""
+        if isinstance(v, dict) and is_filter_v2(v):
+            return v
+        return handler(v)
 
 
 class CodeLine(ReportAPIBaseModel):
