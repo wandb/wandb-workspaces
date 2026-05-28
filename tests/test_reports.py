@@ -1,4 +1,5 @@
 import sys
+import warnings
 from typing import Any, Dict, Generic, Type, TypeVar
 from unittest.mock import Mock
 
@@ -2038,6 +2039,101 @@ class TestRunsetColumnConfig:
         re_model = runset._to_model()
 
         assert re_model.run_feed.column_pinned == {"summary:accuracy": True}
+
+    def test_under_limit_no_warning(self):
+        """Below 500 rendered cols emits no warning."""
+        from wandb_workspaces.reports.v2.interface import (
+            MAX_RUNSET_VISIBLE_COLUMNS,
+        )
+
+        cols = [
+            f"summary:m{i}" for i in range(MAX_RUNSET_VISIBLE_COLUMNS - 1)
+        ]
+        runset = wr.Runset(entity="e", project="p", visible_columns=cols)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            model = runset._to_model()
+
+        assert len(model.run_feed.column_order) == MAX_RUNSET_VISIBLE_COLUMNS - 1
+
+    def test_at_limit_warns_but_does_not_truncate(self):
+        """Exactly 500 cols warns (heads-up) but nothing is truncated."""
+        from wandb_workspaces.reports.v2.interface import (
+            MAX_RUNSET_VISIBLE_COLUMNS,
+        )
+
+        cols = [f"summary:m{i}" for i in range(MAX_RUNSET_VISIBLE_COLUMNS)]
+        runset = wr.Runset(entity="e", project="p", visible_columns=cols)
+
+        with pytest.warns(UserWarning, match="at the FE display limit"):
+            model = runset._to_model()
+
+        assert len(model.run_feed.column_order) == MAX_RUNSET_VISIBLE_COLUMNS
+        # All cols intact — at-limit is a warning, not a truncation.
+        assert model.run_feed.column_order == cols
+
+    def test_over_limit_warns_but_does_not_truncate(self):
+        """Combined visible set above 500 warns but keeps the full set on the
+        wire — the FE enforces the display limit, not the SDK."""
+        from wandb_workspaces.reports.v2.interface import (
+            MAX_RUNSET_VISIBLE_COLUMNS,
+        )
+
+        over = MAX_RUNSET_VISIBLE_COLUMNS + 50
+        cols = [f"summary:m{i}" for i in range(over)]
+        runset = wr.Runset(entity="e", project="p", visible_columns=cols)
+
+        with pytest.warns(UserWarning, match=f"{over} visible columns"):
+            model = runset._to_model()
+
+        # All cols stay on the wire — nothing dropped by the SDK.
+        assert len(model.run_feed.column_order) == over
+        assert model.run_feed.column_order == cols
+
+    def test_over_limit_keeps_all_pinned(self):
+        """Over the cap, pinned cols are all preserved (no SDK truncation)."""
+        from wandb_workspaces.reports.v2.interface import (
+            MAX_RUNSET_VISIBLE_COLUMNS,
+        )
+
+        pinned = [f"summary:p{i}" for i in range(10)]
+        visible = [f"summary:v{i}" for i in range(MAX_RUNSET_VISIBLE_COLUMNS)]
+        runset = wr.Runset(
+            entity="e", project="p", pinned_columns=pinned, visible_columns=visible
+        )
+
+        with pytest.warns(UserWarning):
+            model = runset._to_model()
+
+        # 10 pinned + 500 visible = 510, all retained on the wire.
+        assert len(model.run_feed.column_order) == 510
+        assert set(model.run_feed.column_pinned.keys()) == set(pinned)
+        assert "summary:v499" in model.run_feed.column_order
+
+    def test_hidden_cols_do_not_count_toward_limit(self):
+        """Hidden cols are not rendered, so they don't count against the cap.
+        499 visible + many hidden should not warn (well under the limit)."""
+        from wandb_workspaces.reports.v2.interface import (
+            MAX_RUNSET_VISIBLE_COLUMNS,
+        )
+
+        visible = [
+            f"summary:v{i}" for i in range(MAX_RUNSET_VISIBLE_COLUMNS - 1)
+        ]
+        hidden = [f"summary:h{i}" for i in range(100)]
+        runset = wr.Runset(
+            entity="e",
+            project="p",
+            visible_columns=visible,
+            hidden_columns=hidden,
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            model = runset._to_model()
+
+        assert len(model.run_feed.column_order) == MAX_RUNSET_VISIBLE_COLUMNS - 1
 
 
 class TestReportSharing:

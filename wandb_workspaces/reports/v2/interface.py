@@ -29,6 +29,7 @@ report.save()
 import base64
 import copy
 import os
+import warnings
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
 from typing import List as LList
@@ -69,6 +70,10 @@ SpecialMetricType = Union["Config", "SummaryMetric", "Metric"]
 MetricType = Union[str, SpecialMetricType]
 SummaryOrConfigOnlyMetric = Union[str, "Config", "SummaryMetric", "Metric"]
 RunId = str
+
+# Mirrors the FE runs-table COLUMN_LIMIT. The FE truncates beyond this on
+# parse/render; the SDK only warns when a Runset's visible set reaches it.
+MAX_RUNSET_VISIBLE_COLUMNS = 500
 
 
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid", slots=True)
@@ -993,6 +998,13 @@ class Runset(Base):
             - `summary:<key>`: summary metrics
             - `tags:__ALL__`: run tags
 
+    Column limit:
+        The FE runs-table displays at most 500 columns. When the visible set
+        (pinned + visible + column_order, minus hidden) reaches or exceeds
+        500, the SDK emits a warning on save; hidden columns don't count. The
+        SDK does not truncate — the full set is sent and the frontend enforces
+        the limit on render.
+
     Example:
         ```python
         # Using string filters
@@ -1143,6 +1155,30 @@ class Runset(Base):
             col_order = [c for c in combined_order if c in curated_set]
         else:
             col_order = combined_order
+
+        # The cap applies only to visible columns (col_order == the
+        # column_visible:True set). Hidden columns are column_visible:False and
+        # never enter col_order, so they don't count toward the limit. We only
+        # warn here — the FE enforces COLUMN_LIMIT on parse/render, so we leave
+        # the full set on the wire rather than truncate and risk diverging.
+        if len(col_order) >= MAX_RUNSET_VISIBLE_COLUMNS:
+            if len(col_order) == MAX_RUNSET_VISIBLE_COLUMNS:
+                warnings.warn(
+                    f"Runset '{self.name}' has {len(col_order)} visible columns, "
+                    f"at the FE display limit of {MAX_RUNSET_VISIBLE_COLUMNS} "
+                    f"(hidden columns don't count). Adding more visible columns "
+                    f"will exceed the cap and the frontend will not display them.",
+                    stacklevel=2,
+                )
+            else:
+                warnings.warn(
+                    f"Runset '{self.name}' has {len(col_order)} visible columns "
+                    f"(pinned + visible + column_order, minus hidden), exceeding "
+                    f"the FE display limit of {MAX_RUNSET_VISIBLE_COLUMNS}. The "
+                    f"frontend will only display the first "
+                    f"{MAX_RUNSET_VISIBLE_COLUMNS}.",
+                    stacklevel=2,
+                )
 
         # FE invariant: column_visible True entries must mirror column_order.
         column_visible: Dict[str, bool] = {col: False for col in hidden_cols}
