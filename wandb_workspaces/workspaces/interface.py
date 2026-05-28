@@ -325,10 +325,12 @@ class RunsetSettings(Base):
     Attributes:
         query (str): A query to filter the runset (can be a regex expr, see next param).
         regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
-        filters (Union[str, LList[expr.FilterExpr]]): A list of filters to apply to the runset or a string expression.
-            - As a list: Filters are AND'd together. See FilterExpr for more information on creating filters.
-            - As a string: Use Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
-              Supports operators: =, ==, !=, <, >, <=, >=, in, not in
+        filters (Union[str, LList[FilterExpr], Or, And]): Filters for the runset.
+            - As a list of FilterExpr: filters are AND'd together.
+            - As a string: Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in, and, or
+            - As an Or/And combinator: allows OR logic and nested groups.
+              e.g., Or(And(Config("lr") == 0.01, Metric("State") == "finished"), Config("lr") == 0.1)
         groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
             `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
@@ -357,7 +359,7 @@ class RunsetSettings(Base):
 
     query: str = ""
     regex_query: bool = False
-    filters: Union[str, LList[expr.FilterExpr]] = ""
+    filters: Union[str, LList[expr.FilterExpr], expr.Or, expr.And] = ""
     groupby: LList[expr.MetricType] = Field(default_factory=list)
     "A list of metrics to group by in the runset."
 
@@ -408,9 +410,13 @@ class RunsetSettings(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string expression."""
+        """Convert FilterExpr list or Or/And to string expression."""
         if isinstance(self.filters, list):
             object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
+        elif isinstance(self.filters, (expr.Or, expr.And)):
+            tree = expr._filter_items_to_filters_tree([self.filters])
+            v2 = expr.filters_tree_to_v2(tree)
+            object.__setattr__(self, "filters", expr.filters_v2_to_string(v2))
         return self
 
 

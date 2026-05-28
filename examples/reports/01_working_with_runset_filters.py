@@ -84,8 +84,7 @@ report_with_string_filters = wr.Report(
                 wr.Runset(
                     entity=entity,
                     project=project,
-                    # String filters use "and" to combine conditions as there is no "or" available
-                    # Supported operators: ==, =, !=, <, <=, >, >=
+                    # Supported operators: ==, =, !=, <, <=, >, >=, and, or
                     # Note: < maps to <=, > maps to >=, and = maps to == internally to match existing UX behavior
                     filters="SummaryMetric('loss') < 0.1 and Metric('State') == 'finished'",
                 )
@@ -112,7 +111,93 @@ report_with_string_filters = wr.Report(
 report_with_string_filters.save()
 
 # ============================================================================
-# METHOD 3: Comparing multiple runsets with different filters
+# METHOD 3: Using Or/And objects for OR logic
+# ============================================================================
+# Use Or(...) and And(...) from wandb_workspaces.expr to build filters with OR logic.
+# Nesting Or inside And (or vice versa) creates parenthesised groups.
+
+from wandb_workspaces.expr import Or, And
+
+report_or_filters = wr.Report(
+    entity=entity,
+    project=project,
+    title="Report with Or/And Filters",
+    blocks=[
+        wr.H1("OR Filter Examples"),
+        wr.P("Using Or/And objects for complex filter logic."),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    # Show runs with lr=0.01 OR lr=0.1
+                    filters=Or(
+                        ws.Config("learning_rate") == 0.01,
+                        ws.Config("learning_rate") == 0.1,
+                    ),
+                )
+            ],
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+        ),
+        wr.H2("Grouped Conditions"),
+        wr.P("Nesting Or inside And creates parentheses automatically."),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    # finished AND (lr=0.01 OR lr=0.1)
+                    filters=And(
+                        ws.Metric("State") == "finished",
+                        Or(
+                            ws.Config("learning_rate") == 0.01,
+                            ws.Config("learning_rate") == 0.1,
+                        ),
+                    ),
+                )
+            ],
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+                wr.ScalarChart(metric="accuracy", groupby_aggfunc="max"),
+            ],
+        ),
+    ],
+)
+
+report_or_filters.save()
+
+# ============================================================================
+# METHOD 4: Using string expressions with OR
+# ============================================================================
+# String filters also support "or" and parentheses
+
+report_string_or = wr.Report(
+    entity=entity,
+    project=project,
+    title="Report with String OR Filters",
+    blocks=[
+        wr.H1("String OR Examples"),
+        wr.PanelGrid(
+            runsets=[
+                wr.Runset(
+                    entity=entity,
+                    project=project,
+                    filters="Metric('State') == 'finished' and (Config('learning_rate') == 0.01 or Config('learning_rate') == 0.1)",
+                )
+            ],
+            panels=[
+                wr.LinePlot(x="Step", y=["loss", "accuracy"]),
+            ],
+        ),
+    ],
+)
+
+report_string_or.save()
+
+# ============================================================================
+# METHOD 5: Comparing multiple runsets with different filters
 # ============================================================================
 report_with_comparison = wr.Report(
     entity=entity,
@@ -147,7 +232,7 @@ report_with_comparison = wr.Report(
 report_with_comparison.save()
 
 # ============================================================================
-# METHOD 4: Time-based filtering with "within last"
+# METHOD 6: Time-based filtering with "within last"
 # ============================================================================
 
 report_with_recent_runs = wr.Report(
@@ -213,7 +298,7 @@ report_with_recent_runs = wr.Report(
 report_with_recent_runs.save()
 
 # ============================================================================
-# METHOD 5: Filtering by tags
+# METHOD 7: Filtering by tags
 # ============================================================================
 # Filter runs by the tags set via wandb.init(tags=[...])
 # Use ws.Tags().isin([...]) to match runs with any of the specified tags
