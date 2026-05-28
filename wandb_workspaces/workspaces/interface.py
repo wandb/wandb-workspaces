@@ -26,6 +26,7 @@ workspace.save()
 ```
 """
 
+import copy
 import os
 from typing import Dict, Iterable, Literal, Optional, Union
 from typing import List as LList
@@ -324,10 +325,12 @@ class RunsetSettings(Base):
     Attributes:
         query (str): A query to filter the runset (can be a regex expr, see next param).
         regex_query (bool): Controls whether the query (above) is a regex expr. Default is set to `False`.
-        filters (Union[str, LList[expr.FilterExpr]]): A list of filters to apply to the runset or a string expression.
-            - As a list: Filters are AND'd together. See FilterExpr for more information on creating filters.
-            - As a string: Use Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
-              Supports operators: =, ==, !=, <, >, <=, >=, in, not in
+        filters (Union[str, LList[FilterExpr], Or, And]): Filters for the runset.
+            - As a list of FilterExpr: filters are AND'd together.
+            - As a string: Python-like expressions, e.g., "Config('lr') = 0.001 and State = 'finished'"
+              Supports operators: =, ==, !=, <, >, <=, >=, in, not in, and, or
+            - As an Or/And combinator: allows OR logic and nested groups.
+              e.g., Or(And(Config("lr") == 0.01, Metric("State") == "finished"), Config("lr") == 0.1)
         groupby (LList[expr.MetricType]): A list of metrics to group by in the runset. Set to
             `Metric`, `Summary`, `Config`, `Tags`, or `KeysInfo`.
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
@@ -356,7 +359,7 @@ class RunsetSettings(Base):
 
     query: str = ""
     regex_query: bool = False
-    filters: Union[str, LList[expr.FilterExpr]] = ""
+    filters: Union[str, LList[expr.FilterExpr], expr.Or, expr.And] = ""
     groupby: LList[expr.MetricType] = Field(default_factory=list)
     "A list of metrics to group by in the runset."
 
@@ -407,16 +410,13 @@ class RunsetSettings(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string expression (unified internal format)."""
-        # Inline the normalization logic to avoid circular import with expr module
+        """Convert FilterExpr list or Or/And to string expression."""
         if isinstance(self.filters, list):
-            # Import locally to avoid circular import at module level
-            # Convert FilterExpr list to internal Filters tree
-            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
-            # Convert Filters tree to string expression
-            filter_string = expr.filters_to_expr(filters_tree)
-            # Update the filters field
-            object.__setattr__(self, "filters", filter_string)
+            object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
+        elif isinstance(self.filters, (expr.Or, expr.And)):
+            tree = expr._filter_items_to_filters_tree([self.filters])
+            v2 = expr.filters_tree_to_v2(tree)
+            object.__setattr__(self, "filters", expr.filters_v2_to_string(v2))
         return self
 
 
@@ -458,6 +458,9 @@ class Workspace(Base):
 
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
+
+    _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
+    _stashed_filter_string: Optional[str] = Field(default=None, init=False, repr=False)
 
     @property
     def auto_generate_panels(self) -> bool:
@@ -563,9 +566,14 @@ class Workspace(Base):
 
         runset_model = model.spec.section.run_sets[0]
         if isinstance(runset_model.filters, dict) and expr.is_filter_v2(runset_model.filters):
+            stashed_v2 = copy.deepcopy(runset_model.filters)
             filter_string = expr.filters_v2_to_string(runset_model.filters)
         else:
-            filter_string = expr.filters_to_expr(runset_model.filters)
+            # Legacy filters: the workspace was saved before v2 and hasn't been
+            # opened in the UI yet (which does lazy conversion).  Convert the
+            # legacy Filters tree to v2.
+            stashed_v2 = expr.filters_tree_to_v2(runset_model.filters)
+            filter_string = expr.filters_v2_to_string(stashed_v2)
 
         # then construct the Workspace object
         obj = cls(
@@ -594,6 +602,8 @@ class Workspace(Base):
         obj._internal_name = model.name
         obj._internal_id = model.id
         obj._internal_runset_id = runset_model.id
+        obj._stashed_filters_v2 = stashed_v2
+        obj._stashed_filter_string = filter_string
         return obj
 
     def _to_model(self) -> internal.View:
@@ -644,6 +654,14 @@ class Workspace(Base):
             else list(self.runset_settings.pinned_columns)
         )
 
+        if (self._stashed_filters_v2 is not None
+                and self.runset_settings.filters == self._stashed_filter_string):
+            filters_value = self._stashed_filters_v2
+        else:
+            filters_value = expr.filters_tree_to_v2(
+                expr.expr_to_filters(self.runset_settings.filters)  # type: ignore[arg-type] # validator ensures this is always str
+            )
+
         return internal.View(
             entity=self.entity,
             project=self.project,
@@ -677,9 +695,7 @@ class Workspace(Base):
                                 query=self.runset_settings.query,
                                 is_regex=is_regex,
                             ),
-                            filters=expr.expr_to_filters(
-                                self.runset_settings.filters  # type: ignore[arg-type]  # validator ensures this is always str
-                            ),
+                            filters=filters_value,
                             grouping=[g.to_key() for g in self.runset_settings.groupby],
                             sort=internal.Sort(
                                 keys=[o.to_key() for o in self.runset_settings.order]

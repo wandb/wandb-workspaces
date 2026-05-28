@@ -27,6 +27,7 @@ report.save()
 """
 
 import base64
+import copy
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
@@ -989,7 +990,7 @@ class Runset(Base):
     project: str = ""
     name: str = "Run set"
     query: str = ""
-    filters: Union[str, LList["expr.FilterExpr"]] = ""
+    filters: Union[str, LList["expr.FilterExpr"], "expr.Or", "expr.And"] = ""
     groupby: LList[str] = Field(default_factory=list)
     order: LList[OrderBy] = Field(
         default_factory=lambda: [OrderBy("CreatedTimestamp", ascending=False)]
@@ -1008,9 +1009,8 @@ class Runset(Base):
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
     _selections_root: int = Field(default=1, init=False, repr=False)
 
-    _filters_internal: Optional["expr.Filters"] = Field(
-        default=None, init=False, repr=False
-    )
+    _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
+    _stashed_filter_string: Optional[str] = Field(default=None, init=False, repr=False)
 
     @model_validator(mode="after")
     def merge_custom_run_colors_into_run_settings(self):
@@ -1024,15 +1024,13 @@ class Runset(Base):
 
     @model_validator(mode="after")
     def convert_filterexpr_list_to_string(self):
-        """Convert FilterExpr list to string expression for internal processing."""
-        # Inline the normalization logic to avoid circular import with expr module
+        """Convert FilterExpr list to string expression."""
         if isinstance(self.filters, list):
-            # Convert FilterExpr list to internal Filters tree
-            filters_tree = expr.filter_expr_to_filters_tree(self.filters)
-            # Convert Filters tree to string expression
-            filter_string = expr.filters_to_expr(filters_tree)
-            # Update the filters field
-            object.__setattr__(self, "filters", filter_string)
+            object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
+        elif isinstance(self.filters, (expr.Or, expr.And)):
+            tree = expr._filter_items_to_filters_tree([self.filters])
+            v2 = expr.filters_tree_to_v2(tree)
+            object.__setattr__(self, "filters", expr.filters_v2_to_string(v2))
         return self
 
     def _to_model(self):
@@ -1075,23 +1073,22 @@ class Runset(Base):
                 if settings.disabled
             ]
 
-        # Use the stashed Filters tree when the string hasn't been changed
-        # since loading.  This preserves per-filter metadata (e.g. disabled
-        # state) that the lossy string representation cannot express.
-        filters_unchanged = (
-            self._filters_internal is not None
-            and self.filters == expr.filters_to_expr(self._filters_internal)
-        )
-        if filters_unchanged:
-            filters = self._filters_internal
+        # Use stashed v2 dict when the filter string hasn't changed since load.
+        # This preserves per-filter metadata (e.g. disabled state) that the
+        # lossy string representation cannot express.
+        if (self._stashed_filters_v2 is not None
+                and self.filters == self._stashed_filter_string):
+            filters_value = self._stashed_filters_v2
         else:
-            filters = expr.expr_to_filters(self.filters)
+            filters_value = expr.filters_tree_to_v2(
+                expr.expr_to_filters(self.filters)  # type: ignore[arg-type] # validator ensures this is always str
+            )
 
         obj = internal.Runset(
             project=project,
             name=self.name,
             search=internal.RunsetSearch(query=self.query),
-            filters=filters,
+            filters=filters_value,
             grouping=[expr.groupby_str_to_key(g) for g in self.groupby],
             sort=internal.Sort(keys=[o._to_model() for o in self.order]),
             selections=internal.RunsetSelections(
@@ -1126,9 +1123,14 @@ class Runset(Base):
                     run_settings[child_id] = RunSettings(disabled=is_disabled)
 
         if isinstance(model.filters, dict) and expr.is_filter_v2(model.filters):
+            stashed_v2 = copy.deepcopy(model.filters)
             filter_string = expr.filters_v2_to_string(model.filters)
         else:
-            filter_string = expr.filters_to_expr(model.filters)
+            # Legacy filters: the report was saved before v2 and hasn't been
+            # opened in the UI yet (which does lazy conversion).  Convert the
+            # legacy Filters tree to v2.
+            stashed_v2 = expr.filters_tree_to_v2(model.filters)
+            filter_string = expr.filters_v2_to_string(stashed_v2)
 
         obj = cls(
             entity=entity,
@@ -1142,7 +1144,8 @@ class Runset(Base):
         )
         obj._id = model.id
         obj._selections_root = model.selections.root
-        obj._filters_internal = model.filters
+        obj._stashed_filters_v2 = stashed_v2
+        obj._stashed_filter_string = filter_string
         return obj
 
 
