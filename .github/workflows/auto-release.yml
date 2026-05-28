@@ -93,7 +93,81 @@ jobs:
               dist/*.whl \
               dist/*.tar.gz
           fi
-          
+
+      - name: Inject server-compatibility section into release notes
+        if: steps.version-check.outputs.version_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          TAG="v${{ steps.version-check.outputs.version }}"
+
+          # Previous tag = highest semver tag other than the current one.
+          PREV_TAG=$(gh api "repos/${REPO}/tags" --jq '.[].name' \
+            | grep -vx "${TAG}" | sort -V | tail -1)
+          if [ -z "${PREV_TAG}" ]; then
+            echo "No previous tag found; skipping compatibility section."
+            exit 0
+          fi
+          echo "Scanning PRs between ${PREV_TAG} and HEAD..."
+
+          # Enumerate every commit truly in the range PREV_TAG..HEAD via the
+          # compare API (commit-accurate, unlike a date filter which can mix
+          # overlapping releases or hotfix branches).
+          SHAS=$(gh api --paginate "repos/${REPO}/compare/${PREV_TAG}...HEAD" \
+            --jq '.commits[].sha')
+
+          # Look up the PR each commit came from, dedupe by PR number, and
+          # shape the JSON to match what `gh pr list --json` returns so the
+          # downstream jq stays simple.
+          PRS_JSON=$(
+            for sha in ${SHAS}; do
+              gh api "repos/${REPO}/commits/${sha}/pulls" 2>/dev/null \
+                | jq -c '.[] | select(.merged_at != null) | {
+                    number,
+                    title,
+                    url: .html_url,
+                    author: { login: .user.login },
+                    labels: [.labels[] | {name}]
+                  }'
+            done | jq -s 'unique_by(.number)'
+          )
+
+          # Group PRs by their `requires-server/*` label. If a PR carries
+          # multiple such labels, only the highest tier is kept — a PR
+          # requiring server >= 0.78 trivially also runs on 0.76+, so it
+          # should appear once under the most-restrictive tier.
+          BLOCK=$(printf '%s' "${PRS_JSON}" | jq -r '
+              # vparts sorts "unreleased" above any numeric tier so SaaS-only
+              # features (not yet in any server release) lead the section.
+              def vparts: if . == "unreleased" then [9999] else split(".") | map(tonumber) end;
+              def heading: if . == "unreleased"
+                then "Not yet in any W&B Server release (SaaS only)"
+                else "Requires W&B Server >= " + . end;
+              [ .[] | . as $pr
+                | .labels[] | select(.name | startswith("requires-server/"))
+                | { version: (.name | sub("requires-server/"; "") | rtrimstr("+")), pr: $pr } ]
+              | group_by(.pr.number)
+              | map(max_by(.version | vparts))
+              | group_by(.version)
+              | sort_by(.[0].version | vparts) | reverse
+              | map(
+                  "### " + (.[0].version | heading) + "\n" +
+                  (map("* " + .pr.title + " by @" + .pr.author.login + " in " + .pr.url) | join("\n"))
+                )
+              | join("\n\n")
+            ')
+
+          if [ -z "${BLOCK}" ] || [ "${BLOCK}" = "null" ]; then
+            echo "No requires-server/* labels on PRs in this release; leaving notes unchanged."
+            exit 0
+          fi
+
+          CURRENT=$(gh release view "${TAG}" --json body --jq '.body')
+          printf "%s\n\n%s\n" "${BLOCK}" "${CURRENT}" \
+            | gh release edit "${TAG}" --notes-file -
+          echo "Prepended server-compatibility section to ${TAG} notes."
+
       - name: Publish to PyPI
         if: steps.version-check.outputs.version_changed == 'true'
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1

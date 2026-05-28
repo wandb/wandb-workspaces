@@ -335,6 +335,31 @@ def test_expression_parsing():
                 )
             ],
         ),
+        # Run state accepts the frontend display value but serializes backend lowercase
+        (
+            "State == 'Finished'",
+            [
+                Filters(
+                    op="=",
+                    key=Key(section="run", name="state"),
+                    filters=None,
+                    value="finished",
+                    disabled=False,
+                )
+            ],
+        ),
+        (
+            "Metric('State') in ['Finished', 'Running']",
+            [
+                Filters(
+                    op="IN",
+                    key=Key(section="run", name="state"),
+                    filters=None,
+                    value=["finished", "running"],
+                    disabled=False,
+                )
+            ],
+        ),
     ]
 
     for expr_str, expected_filters in test_cases:
@@ -375,6 +400,15 @@ def test_filter_expr_to_model():
                 "op": "IN",
                 "key": {"section": "run", "name": "tags"},
                 "value": ["ppo", "4pool"],
+                "disabled": False,
+            },
+        ),
+        (
+            expr.Metric("State") == "Finished",
+            {
+                "op": "=",
+                "key": {"section": "run", "name": "state"},
+                "value": "finished",
                 "disabled": False,
             },
         ),

@@ -369,6 +369,8 @@ class Runset(ReportAPIBaseModel):
     sort: Sort = Field(default_factory=Sort)
     selections: RunsetSelections = Field(default_factory=RunsetSelections)
     expanded_row_addresses: list = Field(default_factory=list)
+    baseline_run_id: Optional[str] = None
+    pinned_run_ids: Optional[LList[str]] = None
 
     @field_validator("filters", mode="wrap")
     @classmethod
