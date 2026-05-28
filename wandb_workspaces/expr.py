@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
 from typing import List as LList
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 from wandb_workspaces.utils.invertable_dict import InvertableDict
@@ -70,6 +70,9 @@ __all__ = [
     "Ordering",
     # Filter expression type (needed for type hints)
     "FilterExpr",
+    # Combinators for OR logic
+    "Or",
+    "And",
 ]
 
 Expression = Dict[str, Any]
@@ -759,13 +762,13 @@ _V2_PRECEDENCE = {"AND": 1, "OR": 0}
 def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
     """Recursively convert a Filters tree node into a flat list of v2 items.
 
-    Groups are only created when a child operator's precedence is **not**
-    strictly higher than the parent's:
+    Groups are only created when a child operator's precedence is strictly
+    **lower** than the parent's:
 
-    - AND inside OR  -> inline (AND already binds tighter, no group needed)
+    - AND inside OR  -> inline (AND binds tighter, no group needed)
     - OR inside AND  -> group (semantically required)
-    - OR inside OR   -> group (explicit parentheses in source)
-    - AND inside AND -> group (explicit parentheses in source)
+    - OR inside OR   -> inline (same-op nesting is redundant, flatten)
+    - AND inside AND -> inline (same-op nesting is redundant, flatten)
 
     This avoids turning the implicit AND subtrees that Python's ``ast.parse``
     produces (e.g. ``A or B and C`` -> ``Or([A, And([B, C])])``) into v2
@@ -794,7 +797,7 @@ def _tree_node_to_v2_items(node: Filters, depth: int = 0) -> list:
         else:
             child_prec = _V2_PRECEDENCE.get(child.op, 0)
             parent_prec = _V2_PRECEDENCE.get(node.op, 0)
-            needs_group = child_prec <= parent_prec
+            needs_group = child_prec < parent_prec
 
             if needs_group:
                 if depth >= 1:
@@ -848,8 +851,6 @@ def filters_tree_to_v2(tree: Filters) -> dict:
     ):
         items = items[0]["filters"]
     return {"filterFormat": FILTER_FORMAT_V2, "filters": items}
-
-
 
 
 def _key_to_server_path(key: Key):
@@ -1219,6 +1220,87 @@ class FilterExpr:
             value=self.value,
             disabled=False,
         )
+
+
+FilterItem = Union["FilterExpr", "And", "Or"]
+
+
+@dataclass(frozen=True)
+class And:
+    """Combine multiple filter items with AND logic.
+
+    Example:
+        >>> And(ws.Config("lr") == 0.01, ws.Metric("State") == "finished")
+    """
+
+    items: tuple
+
+    def __init__(self, *items: FilterItem):
+        object.__setattr__(self, "items", items)
+
+    def __repr__(self) -> str:
+        return f"And({', '.join(repr(i) for i in self.items)})"
+
+    def to_model(self) -> Filters:
+        """Convert to an AND Filters node."""
+        children = []
+        for item in self.items:
+            node = item.to_model()
+            if node.op == "AND" and node.filters is not None:
+                # AND inside AND is redundant, flatten.
+                children.extend(node.filters)
+            else:
+                children.append(node)
+        return Filters(op="AND", filters=children)
+
+
+@dataclass(frozen=True)
+class Or:
+    """Combine multiple filter items with OR logic.
+
+    Example:
+        >>> Or(
+        ...     And(Config("lr") == 0.01, Metric("State") == "finished"),
+        ...     Config("lr") == 0.1,
+        ... )
+    """
+
+    items: tuple
+
+    def __init__(self, *items: FilterItem):
+        object.__setattr__(self, "items", items)
+
+    def __repr__(self) -> str:
+        return f"Or({', '.join(repr(i) for i in self.items)})"
+
+    def to_model(self) -> Filters:
+        children = []
+        for item in self.items:
+            node = item.to_model()
+            if node.op == "OR" and node.filters is not None:
+                # OR inside OR is redundant (a OR (b OR c) == a OR b OR c),
+                # so flatten the children into this level.
+                children.extend(node.filters)
+            else:
+                children.append(node)
+        return Filters(op="OR", filters=children)
+
+
+def _filter_items_to_filters_tree(items) -> Filters:
+    """Convert a list of FilterExpr / And / Or items to a Filters tree.
+
+    Items in the list are AND'd together.  For OR logic, wrap with ``Or()``.
+    """
+    if not items:
+        return Filters(op="AND", filters=[])
+
+    if len(items) == 1:
+        return items[0].to_model()
+
+    and_children = []
+    for item in items:
+        and_children.append(item.to_model())
+    return Filters(op="AND", filters=and_children)
 
 
 def filters_tree_to_filter_expr(tree: Filters) -> List[FilterExpr]:
