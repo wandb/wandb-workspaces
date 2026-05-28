@@ -29,6 +29,7 @@ report.save()
 import base64
 import copy
 import os
+import warnings
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
 from typing import List as LList
@@ -69,6 +70,10 @@ SpecialMetricType = Union["Config", "SummaryMetric", "Metric"]
 MetricType = Union[str, SpecialMetricType]
 SummaryOrConfigOnlyMetric = Union[str, "Config", "SummaryMetric", "Metric"]
 RunId = str
+
+# Mirrors the FE runs-table COLUMN_LIMIT. The FE truncates beyond this on
+# parse/render; the SDK only warns when a Runset's visible set reaches it.
+MAX_RUNSET_VISIBLE_COLUMNS = 500
 
 
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid", slots=True)
@@ -967,6 +972,38 @@ class Runset(Base):
             grouped runs) to colors. For simple per-run colors, prefer using `run_settings`.
         run_settings (Dict[str, RunSettings]): Per-run display settings keyed by run ID.
             Use this to set colors and/or hide individual runs. See `RunSettings`.
+        pinned_columns (LList[str]): Column accessors to pin to the left of
+            the runs table (e.g. `["summary:accuracy", "config:lr.value"]`).
+            Cols also in `hidden_columns` are stripped on save.
+        visible_columns (LList[str]): Column accessors to force-show. Use with
+            `lock_columns=True` to curate the visible set. On reload, this
+            also includes cols set only via `column_order`.
+        hidden_columns (LList[str]): Column accessors to hide. Takes
+            precedence over `pinned_columns`, `visible_columns`, and
+            `column_order`. On reload, may include server-seeded entries
+            like `run:name`.
+        column_order (LList[str]): Left-to-right column order. Under
+            `lock_columns=True`, entries not in `pinned_columns` or
+            `visible_columns` are dropped.
+        column_widths (Dict[str, int]): Per-column pixel widths.
+        lock_columns (Optional[bool]): Opt-in lock for the runs-table column
+            set. `True` shows only `pinned_columns` and `visible_columns`;
+            `False` or `None` (default) is permissive. Matches the lock icon
+            in the runs-table toolbar.
+
+    Column format:
+        Columns are addressed as `"<section>:<name>"`:
+            - `run:<attr>`: built-in run properties (e.g. `run:state`)
+            - `config:<key>.value`: config keys (note the `.value` suffix)
+            - `summary:<key>`: summary metrics
+            - `tags:__ALL__`: run tags
+
+    Column limit:
+        The FE runs-table displays at most 500 columns. When the visible set
+        (pinned + visible + column_order, minus hidden) reaches or exceeds
+        500, the SDK emits a warning on save; hidden columns don't count. The
+        SDK does not truncate — the full set is sent and the frontend enforces
+        the limit on render.
 
     Example:
         ```python
@@ -1006,11 +1043,23 @@ class Runset(Base):
 
     run_settings: Dict[str, "RunSettings"] = Field(default_factory=dict)
 
+    pinned_columns: LList[str] = Field(default_factory=list)
+    visible_columns: LList[str] = Field(default_factory=list)
+    hidden_columns: LList[str] = Field(default_factory=list)
+    column_order: LList[str] = Field(default_factory=list)
+    column_widths: Dict[str, int] = Field(default_factory=dict)
+    lock_columns: Optional[bool] = None
+
     _id: str = Field(default_factory=internal._generate_name, init=False, repr=False)
     _selections_root: int = Field(default=1, init=False, repr=False)
 
     _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
     _stashed_filter_string: Optional[str] = Field(default=None, init=False, repr=False)
+
+    # Stashed RunFeed; lets _to_model preserve non-column fields on round-trip.
+    _run_feed_loaded: Optional["internal.RunFeed"] = Field(
+        default=None, init=False, repr=False
+    )
 
     @model_validator(mode="after")
     def merge_custom_run_colors_into_run_settings(self):
@@ -1084,6 +1133,73 @@ class Runset(Base):
                 expr.expr_to_filters(self.filters)  # type: ignore[arg-type] # validator ensures this is always str
             )
 
+        pinned_raw = list(dict.fromkeys(self.pinned_columns))
+        visible_raw = list(dict.fromkeys(self.visible_columns))
+        hidden_cols = list(dict.fromkeys(self.hidden_columns))
+        hidden_set = set(hidden_cols)
+
+        # Hide wins over pin/visible/order.
+        pinned_cols = [c for c in pinned_raw if c not in hidden_set]
+        visible_cols = [c for c in visible_raw if c not in hidden_set]
+        pinned_set = set(pinned_cols)
+        curated_set = pinned_set | set(visible_cols)
+
+        curated = pinned_cols + [c for c in visible_cols if c not in pinned_set]
+        explicit_order = [
+            c for c in dict.fromkeys(self.column_order) if c not in hidden_set
+        ]
+        combined_order = explicit_order + [
+            c for c in curated if c not in set(explicit_order)
+        ]
+        if self.lock_columns:
+            col_order = [c for c in combined_order if c in curated_set]
+        else:
+            col_order = combined_order
+
+        # The cap applies only to visible columns (col_order == the
+        # column_visible:True set). Hidden columns are column_visible:False and
+        # never enter col_order, so they don't count toward the limit. We only
+        # warn here — the FE enforces COLUMN_LIMIT on parse/render, so we leave
+        # the full set on the wire rather than truncate and risk diverging.
+        if len(col_order) >= MAX_RUNSET_VISIBLE_COLUMNS:
+            if len(col_order) == MAX_RUNSET_VISIBLE_COLUMNS:
+                warnings.warn(
+                    f"Runset '{self.name}' has {len(col_order)} visible columns, "
+                    f"at the FE display limit of {MAX_RUNSET_VISIBLE_COLUMNS} "
+                    f"(hidden columns don't count). Adding more visible columns "
+                    f"will exceed the cap and the frontend will not display them.",
+                    stacklevel=2,
+                )
+            else:
+                warnings.warn(
+                    f"Runset '{self.name}' has {len(col_order)} visible columns "
+                    f"(pinned + visible + column_order, minus hidden), exceeding "
+                    f"the FE display limit of {MAX_RUNSET_VISIBLE_COLUMNS}. The "
+                    f"frontend will only display the first "
+                    f"{MAX_RUNSET_VISIBLE_COLUMNS}.",
+                    stacklevel=2,
+                )
+
+        # FE invariant: column_visible True entries must mirror column_order.
+        column_visible: Dict[str, bool] = {col: False for col in hidden_cols}
+        column_visible.update({col: True for col in col_order})
+
+        column_pinned = {col: True for col in pinned_cols}
+
+        col_fields = {
+            "column_visible": column_visible,
+            "column_pinned": column_pinned,
+            "column_order": col_order,
+            "column_widths": dict(self.column_widths),
+            "lock_columns": self.lock_columns,
+        }
+        # Start from the stashed RunFeed so non-column fields (page_size,
+        # only_show_selected, future additions) survive round-trip.
+        if self._run_feed_loaded is not None:
+            run_feed = self._run_feed_loaded.model_copy(update=col_fields)
+        else:
+            run_feed = internal.RunFeed(**col_fields)
+
         obj = internal.Runset(
             project=project,
             name=self.name,
@@ -1094,6 +1210,7 @@ class Runset(Base):
             selections=internal.RunsetSelections(
                 root=self._selections_root, tree=tree_ids
             ),
+            run_feed=run_feed,
         )
         obj.id = self._id
         return obj
@@ -1132,6 +1249,27 @@ class Runset(Base):
             stashed_v2 = expr.filters_tree_to_v2(model.filters)
             filter_string = expr.filters_v2_to_string(stashed_v2)
 
+        rf = model.run_feed
+        pinned_columns = [
+            col for col, is_pinned in rf.column_pinned.items() if is_pinned
+        ]
+        pinned_set = set(pinned_columns)
+        hidden_columns = [
+            col for col, is_visible in rf.column_visible.items() if is_visible is False
+        ]
+        hidden_set = set(hidden_columns)
+        # column_order is the FE's render list. Union it with column_visible
+        # True entries (minus pin/hide) to capture cols in either source.
+        visible_from_order = [
+            c for c in rf.column_order if c not in pinned_set and c not in hidden_set
+        ]
+        visible_from_dict = [
+            c
+            for c, v in rf.column_visible.items()
+            if v is True and c not in pinned_set and c not in set(visible_from_order)
+        ]
+        visible_columns = visible_from_order + visible_from_dict
+
         obj = cls(
             entity=entity,
             project=project,
@@ -1141,11 +1279,18 @@ class Runset(Base):
             groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
             run_settings=run_settings,
+            pinned_columns=pinned_columns,
+            visible_columns=visible_columns,
+            hidden_columns=hidden_columns,
+            column_order=list(rf.column_order),
+            column_widths=dict(rf.column_widths),
+            lock_columns=rf.lock_columns,
         )
         obj._id = model.id
         obj._selections_root = model.selections.root
         obj._stashed_filters_v2 = stashed_v2
         obj._stashed_filter_string = filter_string
+        obj._run_feed_loaded = rf.model_copy(deep=True)
         return obj
 
 
