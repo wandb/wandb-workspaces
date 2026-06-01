@@ -71,6 +71,7 @@ class ViewspecSection(WorkspaceAPIBaseModel):
 
     # this is intentionally dict because it has arbitrary keys (the run ids)
     custom_run_colors: dict
+    custom_run_names: dict = Field(default_factory=dict)
 
     name: str = ""
     run_sets: LList[Runset] = Field(default_factory=lambda: [Runset()])

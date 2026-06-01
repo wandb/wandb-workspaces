@@ -69,6 +69,16 @@ def _should_show(v):
     return False
 
 
+def _flatten_selection_tree(tree):
+    run_ids = []
+    for item in tree:
+        if isinstance(item, str):
+            run_ids.append(item)
+        else:
+            run_ids.extend(item.children)
+    return run_ids
+
+
 @dataclass(config=dataclass_config, repr=False)
 class Base:
     def __repr__(self):
@@ -311,10 +321,12 @@ class RunSettings(Base):
     Attributes:
         color (str): The color of the run in the UI.  Can be hex (#ff0000), css color (red), or rgb (rgb(255, 0, 0))
         disabled (bool): Whether the run is deactivated (eye closed in the UI). Default is set to `False`.
+        display_name (str): A custom display name for the run in this workspace view.
     """
 
     color: str = ""  # hex, css color, or rgb
     disabled: bool = False
+    display_name: str = ""
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -333,6 +345,9 @@ class RunsetSettings(Base):
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
         run_settings (Dict[str, RunSettings]): A dictionary of run settings, where the key
             is the run's ID and the value is a RunSettings object.
+        visible_runs (LList[str]): Explicitly selected visible run IDs. This is populated
+            when a saved view stores selections with ``root=0``.
+        only_show_selected (bool): Whether the run table should only show selected runs.
         pinned_columns (LList[str]): List of column names to pin.
             Column names use format: "run:displayName", "summary:metric", "config:param".
             run:displayName is automatically added if not present.
@@ -378,12 +393,27 @@ class RunsetSettings(Base):
     ```
     """
 
+    visible_runs: LList[str] = Field(default_factory=list)
+    "Explicitly selected visible run IDs from saved views using additive selections."
+
+    only_show_selected: bool = False
+    "Whether the run table should only show selected runs."
+
     # Column management
     pinned_columns: LList[str] = Field(default_factory=list)
 
     # Internal fields for backend serialization (not user-facing)
     _visible_columns: LList[str] = Field(default_factory=list, init=False, repr=False)
     _column_order: LList[str] = Field(default_factory=list, init=False, repr=False)
+    _selections_root: int = Field(default=1, init=False, repr=False)
+
+    @property
+    def visible_run_display_names(self) -> Dict[str, str]:
+        """Custom display names for the explicitly visible runs, keyed by run ID."""
+        return {
+            run_id: self.run_settings.get(run_id, RunSettings()).display_name
+            for run_id in self.visible_runs
+        }
 
     @model_validator(mode="after")
     def validate_and_setup_columns(self):
@@ -486,14 +516,17 @@ class Workspace(Base):
     def _from_model(cls, model: internal.View):
         # construct configs from disjoint parts of settings
         run_settings = {}
+        runset = model.spec.section.run_sets[0]
 
-        disabled_runs = model.spec.section.run_sets[0].selections.tree
-        for item in disabled_runs:
-            if isinstance(item, str):
-                run_settings[item] = RunSettings(disabled=True)
-            else:
-                for child_id in item.children:
-                    run_settings[child_id] = RunSettings(disabled=True)
+        selected_run_ids = _flatten_selection_tree(runset.selections.tree)
+        if runset.selections.root == 0:
+            visible_runs = selected_run_ids
+            for id in visible_runs:
+                run_settings[id] = RunSettings(disabled=False)
+        else:
+            visible_runs = []
+            for id in selected_run_ids:
+                run_settings[id] = RunSettings(disabled=True)
 
         custom_run_colors = model.spec.section.custom_run_colors
         for k, v in custom_run_colors.items():
@@ -506,7 +539,14 @@ class Workspace(Base):
                 else:
                     run_settings[id].color = color
 
-        regex_query = True if model.spec.section.run_sets[0].search.is_regex else False
+        custom_run_names = model.spec.section.custom_run_names
+        for id, display_name in custom_run_names.items():
+            if id not in run_settings:
+                run_settings[id] = RunSettings(display_name=display_name)
+            else:
+                run_settings[id].display_name = display_name
+
+        regex_query = True if runset.search.is_regex else False
 
         section_settings = model.spec.section.settings
         panel_bank_settings = model.spec.section.panel_bank_config.settings
@@ -555,7 +595,7 @@ class Workspace(Base):
         )
 
         # Extract column settings from run_feed
-        run_feed = model.spec.section.run_sets[0].run_feed
+        run_feed = runset.run_feed
         # Only extract pinned_columns - visible_columns and column_order are derived from it
         pinned_columns = [
             col for col, is_pinned in run_feed.column_pinned.items() if is_pinned
@@ -572,24 +612,21 @@ class Workspace(Base):
             ],
             settings=workspace_settings,
             runset_settings=RunsetSettings(
-                query=model.spec.section.run_sets[0].search.query,
+                query=runset.search.query,
                 regex_query=regex_query,
-                filters=expr.filters_to_expr(model.spec.section.run_sets[0].filters),
-                groupby=[
-                    expr.BaseMetric.from_key(v)
-                    for v in model.spec.section.run_sets[0].grouping
-                ],
-                order=[
-                    expr.Ordering.from_key(s)
-                    for s in model.spec.section.run_sets[0].sort.keys
-                ],
+                filters=expr.filters_to_expr(runset.filters),
+                groupby=[expr.BaseMetric.from_key(v) for v in runset.grouping],
+                order=[expr.Ordering.from_key(s) for s in runset.sort.keys],
                 run_settings=run_settings,
+                visible_runs=visible_runs,
+                only_show_selected=run_feed.only_show_selected,
                 pinned_columns=pinned_columns,
             ),
         )
         obj._internal_name = model.name
         obj._internal_id = model.id
-        obj._internal_runset_id = model.spec.section.run_sets[0].id
+        obj._internal_runset_id = runset.id
+        obj.runset_settings._selections_root = runset.selections.root
         return obj
 
     def _to_model(self) -> internal.View:
@@ -639,6 +676,20 @@ class Workspace(Base):
             if self.runset_settings._column_order
             else list(self.runset_settings.pinned_columns)
         )
+        selections_root = (
+            0
+            if self.runset_settings.visible_runs
+            else self.runset_settings._selections_root
+        )
+        selection_tree = (
+            self.runset_settings.visible_runs
+            if selections_root == 0
+            else [
+                id
+                for id, config in self.runset_settings.run_settings.items()
+                if config.disabled
+            ]
+        )
 
         return internal.View(
             entity=self.entity,
@@ -668,6 +719,7 @@ class Workspace(Base):
                                 column_visible=column_visible_dict,
                                 column_order=column_order,
                                 column_widths={},  # No column widths support
+                                only_show_selected=self.runset_settings.only_show_selected,
                             ),
                             search=internal.RunsetSearch(
                                 query=self.runset_settings.query,
@@ -681,17 +733,20 @@ class Workspace(Base):
                                 keys=[o.to_key() for o in self.runset_settings.order]
                             ),
                             selections=internal.RunsetSelections(
-                                tree=[
-                                    id
-                                    for id, config in self.runset_settings.run_settings.items()
-                                    if config.disabled
-                                ],
+                                root=selections_root,
+                                tree=selection_tree,
                             ),
                         ),
                     ],
                     custom_run_colors={
                         id: config.color
                         for id, config in self.runset_settings.run_settings.items()
+                        if config.color
+                    },
+                    custom_run_names={
+                        id: config.display_name
+                        for id, config in self.runset_settings.run_settings.items()
+                        if config.display_name
                     },
                 ),
             ),

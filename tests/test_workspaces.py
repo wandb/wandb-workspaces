@@ -10,6 +10,7 @@ import wandb_workspaces.reports.v2.internal as _wr
 import wandb_workspaces.expr
 import wandb_workspaces.reports.v2 as wr
 import wandb_workspaces.workspaces as ws
+import wandb_workspaces.workspaces.internal as _ws_internal
 from tests.weave_panel_factory import WeavePanelFactory
 from wandb_workspaces.utils.validators import (
     validate_no_emoji,
@@ -213,6 +214,88 @@ def test_load_workspace_from_url():
             "name": "test_project",
             "viewName": "nw-51cset95tvn-v",
         }
+
+
+def test_workspace_loads_visible_runs_and_custom_display_names():
+    model = _ws_internal.View(
+        entity="test-entity",
+        project="test-project",
+        display_name="Saved view",
+        name="nw-savedview-v",
+        id="view-id",
+        spec=_ws_internal.WorkspaceViewspec(
+            section=_ws_internal.ViewspecSection(
+                panel_bank_config=_wr.PanelBankConfig(),
+                panel_bank_section_config=_wr.PanelBankSectionConfig(),
+                custom_run_colors={},
+                custom_run_names={
+                    "run-1": "Baseline",
+                    "run-2": "Candidate",
+                    "run-3": "Ablation",
+                },
+                run_sets=[
+                    _wr.Runset(
+                        run_feed=_wr.RunFeed(only_show_selected=True),
+                        selections=_wr.RunsetSelections(
+                            root=0,
+                            tree=["run-1", "run-2", "run-3"],
+                        ),
+                    )
+                ],
+            )
+        ),
+    )
+
+    workspace = ws.Workspace._from_model(model)
+
+    assert workspace.runset_settings.only_show_selected is True
+    assert workspace.runset_settings.visible_runs == ["run-1", "run-2", "run-3"]
+    assert workspace.runset_settings.visible_run_display_names == {
+        "run-1": "Baseline",
+        "run-2": "Candidate",
+        "run-3": "Ablation",
+    }
+    assert workspace.runset_settings.run_settings["run-1"].disabled is False
+
+    roundtrip = workspace._to_model()
+    runset = roundtrip.spec.section.run_sets[0]
+    assert runset.run_feed.only_show_selected is True
+    assert runset.selections.root == 0
+    assert runset.selections.tree == ["run-1", "run-2", "run-3"]
+    assert roundtrip.spec.section.custom_run_names == {
+        "run-1": "Baseline",
+        "run-2": "Candidate",
+        "run-3": "Ablation",
+    }
+
+
+def test_workspace_serializes_visible_runs_and_custom_display_names():
+    workspace = ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(
+            visible_runs=["run-1", "run-2", "run-3"],
+            only_show_selected=True,
+            run_settings={
+                "run-1": ws.RunSettings(display_name="Baseline"),
+                "run-2": ws.RunSettings(display_name="Candidate"),
+                "run-3": ws.RunSettings(display_name="Ablation"),
+            },
+        ),
+    )
+
+    model = workspace._to_model()
+    runset = model.spec.section.run_sets[0]
+
+    assert runset.run_feed.only_show_selected is True
+    assert runset.selections.root == 0
+    assert runset.selections.tree == ["run-1", "run-2", "run-3"]
+    assert model.spec.section.custom_run_names == {
+        "run-1": "Baseline",
+        "run-2": "Candidate",
+        "run-3": "Ablation",
+    }
+    assert model.spec.section.custom_run_colors == {}
 
 
 def test_save_workspace():
