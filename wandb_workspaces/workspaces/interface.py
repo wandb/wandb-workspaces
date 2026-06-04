@@ -29,7 +29,7 @@ workspace.save()
 import copy
 import base64
 import os
-from typing import Dict, Iterable, Literal, Optional, Union
+from typing import Dict, Iterable, Literal, Optional, Union, cast
 from typing import List as LList
 from urllib.parse import parse_qs, urlparse, urlunparse
 
@@ -123,11 +123,20 @@ def _selection_disabled_map(selections: internal.RunsetSelections) -> Dict[str, 
 def _current_selection_disabled_map(
     run_settings: Dict[str, "RunSettings"],
     original_disabled: Dict[str, bool],
+    selections_root: int,
 ) -> Dict[str, bool]:
     return {
         run_id: settings.disabled
         for run_id, settings in run_settings.items()
-        if settings.disabled or run_id in original_disabled
+        if
+        (
+            # root=1: tree contains hidden runs
+            (selections_root != 0 and settings.disabled)
+            # root=0: tree contains visible runs
+            or (selections_root == 0 and not settings.disabled)
+            # keep originally represented runs so removals/toggles are detected
+            or run_id in original_disabled
+        )
     }
 
 
@@ -713,7 +722,9 @@ class Workspace(Base):
             # Legacy filters: the workspace was saved before v2 and hasn't been
             # opened in the UI yet (which does lazy conversion).  Convert the
             # legacy Filters tree to v2.
-            stashed_v2 = expr.filters_tree_to_v2(runset_model.filters)
+            stashed_v2 = expr.filters_tree_to_v2(
+                cast(expr.Filters, runset_model.filters)
+            )
             filter_string = expr.filters_v2_to_string(stashed_v2)
 
         # then construct the Workspace object
@@ -785,13 +796,6 @@ class Workspace(Base):
         # column_visible and column_pinned are the same (pinned columns are the only visible ones. We pass this for consistency but other columns will be visibile in the FE)
         column_pinned_dict = {col: True for col in self.runset_settings.pinned_columns}
         column_visible_dict = column_pinned_dict  # Same as pinned
-
-        # Use internal _column_order if set, otherwise use pinned_columns as order
-        column_order = (
-            self.runset_settings._column_order
-            if self.runset_settings._column_order
-            else list(self.runset_settings.pinned_columns)
-        )
 
         if (
             self._stashed_filters_v2 is not None
@@ -889,7 +893,7 @@ class Workspace(Base):
         if pinned_columns_changed:
             run_feed.column_pinned = column_pinned_dict
             run_feed.column_visible = column_visible_dict
-            run_feed.column_order = column_order
+            run_feed.column_order = list(self.runset_settings.pinned_columns)
             if self._internal_view is None:
                 run_feed.column_widths = {}
         runset.run_feed = run_feed
@@ -924,7 +928,7 @@ class Workspace(Base):
         selections = runset.selections.model_copy(deep=True)
         original_disabled = _selection_disabled_map(runset.selections)
         current_disabled = _current_selection_disabled_map(
-            self.runset_settings.run_settings, original_disabled
+            self.runset_settings.run_settings, original_disabled, selections.root
         )
         if self._internal_view is None or current_disabled != original_disabled:
             if selections.root == 0:
@@ -948,13 +952,11 @@ class Workspace(Base):
         section.run_sets = run_sets
 
         custom_run_colors = dict(section.custom_run_colors)
-        custom_run_colors.update(
-            {
-                id: config.color
-                for id, config in self.runset_settings.run_settings.items()
-                if config.color
-            }
-        )
+        for run_id, config in self.runset_settings.run_settings.items():
+            if config.color:
+                custom_run_colors[run_id] = config.color
+            else:
+                custom_run_colors.pop(run_id, None)
         section.custom_run_colors = custom_run_colors
 
         view.spec.section = section

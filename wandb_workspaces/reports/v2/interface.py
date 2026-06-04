@@ -996,11 +996,20 @@ def _selection_disabled_map(
 def _current_selection_disabled_map(
     run_settings: Dict[str, "RunSettings"],
     original_disabled: Dict[str, bool],
+    selections_root: int,
 ) -> Dict[str, bool]:
     return {
         run_id: settings.disabled
         for run_id, settings in run_settings.items()
-        if settings.disabled or run_id in original_disabled
+        if
+        (
+            # root=1: tree contains hidden runs
+            (selections_root != 0 and settings.disabled)
+            # root=0: tree contains visible runs
+            or (selections_root == 0 and not settings.disabled)
+            # keep originally represented runs so removals/toggles are detected
+            or run_id in original_disabled
+        )
     }
 
 
@@ -1332,7 +1341,7 @@ class Runset(Base):
             else {}
         )
         current_disabled = _current_selection_disabled_map(
-            self.run_settings, original_disabled
+            self.run_settings, original_disabled, self._selections_root
         )
         if self._runset_internal is None or current_disabled != original_disabled:
             selections.root = self._selections_root

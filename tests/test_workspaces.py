@@ -514,7 +514,7 @@ def test_loaded_workspace_round_trip_preserves_frontend_state():
 
 
 def test_loaded_workspace_preserves_additive_selection_tree():
-    """Color-only run settings should not flatten additive grouped selections."""
+    """Unchanged additive grouped selections should not be flattened."""
     from wandb_workspaces.workspaces import internal
 
     spec = internal.WorkspaceViewspec.model_validate(
@@ -522,7 +522,7 @@ def test_loaded_workspace_preserves_additive_selection_tree():
             "section": {
                 "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
                 "panelBankSectionConfig": {},
-                "customRunColors": {"run-color": "#00ff00"},
+                "customRunColors": {},
                 "runSets": [
                     {
                         "id": "rs1",
@@ -566,7 +566,73 @@ def test_loaded_workspace_preserves_additive_selection_tree():
             "skip": False,
         }
     ]
-    assert dumped["section"]["customRunColors"] == {"run-color": "#00ff00"}
+
+
+def test_loaded_workspace_additive_selection_tree_adds_new_visible_run():
+    """With root=0, a new enabled run setting must be added to selections.tree."""
+    from wandb_workspaces.workspaces import internal
+
+    spec = internal.WorkspaceViewspec.model_validate(
+        {
+            "section": {
+                "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
+                "panelBankSectionConfig": {},
+                "customRunColors": {},
+                "runSets": [
+                    {
+                        "id": "rs1",
+                        "selections": {"root": 0, "bounds": [], "tree": ["run-a"]},
+                    }
+                ],
+            }
+        }
+    )
+    view = internal.View(
+        entity="test-entity",
+        project="test-project",
+        display_name="Loaded Workspace",
+        name="nw-loaded-v",
+        id="view-id",
+        spec=spec,
+    )
+    workspace = ws.Workspace._from_model(view)
+    workspace.runset_settings.run_settings["run-b"] = ws.RunSettings(disabled=False)
+
+    dumped = workspace._to_model().spec.model_dump(by_alias=True, exclude_none=True)
+    selections = dumped["section"]["runSets"][0]["selections"]
+
+    assert selections["root"] == 0
+    assert sorted(selections["tree"]) == ["run-a", "run-b"]
+
+
+def test_loaded_workspace_clears_existing_custom_run_color():
+    """Clearing a run setting color should remove the old viewspec color."""
+    from wandb_workspaces.workspaces import internal
+
+    spec = internal.WorkspaceViewspec.model_validate(
+        {
+            "section": {
+                "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
+                "panelBankSectionConfig": {},
+                "customRunColors": {"run-a": "#ff0000"},
+                "runSets": [{"id": "rs1"}],
+            }
+        }
+    )
+    view = internal.View(
+        entity="test-entity",
+        project="test-project",
+        display_name="Loaded Workspace",
+        name="nw-loaded-v",
+        id="view-id",
+        spec=spec,
+    )
+    workspace = ws.Workspace._from_model(view)
+    workspace.runset_settings.run_settings["run-a"].color = ""
+
+    dumped = workspace._to_model().spec.model_dump(by_alias=True, exclude_none=True)
+
+    assert dumped["section"]["customRunColors"] == {}
 
 
 @pytest.mark.parametrize(
@@ -703,6 +769,59 @@ def test_column_pinning():
         "run:displayName",
         "summary:accuracy",
     ]
+
+
+def test_loaded_workspace_updated_pinned_columns_replace_column_order():
+    """Changing pinned columns after load should write the new pinned order."""
+    from wandb_workspaces.workspaces import internal
+
+    spec = internal.WorkspaceViewspec.model_validate(
+        {
+            "section": {
+                "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
+                "panelBankSectionConfig": {},
+                "customRunColors": {},
+                "runSets": [
+                    {
+                        "id": "rs1",
+                        "runFeed": {
+                            "columnVisible": {
+                                "run:displayName": True,
+                                "summary:old": True,
+                            },
+                            "columnPinned": {
+                                "run:displayName": True,
+                                "summary:old": True,
+                            },
+                            "columnOrder": ["run:displayName", "summary:old"],
+                        },
+                    }
+                ],
+            }
+        }
+    )
+    view = internal.View(
+        entity="test-entity",
+        project="test-project",
+        display_name="Loaded Workspace",
+        name="nw-loaded-v",
+        id="view-id",
+        spec=spec,
+    )
+    workspace = ws.Workspace._from_model(view)
+    workspace.runset_settings.pinned_columns = ["run:displayName", "summary:new"]
+
+    run_feed = workspace._to_model().spec.section.run_sets[0].run_feed
+
+    assert run_feed.column_pinned == {
+        "run:displayName": True,
+        "summary:new": True,
+    }
+    assert run_feed.column_visible == {
+        "run:displayName": True,
+        "summary:new": True,
+    }
+    assert run_feed.column_order == ["run:displayName", "summary:new"]
 
 
 def test_empty_column_settings():

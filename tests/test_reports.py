@@ -779,6 +779,23 @@ def test_runset_additive_selection_tree_round_trip_preserves_shape():
     ]
 
 
+def test_runset_additive_selection_tree_adds_new_visible_run():
+    """With root=0, a new enabled run setting must be added to selections.tree."""
+    from wandb_workspaces.reports.v2 import internal
+
+    model = internal.Runset(
+        id="rs-test",
+        selections=internal.RunsetSelections(root=0, tree=["run-a"]),
+    )
+    runset = wr.Runset._from_model(model)
+    runset.run_settings["run-b"] = wr.RunSettings(disabled=False)
+
+    round_tripped = runset._to_model()
+
+    assert round_tripped.selections.root == 0
+    assert sorted(round_tripped.selections.tree) == ["run-a", "run-b"]
+
+
 def test_runset_config_sort_preserves_backend_value_position():
     """Config sort keys should keep exact backend paths unless order changes."""
     from wandb_workspaces.reports.v2 import internal
