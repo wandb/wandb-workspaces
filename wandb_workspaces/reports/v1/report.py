@@ -9,7 +9,6 @@ from typing import List as LList
 from wandb import __version__ as wandb_ver
 from wandb import termlog, termwarn
 from wandb.apis.public import Api as PublicApi
-from wandb.apis.public import RetryingClient
 from wandb.sdk.lib import ipython
 
 from wandb_workspaces._graphql import execute_graphql, get_app_url
@@ -175,7 +174,7 @@ class Report(Base):
         return self._viewspec["spec"]
 
     @property
-    def client(self) -> "RetryingClient":
+    def client(self):
         return self._api.client
 
     @property
