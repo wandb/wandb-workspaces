@@ -12,7 +12,7 @@ from wandb.apis.public import Api as PublicApi
 from wandb.apis.public import RetryingClient
 from wandb.sdk.lib import ipython
 
-from wandb_workspaces._graphql import execute_graphql
+from wandb_workspaces._graphql import execute_graphql, get_app_url
 
 from ._blocks import P, PanelGrid, UnknownBlock, WeaveBlock, block_mapping, weave_blocks
 from .mutations import UPSERT_VIEW, VIEW_REPORT
@@ -200,7 +200,7 @@ class Report(Base):
         title = re.sub(r"-+", "-", title)
         title = urllib.parse.quote(title)
         id = self.id.replace("=", "")
-        app_url = self._api.client.app_url
+        app_url = get_app_url(self._api)
         if not app_url.endswith("/"):
             app_url = app_url + "/"
         return f"{app_url}{self.entity}/{self.project}/reports/{title}--{id}"

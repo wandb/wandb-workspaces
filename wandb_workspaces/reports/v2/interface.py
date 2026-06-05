@@ -47,7 +47,7 @@ import wandb
 from pydantic import ConfigDict, Field, model_validator, validator
 from pydantic.dataclasses import dataclass
 
-from wandb_workspaces._graphql import execute_graphql
+from wandb_workspaces._graphql import execute_graphql, get_app_url
 
 from . import gql, internal
 from ... import expr
@@ -3613,7 +3613,7 @@ class Report(Base):
         if self.id == "":
             raise AttributeError("save report or explicitly pass `id` to get a url")
 
-        base = urlparse(_get_api().client.app_url)
+        base = urlparse(get_app_url(_get_api()))
 
         title = self.title.replace(" ", "-")
 

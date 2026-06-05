@@ -3,7 +3,7 @@ import sys
 import textwrap
 import types
 
-from wandb_workspaces._graphql import execute_graphql
+from wandb_workspaces._graphql import execute_graphql, get_app_url
 
 
 def test_report_and_workspace_imports_do_not_require_wandb_gql():
@@ -91,3 +91,24 @@ def test_execute_graphql_lazily_uses_wandb_gql_for_legacy_clients(monkeypatch):
 
     assert result == {"ok": True}
     assert api.client.calls == [("parsed:query Test { viewer { id } }", {"x": 1})]
+
+
+def test_get_app_url_prefers_service_api_without_client():
+    class ServiceApi:
+        app_url = "https://service.wandb.test/"
+
+    class Api:
+        def __init__(self):
+            self._service_api = ServiceApi()
+
+    assert get_app_url(Api()) == "https://service.wandb.test/"
+
+
+def test_get_app_url_falls_back_to_legacy_client():
+    class Client:
+        app_url = "https://legacy.wandb.test/"
+
+    class Api:
+        client = Client()
+
+    assert get_app_url(Api()) == "https://legacy.wandb.test/"

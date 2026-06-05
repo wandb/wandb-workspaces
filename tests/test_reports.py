@@ -8,6 +8,7 @@ from polyfactory.factories import DataclassFactory
 from polyfactory.pytest_plugin import register_fixture
 
 import wandb_workspaces.reports.v2 as wr
+import wandb_workspaces.reports.v1 as wr_v1
 from wandb_workspaces.expr import expr_to_filters, Filters, Key
 
 T = TypeVar("T")
@@ -429,6 +430,40 @@ def test_report_delete(monkeypatch):
 
     # Ensure the GraphQL mutation received the correct variables (deleteDrafts always True)
     assert captured["variables"] == {"id": "dummy-id", "deleteDrafts": True}
+
+
+def test_v1_report_url_uses_service_api_app_url_without_client():
+    class _ServiceApi:
+        app_url = "https://service.wandb.test/"
+
+    class _Api:
+        default_entity = "ent"
+
+        def __init__(self):
+            self._service_api = _ServiceApi()
+
+    report = wr_v1.Report(project="proj", entity="ent", title="My Report", _api=_Api())
+    report._viewspec["id"] = "abc123=="
+
+    assert report.url == "https://service.wandb.test/ent/proj/reports/My-Report--abc123"
+
+
+def test_v2_report_url_uses_service_api_app_url_without_client(monkeypatch):
+    class _ServiceApi:
+        app_url = "https://service.wandb.test/"
+
+    class _Api:
+        default_entity = "ent"
+
+        def __init__(self):
+            self._service_api = _ServiceApi()
+
+    monkeypatch.setattr(wr.interface, "_get_api", lambda: _Api())
+
+    report = wr.Report(project="proj", entity="ent", title="My Report")
+    report.id = "abc123"
+
+    assert report.url == "https://service.wandb.test/ent/proj/reports/My-Report--abc123"
 
 
 def test_runset_project_lookup(monkeypatch):

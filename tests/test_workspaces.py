@@ -253,6 +253,21 @@ def test_save_workspace():
         assert gql_definition.operation == "mutation"
 
 
+def test_workspace_url_uses_service_api_app_url_without_client():
+    class _ServiceApi:
+        app_url = "https://service.wandb.test/"
+
+    class _Api:
+        def __init__(self):
+            self._service_api = _ServiceApi()
+
+    with patch("wandb.Api", return_value=_Api()):
+        workspace = ws.Workspace(entity="ent", project="proj")
+        workspace._internal_name = "nw-abc123-v"
+
+        assert workspace.url == "https://service.wandb.test/ent/proj?nw=abc123"
+
+
 @pytest.mark.parametrize(
     "example, should_pass",
     [

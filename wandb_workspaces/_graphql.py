@@ -18,3 +18,12 @@ def execute_graphql(
 
     gql = importlib.import_module("wandb_gql").gql
     return api.client.execute(gql(query), variable_values=dict(variables or {}))
+
+
+def get_app_url(api: Any) -> str:
+    """Return the W&B app URL from the current or legacy SDK API object."""
+    service_api = getattr(api, "__dict__", {}).get("_service_api")
+    if service_api is not None and hasattr(service_api, "app_url"):
+        return service_api.app_url
+
+    return api.client.app_url
