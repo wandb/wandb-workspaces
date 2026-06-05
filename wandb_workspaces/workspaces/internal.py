@@ -6,7 +6,8 @@ import wandb
 from annotated_types import Annotated, Ge
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from pydantic.alias_generators import to_camel
-from wandb_gql import gql
+
+from wandb_workspaces._graphql import execute_graphql
 
 # these internal objects should be factored out into a separate module as a
 # shared dependency between Workspaces and Reports API
@@ -119,8 +120,7 @@ class View(WorkspaceAPIBaseModel):
 
 
 def upsert_view2(view: View) -> Dict[str, Any]:
-    query = gql(
-        """
+    query = """
         mutation UpsertView2($id: ID, $entityName: String, $projectName: String, $type: String, $name: String, $displayName: String, $description: String, $spec: String) {
         upsertView(
             input: {id: $id, entityName: $entityName, projectName: $projectName, name: $name, displayName: $displayName, description: $description, type: $type, spec: $spec, createdUsing: WANDB_SDK}
@@ -133,7 +133,6 @@ def upsert_view2(view: View) -> Dict[str, Any]:
         }
         }
         """
-    )
 
     api = wandb.Api()
     spec_str = view.spec.model_dump_json(by_alias=True, exclude_none=True)
@@ -154,15 +153,14 @@ def upsert_view2(view: View) -> Dict[str, Any]:
     if view.id:
         variables["id"] = view.id
 
-    response = api.client.execute(query, variables)
+    response = execute_graphql(api, query, variables)
 
     return response
 
 
 def get_view_dict(entity: str, project: str, view_name: str) -> Dict[str, Any]:
     # Use this query because it let you use view_name instead of id
-    query = gql(
-        """
+    query = """
         query View($entityName: String, $name: String, $viewType: String = "runs", $userName: String, $viewName: String) {
             project(name: $name, entityName: $entityName) {
                 allViews(viewType: $viewType, viewName: $viewName, userName: $userName) {
@@ -177,11 +175,11 @@ def get_view_dict(entity: str, project: str, view_name: str) -> Dict[str, Any]:
             }
         }
         """
-    )
 
     api = wandb.Api()
 
-    response = api.client.execute(
+    response = execute_graphql(
+        api,
         query,
         {
             "viewType": "project-view",

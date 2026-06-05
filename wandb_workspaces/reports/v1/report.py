@@ -12,6 +12,8 @@ from wandb.apis.public import Api as PublicApi
 from wandb.apis.public import RetryingClient
 from wandb.sdk.lib import ipython
 
+from wandb_workspaces._graphql import execute_graphql
+
 from ._blocks import P, PanelGrid, UnknownBlock, WeaveBlock, block_mapping, weave_blocks
 from .mutations import UPSERT_VIEW, VIEW_REPORT
 from .runset import Runset
@@ -62,7 +64,7 @@ class Report(Base):
         if api is None:
             api = PublicApi()
         report_id = cls._url_to_report_id(url)
-        r = api.client.execute(VIEW_REPORT, variable_values={"reportId": report_id})
+        r = execute_graphql(api, VIEW_REPORT, {"reportId": report_id})
         viewspec = r["view"]
         viewspec["spec"] = json.loads(viewspec["spec"])
         return cls.from_json(viewspec)
@@ -229,9 +231,10 @@ class Report(Base):
             rs.entity = coalesce(rs.entity, self._api.default_entity)
             rs.project = coalesce(rs.project, self.project)
 
-        r = self._api.client.execute(
+        r = execute_graphql(
+            self._api,
             UPSERT_VIEW,
-            variable_values={
+            {
                 "id": None if clone or not self.id else self.id,
                 "name": generate_name() if clone or not self.name else self.name,
                 "entityName": self.entity,

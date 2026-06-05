@@ -1,7 +1,4 @@
-from wandb_gql import gql
-
-VIEW_REPORT = gql(
-    """
+VIEW_REPORT = """
     query SpecificReport($reportId: ID!) {
         view(id: $reportId) {
             id
@@ -18,10 +15,8 @@ VIEW_REPORT = gql(
             spec
         }
     }
-    """
-)
-UPSERT_VIEW = gql(
-    """
+"""
+UPSERT_VIEW = """
     mutation upsertView(
         $id: ID
         $entityName: String
@@ -63,4 +58,3 @@ UPSERT_VIEW = gql(
         }
     }
 """
-)

@@ -316,9 +316,9 @@ def test_idempotency(request, factory_name) -> None:
 
     # Panels must preserve their id through the round-trip
     if factory_name in panel_factory_names:
-        assert (
-            model.id
-        ), f"{cls.__name__}: panel id should not be empty after _to_model()"
+        assert model.id, (
+            f"{cls.__name__}: panel id should not be empty after _to_model()"
+        )
 
 
 def test_fix_panel_collisions():
@@ -638,9 +638,9 @@ def test_metric_to_backend_groupby():
 
     for input_val, expected in test_cases:
         result = wr.interface._metric_to_backend_groupby(input_val)
-        assert (
-            result == expected
-        ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+        assert result == expected, (
+            f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+        )
 
 
 def test_metric_to_frontend_groupby():
@@ -660,9 +660,9 @@ def test_metric_to_frontend_groupby():
 
     for input_val, expected in test_cases:
         result = wr.interface._metric_to_frontend_groupby(input_val)
-        assert (
-            result == expected
-        ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+        assert result == expected, (
+            f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
+        )
 
 
 def test_orderby_round_trip_preserves_section():
@@ -1033,9 +1033,9 @@ def test_block_validation_no_unknown_blocks():
 
     # Ensure no blocks are UnknownBlock
     for block in model.spec.blocks:
-        assert not isinstance(
-            block, internal.UnknownBlock
-        ), f"Block should not be UnknownBlock, got {type(block).__name__}"
+        assert not isinstance(block, internal.UnknownBlock), (
+            f"Block should not be UnknownBlock, got {type(block).__name__}"
+        )
 
     # Verify specific block types
     assert isinstance(model.spec.blocks[0], internal.Heading)
@@ -2046,9 +2046,7 @@ class TestRunsetColumnConfig:
             MAX_RUNSET_VISIBLE_COLUMNS,
         )
 
-        cols = [
-            f"summary:m{i}" for i in range(MAX_RUNSET_VISIBLE_COLUMNS - 1)
-        ]
+        cols = [f"summary:m{i}" for i in range(MAX_RUNSET_VISIBLE_COLUMNS - 1)]
         runset = wr.Runset(entity="e", project="p", visible_columns=cols)
 
         with warnings.catch_warnings():
@@ -2118,9 +2116,7 @@ class TestRunsetColumnConfig:
             MAX_RUNSET_VISIBLE_COLUMNS,
         )
 
-        visible = [
-            f"summary:v{i}" for i in range(MAX_RUNSET_VISIBLE_COLUMNS - 1)
-        ]
+        visible = [f"summary:v{i}" for i in range(MAX_RUNSET_VISIBLE_COLUMNS - 1)]
         hidden = [f"summary:h{i}" for i in range(100)]
         runset = wr.Runset(
             entity="e",
@@ -2138,6 +2134,10 @@ class TestRunsetColumnConfig:
 
 class TestReportSharing:
     """Tests for Report magic link sharing methods."""
+
+    @staticmethod
+    def _query_name(query):
+        return query.definitions[0].name.value
 
     def _make_report(self, monkeypatch):
         """Create a report with a mocked API."""
@@ -2159,17 +2159,15 @@ class TestReportSharing:
 
     def test_enable_share_link(self, monkeypatch):
         """enable_share_link creates a PUBLIC access token and returns the URL."""
-        from wandb_workspaces.reports.v2 import gql as report_gql
-
         captured = {}
 
         class _Client:
             app_url = "https://wandb.ai/"
 
             def execute(self, query, *, variable_values):
-                if query is report_gql.view_access_tokens:
+                if TestReportSharing._query_name(query) == "ViewAccessTokens":
                     return {"view": {"accessTokens": []}}
-                if query is report_gql.create_access_token:
+                if TestReportSharing._query_name(query) == "createAccessToken":
                     captured["variables"] = variable_values
                     return {
                         "createAccessToken": {
@@ -2228,13 +2226,11 @@ class TestReportSharing:
 
     def test_disable_share_link(self, monkeypatch):
         """disable_share_link revokes the active PUBLIC token."""
-        from wandb_workspaces.reports.v2 import gql as report_gql
-
         captured = {}
 
         class _Client:
             def execute(self, query, *, variable_values):
-                if query is report_gql.view_access_tokens:
+                if TestReportSharing._query_name(query) == "ViewAccessTokens":
                     return {
                         "view": {
                             "accessTokens": [
@@ -2246,7 +2242,7 @@ class TestReportSharing:
                             ]
                         }
                     }
-                if query is report_gql.revoke_access_token:
+                if TestReportSharing._query_name(query) == "revokeAccessToken":
                     captured["variables"] = variable_values
                     return {"revokeAccessToken": {"success": True}}
                 raise AssertionError(f"Unexpected query: {query}")
@@ -2263,13 +2259,11 @@ class TestReportSharing:
 
     def test_disable_share_link_revokes_all_tokens(self, monkeypatch):
         """disable_share_link revokes all active PUBLIC tokens."""
-        from wandb_workspaces.reports.v2 import gql as report_gql
-
         revoked = []
 
         class _Client:
             def execute(self, query, *, variable_values):
-                if query is report_gql.view_access_tokens:
+                if TestReportSharing._query_name(query) == "ViewAccessTokens":
                     return {
                         "view": {
                             "accessTokens": [
@@ -2278,7 +2272,7 @@ class TestReportSharing:
                             ]
                         }
                     }
-                if query is report_gql.revoke_access_token:
+                if TestReportSharing._query_name(query) == "revokeAccessToken":
                     revoked.append(variable_values["token"])
                     return {"revokeAccessToken": {"success": True}}
                 raise AssertionError(f"Unexpected query: {query}")
