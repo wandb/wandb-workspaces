@@ -47,6 +47,8 @@ import wandb
 from pydantic import ConfigDict, Field, model_validator, validator
 from pydantic.dataclasses import dataclass
 
+from wandb_workspaces._graphql import execute_graphql, get_app_url
+
 from . import gql, internal
 from ... import expr
 from .internal import (
@@ -1075,7 +1077,9 @@ class Runset(Base):
     def convert_filterexpr_list_to_string(self):
         """Convert FilterExpr list to string expression."""
         if isinstance(self.filters, list):
-            object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
+            object.__setattr__(
+                self, "filters", expr.filterexpr_list_to_string(self.filters)
+            )
         elif isinstance(self.filters, (expr.Or, expr.And)):
             tree = expr._filter_items_to_filters_tree([self.filters])
             v2 = expr.filters_tree_to_v2(tree)
@@ -1087,9 +1091,10 @@ class Runset(Base):
 
         if self.entity and self.project:
             # Look up project internal ID
-            r = _get_api().client.execute(
+            r = execute_graphql(
+                _get_api(),
                 gql.projectInternalId,
-                variable_values={
+                {
                     "entityName": self.entity,
                     "projectName": self.project,
                 },
@@ -1125,8 +1130,10 @@ class Runset(Base):
         # Use stashed v2 dict when the filter string hasn't changed since load.
         # This preserves per-filter metadata (e.g. disabled state) that the
         # lossy string representation cannot express.
-        if (self._stashed_filters_v2 is not None
-                and self.filters == self._stashed_filter_string):
+        if (
+            self._stashed_filters_v2 is not None
+            and self.filters == self._stashed_filter_string
+        ):
             filters_value = self._stashed_filters_v2
         else:
             filters_value = expr.filters_tree_to_v2(
@@ -3606,7 +3613,7 @@ class Report(Base):
         if self.id == "":
             raise AttributeError("save report or explicitly pass `id` to get a url")
 
-        base = urlparse(_get_api().client.app_url)
+        base = urlparse(get_app_url(_get_api()))
 
         title = self.title.replace(" ", "-")
 
@@ -3634,9 +3641,10 @@ class Report(Base):
         if is_new_project:
             _get_api().create_project(self.project, self.entity)
 
-        r = _get_api().client.execute(
+        r = execute_graphql(
+            _get_api(),
             gql.upsert_view,
-            variable_values={
+            {
                 "id": None if clone or not model.id else model.id,
                 "name": internal._generate_name()
                 if clone or not model.name
@@ -3696,9 +3704,10 @@ class Report(Base):
             wandb.termlog("Share link already active.")
             return url
 
-        r = _get_api().client.execute(
+        r = execute_graphql(
+            _get_api(),
             gql.create_access_token,
-            variable_values={
+            {
                 "viewId": self.id,
                 "entityName": self.entity,
                 "projectName": self.project,
@@ -3726,9 +3735,10 @@ class Report(Base):
 
         all_success = True
         for token in tokens:
-            r = _get_api().client.execute(
+            r = execute_graphql(
+                _get_api(),
                 gql.revoke_access_token,
-                variable_values={"token": token},
+                {"token": token},
             )
             if not r["revokeAccessToken"]["success"]:
                 all_success = False
@@ -3746,9 +3756,10 @@ class Report(Base):
 
     def _get_active_share_tokens(self) -> LList[str]:
         """Return all active PUBLIC access token strings."""
-        r = _get_api().client.execute(
+        r = execute_graphql(
+            _get_api(),
             gql.view_access_tokens,
-            variable_values={"reportId": self.id},
+            {"reportId": self.id},
         )
         view = r.get("view")
         if not view:
@@ -3773,9 +3784,10 @@ class Report(Base):
                 "Cannot delete a report that has not been saved or does not have an id."
             )
 
-        response = _get_api().client.execute(
+        response = execute_graphql(
+            _get_api(),
             gql.delete_view,
-            variable_values={
+            {
                 "id": self.id,
                 "deleteDrafts": True,
             },
@@ -3842,9 +3854,7 @@ def _get_api():
 
 def _url_to_viewspec(url):
     report_id = _url_to_report_id(url)
-    r = _get_api().client.execute(
-        gql.view_report, variable_values={"reportId": report_id}
-    )
+    r = execute_graphql(_get_api(), gql.view_report, {"reportId": report_id})
     viewspec = r["view"]
 
     # The spec field is a JSON string, we need to parse it, strip refs, and re-serialize

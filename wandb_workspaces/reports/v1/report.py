@@ -9,8 +9,9 @@ from typing import List as LList
 from wandb import __version__ as wandb_ver
 from wandb import termlog, termwarn
 from wandb.apis.public import Api as PublicApi
-from wandb.apis.public import RetryingClient
 from wandb.sdk.lib import ipython
+
+from wandb_workspaces._graphql import execute_graphql, get_app_url
 
 from ._blocks import P, PanelGrid, UnknownBlock, WeaveBlock, block_mapping, weave_blocks
 from .mutations import UPSERT_VIEW, VIEW_REPORT
@@ -62,7 +63,7 @@ class Report(Base):
         if api is None:
             api = PublicApi()
         report_id = cls._url_to_report_id(url)
-        r = api.client.execute(VIEW_REPORT, variable_values={"reportId": report_id})
+        r = execute_graphql(api, VIEW_REPORT, {"reportId": report_id})
         viewspec = r["view"]
         viewspec["spec"] = json.loads(viewspec["spec"])
         return cls.from_json(viewspec)
@@ -173,7 +174,7 @@ class Report(Base):
         return self._viewspec["spec"]
 
     @property
-    def client(self) -> "RetryingClient":
+    def client(self):
         return self._api.client
 
     @property
@@ -198,7 +199,7 @@ class Report(Base):
         title = re.sub(r"-+", "-", title)
         title = urllib.parse.quote(title)
         id = self.id.replace("=", "")
-        app_url = self._api.client.app_url
+        app_url = get_app_url(self._api)
         if not app_url.endswith("/"):
             app_url = app_url + "/"
         return f"{app_url}{self.entity}/{self.project}/reports/{title}--{id}"
@@ -229,9 +230,10 @@ class Report(Base):
             rs.entity = coalesce(rs.entity, self._api.default_entity)
             rs.project = coalesce(rs.project, self.project)
 
-        r = self._api.client.execute(
+        r = execute_graphql(
+            self._api,
             UPSERT_VIEW,
-            variable_values={
+            {
                 "id": None if clone or not self.id else self.id,
                 "name": generate_name() if clone or not self.name else self.name,
                 "entityName": self.entity,

@@ -1,9 +1,6 @@
 """GraphQL queries and mutations."""
 
-from wandb_gql import gql
-
-view_report = gql(
-    """
+view_report = """
     query SpecificReport($reportId: ID!) {
         view(id: $reportId) {
             id
@@ -20,10 +17,8 @@ view_report = gql(
             spec
         }
     }
-    """
-)
-upsert_view = gql(
-    """
+"""
+upsert_view = """
     mutation upsertView(
         $id: ID
         $entityName: String
@@ -65,13 +60,11 @@ upsert_view = gql(
         }
     }
 """
-)
 
 # Mutation to delete a report (view) given its ID.
 # Accepts a flag to also delete any associated draft views.
 # Mirrors the save/upsert structure above.
-delete_view = gql(
-    """
+delete_view = """
     mutation deleteView($id: ID!, $deleteDrafts: Boolean) {
         deleteView(input: { id: $id, deleteDrafts: $deleteDrafts }) {
             success
@@ -79,22 +72,18 @@ delete_view = gql(
             __typename
         }
     }
-    """
-)
+"""
 
-projectInternalId = gql(
-    """
+projectInternalId = """
     query ProjectInternalId($projectName: String!, $entityName: String!) {
         project(name: $projectName, entityName: $entityName) {
             id
             internalId
         }
     }
-    """
-)
+"""
 
-view_access_tokens = gql(
-    """
+view_access_tokens = """
     query ViewAccessTokens($reportId: ID!) {
         view(id: $reportId) {
             accessTokens {
@@ -104,11 +93,9 @@ view_access_tokens = gql(
             }
         }
     }
-    """
-)
+"""
 
-create_access_token = gql(
-    """
+create_access_token = """
     mutation createAccessToken(
         $viewId: ID!
         $entityName: String!
@@ -126,15 +113,12 @@ create_access_token = gql(
             }
         }
     }
-    """
-)
+"""
 
-revoke_access_token = gql(
-    """
+revoke_access_token = """
     mutation revokeAccessToken($token: String!) {
         revokeAccessToken(input: { token: $token }) {
             success
         }
     }
-    """
-)
+"""

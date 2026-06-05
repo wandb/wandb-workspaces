@@ -204,10 +204,11 @@ def test_load_workspace_from_url():
         # Verify the mock was called
         assert mock_client.execute.call_count == 1
         cargs = mock_client.execute.call_args[0]
+        ckwargs = mock_client.execute.call_args.kwargs
         gql_definition = cargs[0].definitions[0]
         assert gql_definition.name.value == "View"
         assert gql_definition.operation == "query"
-        assert cargs[1] == {
+        assert ckwargs["variable_values"] == {
             "viewType": "project-view",
             "entityName": "test_entity",
             "projectName": "test_project",
@@ -236,13 +237,13 @@ def test_save_workspace():
         cargs_list = mock_client.execute.call_args_list
 
         # Important: id SHOULD not be in the first call as view hasn't been created
-        assert "id" not in cargs_list[0][0][1]
+        assert "id" not in cargs_list[0].kwargs["variable_values"]
 
         # Important: id SHOULD be in the second call as the view has been created
-        assert "id" in cargs_list[1][0][1]
+        assert "id" in cargs_list[1].kwargs["variable_values"]
 
         # Important: id SHOULD not be in the third call as we want to make a new view
-        assert "id" not in cargs_list[2][0][1]
+        assert "id" not in cargs_list[2].kwargs["variable_values"]
 
         # all the gql should be the same
         assert cargs_list[0][0][0] == cargs_list[1][0][0]
@@ -250,6 +251,21 @@ def test_save_workspace():
         gql_definition = cargs_list[0][0][0].definitions[0]
         assert gql_definition.name.value == "UpsertView2"
         assert gql_definition.operation == "mutation"
+
+
+def test_workspace_url_uses_service_api_app_url_without_client():
+    class _ServiceApi:
+        app_url = "https://service.wandb.test/"
+
+    class _Api:
+        def __init__(self):
+            self._service_api = _ServiceApi()
+
+    with patch("wandb.Api", return_value=_Api()):
+        workspace = ws.Workspace(entity="ent", project="proj")
+        workspace._internal_name = "nw-abc123-v"
+
+        assert workspace.url == "https://service.wandb.test/ent/proj?nw=abc123"
 
 
 @pytest.mark.parametrize(

@@ -38,6 +38,7 @@ from annotated_types import Annotated, Ge
 from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, model_validator
 from pydantic.dataclasses import dataclass
 
+from wandb_workspaces._graphql import get_app_url
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
 from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
@@ -79,6 +80,7 @@ def _decode_run_gid(value: Optional[str]) -> Optional[str]:
     if len(parts) >= 5 and parts[0] in ("Run", "BucketType") and parts[1] == "v1":
         return ":".join(parts[2:-2])
     return value
+
 
 __all__ = [
     "SectionLayoutSettings",
@@ -486,7 +488,9 @@ class RunsetSettings(Base):
     def convert_filterexpr_list_to_string(self):
         """Convert FilterExpr list or Or/And to string expression."""
         if isinstance(self.filters, list):
-            object.__setattr__(self, "filters", expr.filterexpr_list_to_string(self.filters))
+            object.__setattr__(
+                self, "filters", expr.filterexpr_list_to_string(self.filters)
+            )
         elif isinstance(self.filters, (expr.Or, expr.And)):
             tree = expr._filter_items_to_filters_tree([self.filters])
             v2 = expr.filters_tree_to_v2(tree)
@@ -548,7 +552,7 @@ class Workspace(Base):
                 "save workspace or explicitly pass `_internal_name` to get a url"
             )
 
-        base = urlparse(wandb.Api().client.app_url)
+        base = urlparse(get_app_url(wandb.Api()))
 
         scheme = base.scheme
         netloc = base.netloc
@@ -639,7 +643,9 @@ class Workspace(Base):
         ]
 
         runset_model = model.spec.section.run_sets[0]
-        if isinstance(runset_model.filters, dict) and expr.is_filter_v2(runset_model.filters):
+        if isinstance(runset_model.filters, dict) and expr.is_filter_v2(
+            runset_model.filters
+        ):
             stashed_v2 = copy.deepcopy(runset_model.filters)
             filter_string = expr.filters_v2_to_string(runset_model.filters)
         else:
@@ -663,12 +669,8 @@ class Workspace(Base):
                 query=runset_model.search.query,
                 regex_query=regex_query,
                 filters=filter_string,
-                groupby=[
-                    expr.BaseMetric.from_key(v) for v in runset_model.grouping
-                ],
-                order=[
-                    expr.Ordering.from_key(s) for s in runset_model.sort.keys
-                ],
+                groupby=[expr.BaseMetric.from_key(v) for v in runset_model.grouping],
+                order=[expr.Ordering.from_key(s) for s in runset_model.sort.keys],
                 run_settings=run_settings,
                 pinned_columns=pinned_columns,
                 baseline_run=_decode_run_gid(
@@ -676,9 +678,7 @@ class Workspace(Base):
                 ),
                 pinned_runs=[
                     _decode_run_gid(rid) or rid
-                    for rid in (
-                        model.spec.section.run_sets[0].pinned_run_ids or []
-                    )
+                    for rid in (model.spec.section.run_sets[0].pinned_run_ids or [])
                 ],
             ),
         )
@@ -737,8 +737,10 @@ class Workspace(Base):
             else list(self.runset_settings.pinned_columns)
         )
 
-        if (self._stashed_filters_v2 is not None
-                and self.runset_settings.filters == self._stashed_filter_string):
+        if (
+            self._stashed_filters_v2 is not None
+            and self.runset_settings.filters == self._stashed_filter_string
+        ):
             filters_value = self._stashed_filters_v2
         else:
             filters_value = expr.filters_tree_to_v2(
