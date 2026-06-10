@@ -514,7 +514,7 @@ def test_loaded_workspace_round_trip_preserves_frontend_state():
 
 
 def test_loaded_workspace_preserves_additive_selection_tree():
-    """Unchanged additive grouped selections should not be flattened."""
+    """Color-only run settings should not flatten additive grouped selections."""
     from wandb_workspaces.workspaces import internal
 
     spec = internal.WorkspaceViewspec.model_validate(
@@ -522,7 +522,7 @@ def test_loaded_workspace_preserves_additive_selection_tree():
             "section": {
                 "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
                 "panelBankSectionConfig": {},
-                "customRunColors": {},
+                "customRunColors": {"run-color": "#00ff00"},
                 "runSets": [
                     {
                         "id": "rs1",
@@ -566,6 +566,7 @@ def test_loaded_workspace_preserves_additive_selection_tree():
             "skip": False,
         }
     ]
+    assert dumped["section"]["customRunColors"] == {"run-color": "#00ff00"}
 
 
 def test_loaded_workspace_additive_selection_tree_adds_new_visible_run():

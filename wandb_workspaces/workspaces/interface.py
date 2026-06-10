@@ -29,7 +29,7 @@ workspace.save()
 import copy
 import base64
 import os
-from typing import Dict, Iterable, Literal, Optional, Union, cast
+from typing import Dict, Iterable, Literal, Optional, Set, Union, cast
 from typing import List as LList
 from urllib.parse import parse_qs, urlparse, urlunparse
 
@@ -124,6 +124,7 @@ def _current_selection_disabled_map(
     run_settings: Dict[str, "RunSettings"],
     original_disabled: Dict[str, bool],
     selections_root: int,
+    color_only_run_ids: Set[str],
 ) -> Dict[str, bool]:
     return {
         run_id: settings.disabled
@@ -133,7 +134,11 @@ def _current_selection_disabled_map(
             # root=1: tree contains hidden runs
             (selections_root != 0 and settings.disabled)
             # root=0: tree contains visible runs
-            or (selections_root == 0 and not settings.disabled)
+            or (
+                selections_root == 0
+                and not settings.disabled
+                and run_id not in color_only_run_ids
+            )
             # keep originally represented runs so removals/toggles are detected
             or run_id in original_disabled
         )
@@ -603,6 +608,9 @@ class Workspace(Base):
     _internal_view: Optional[internal.View] = Field(None, init=False, repr=False)
     "The original loaded view, used to preserve frontend-owned viewspec fields."
 
+    _color_only_run_ids: Set[str] = Field(default_factory=set, init=False, repr=False)
+    "Run IDs represented only by customRunColors, not runset selections."
+
     @property
     def auto_generate_panels(self) -> bool:
         return self._auto_generate_panels
@@ -642,6 +650,7 @@ class Workspace(Base):
                     run_settings[child_id] = RunSettings(disabled=is_disabled)
 
         custom_run_colors = model.spec.section.custom_run_colors
+        color_only_run_ids = set()
         for k, v in custom_run_colors.items():
             if k != "ref":
                 id = k
@@ -649,6 +658,7 @@ class Workspace(Base):
 
                 if id not in run_settings:
                     run_settings[id] = RunSettings(color=color)
+                    color_only_run_ids.add(id)
                 else:
                     run_settings[id].color = color
 
@@ -763,6 +773,7 @@ class Workspace(Base):
         obj._internal_runset_id = runset_model.id
         obj._stashed_filters_v2 = stashed_v2
         obj._stashed_filter_string = filter_string
+        obj._color_only_run_ids = color_only_run_ids
         obj.runset_settings._visible_columns = [
             col for col, is_visible in run_feed.column_visible.items() if is_visible
         ]
@@ -928,7 +939,10 @@ class Workspace(Base):
         selections = runset.selections.model_copy(deep=True)
         original_disabled = _selection_disabled_map(runset.selections)
         current_disabled = _current_selection_disabled_map(
-            self.runset_settings.run_settings, original_disabled, selections.root
+            self.runset_settings.run_settings,
+            original_disabled,
+            selections.root,
+            self._color_only_run_ids,
         )
         if self._internal_view is None or current_disabled != original_disabled:
             if selections.root == 0:
