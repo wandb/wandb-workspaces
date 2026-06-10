@@ -621,3 +621,202 @@ def test_pinned_runs_over_cap_warns():
     warn.assert_called_once()
     assert "21" in warn.call_args.args[0]
     assert runset_settings.pinned_runs == too_many
+
+
+# Cross-project Pinned / Baseline Runs Tests
+
+
+def test_cross_project_pinned_run_slash_form_roundtrip():
+    """A cross-project pin given as 'entity/project/slug' encodes against the
+    foreign (entity, project) and decodes back to a RunRef on read."""
+    workspace = ws.Workspace(
+        entity="my-entity",
+        project="my-project",
+        runset_settings=ws.RunsetSettings(
+            pinned_runs=["other-team/other-project/abc1234"],
+        ),
+    )
+
+    model = workspace._to_model()
+    gid = model.spec.section.run_sets[0].pinned_run_ids[0]
+    assert (
+        base64.b64decode(gid).decode()
+        == "Run:v1:abc1234:other-project:other-team"
+    )
+
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_runs == [
+        ws.RunRef(slug="abc1234", entity="other-team", project="other-project"),
+    ]
+
+
+def test_cross_project_pinned_run_runref_roundtrip():
+    """A cross-project pin given as a RunRef encodes against its explicit
+    (entity, project) and decodes back to an equal RunRef."""
+    pin = ws.RunRef("abc1234", entity="other-team", project="other-project")
+    workspace = ws.Workspace(
+        entity="my-entity",
+        project="my-project",
+        runset_settings=ws.RunsetSettings(pinned_runs=[pin]),
+    )
+
+    model = workspace._to_model()
+    gid = model.spec.section.run_sets[0].pinned_run_ids[0]
+    assert (
+        base64.b64decode(gid).decode()
+        == "Run:v1:abc1234:other-project:other-team"
+    )
+
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_runs == [pin]
+
+
+def test_pinned_runs_mixed_same_and_cross_project():
+    """A mixed list of bare-slug, slash-form, and RunRef entries each encode
+    against the right (entity, project); decoded list keeps bare slugs as
+    str and cross-project entries as RunRef."""
+    workspace = ws.Workspace(
+        entity="my-entity",
+        project="my-project",
+        runset_settings=ws.RunsetSettings(
+            pinned_runs=[
+                "same-proj-slug",
+                "other-team/other-project/slash-slug",
+                ws.RunRef("ref-slug", entity="t", project="p"),
+            ],
+        ),
+    )
+
+    model = workspace._to_model()
+    gids = model.spec.section.run_sets[0].pinned_run_ids
+    decoded = [base64.b64decode(g).decode() for g in gids]
+    assert decoded == [
+        "Run:v1:same-proj-slug:my-project:my-entity",
+        "Run:v1:slash-slug:other-project:other-team",
+        "Run:v1:ref-slug:p:t",
+    ]
+
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_runs == [
+        "same-proj-slug",
+        ws.RunRef(slug="slash-slug", entity="other-team", project="other-project"),
+        ws.RunRef(slug="ref-slug", entity="t", project="p"),
+    ]
+
+
+def test_runref_defaults_to_workspace_entity_project():
+    """A RunRef with `entity=None, project=None` is treated as same-project:
+    encodes against the workspace's own (entity, project) and decodes back
+    to a bare slug string (not a RunRef)."""
+    workspace = ws.Workspace(
+        entity="my-entity",
+        project="my-project",
+        runset_settings=ws.RunsetSettings(pinned_runs=[ws.RunRef("abc1234")]),
+    )
+
+    model = workspace._to_model()
+    gid = model.spec.section.run_sets[0].pinned_run_ids[0]
+    assert (
+        base64.b64decode(gid).decode() == "Run:v1:abc1234:my-project:my-entity"
+    )
+
+    workspace2 = ws.Workspace._from_model(model)
+    assert workspace2.runset_settings.pinned_runs == ["abc1234"]
+
+
+def test_baseline_run_cross_project_auto_added_to_pinned():
+    """A cross-project baseline (slash-form or RunRef) is auto-added to
+    pinned_runs and survives the round-trip with its cross-project (entity,
+    project) intact."""
+    rs_slash = ws.RunsetSettings(
+        baseline_run="other-team/other-project/abc1234",
+    )
+    assert rs_slash.pinned_runs == ["other-team/other-project/abc1234"]
+
+    rs_ref = ws.RunsetSettings(
+        baseline_run=ws.RunRef("abc1234", entity="other-team", project="other-project"),
+    )
+    assert rs_ref.pinned_runs == [
+        ws.RunRef("abc1234", entity="other-team", project="other-project"),
+    ]
+
+    workspace = ws.Workspace(
+        entity="my-entity",
+        project="my-project",
+        runset_settings=rs_slash,
+    )
+    model = workspace._to_model()
+    runset = model.spec.section.run_sets[0]
+    expected_gid = base64.b64encode(
+        b"Run:v1:abc1234:other-project:other-team"
+    ).decode()
+    assert runset.baseline_run_id == expected_gid
+    assert runset.pinned_run_ids == [expected_gid]
+
+    workspace2 = ws.Workspace._from_model(model)
+    expected_ref = ws.RunRef(
+        slug="abc1234", entity="other-team", project="other-project"
+    )
+    assert workspace2.runset_settings.baseline_run == expected_ref
+    assert workspace2.runset_settings.pinned_runs == [expected_ref]
+
+
+def test_baseline_dedupe_across_input_forms():
+    """Baseline given as RunRef and pinned given as slash-form for the same
+    logical run is recognized as already pinned (no duplicate appended)."""
+    runset_settings = ws.RunsetSettings(
+        baseline_run=ws.RunRef("abc", entity="e", project="p"),
+        pinned_runs=["e/p/abc"],
+    )
+    assert runset_settings.pinned_runs == ["e/p/abc"]
+
+
+def test_invalid_slash_form_raises():
+    """Slash-form strings with the wrong number of parts or with empty parts
+    raise ValueError at serialization time with a clear message."""
+    too_few = ws.Workspace(
+        entity="e",
+        project="p",
+        runset_settings=ws.RunsetSettings(pinned_runs=["a/b"]),
+    )
+    with pytest.raises(ValueError, match="entity/project/slug"):
+        too_few._to_model()
+
+    too_many = ws.Workspace(
+        entity="e",
+        project="p",
+        runset_settings=ws.RunsetSettings(pinned_runs=["a/b/c/d"]),
+    )
+    with pytest.raises(ValueError, match="entity/project/slug"):
+        too_many._to_model()
+
+    empty_part = ws.Workspace(
+        entity="e",
+        project="p",
+        runset_settings=ws.RunsetSettings(pinned_runs=["a//c"]),
+    )
+    with pytest.raises(ValueError, match="non-empty"):
+        empty_part._to_model()
+
+
+def test_decoded_same_project_pin_is_bare_slug():
+    """Regression guard: a same-project pin must round-trip back as a bare
+    slug string, not as a slash-form string or a RunRef. This is what keeps
+    pre-cross-project user code (and the existing test suite) working."""
+    workspace = ws.Workspace(
+        entity="my-entity",
+        project="my-project",
+        runset_settings=ws.RunsetSettings(
+            baseline_run="abc1234",
+            pinned_runs=["abc1234", "def5678"],
+        ),
+    )
+    model = workspace._to_model()
+    workspace2 = ws.Workspace._from_model(model)
+
+    assert workspace2.runset_settings.baseline_run == "abc1234"
+    assert workspace2.runset_settings.pinned_runs == ["abc1234", "def5678"]
+    for entry in workspace2.runset_settings.pinned_runs:
+        assert isinstance(entry, str)
+        assert "/" not in entry
+    assert isinstance(workspace2.runset_settings.baseline_run, str)
