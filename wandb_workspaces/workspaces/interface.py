@@ -28,6 +28,7 @@ workspace.save()
 
 import copy
 import base64
+import dataclasses
 import os
 from typing import Dict, Iterable, Literal, Optional, Set, Union, cast
 from typing import List as LList
@@ -82,6 +83,29 @@ def _decode_run_gid(value: Optional[str]) -> Optional[str]:
     return value
 
 
+def _decode_run_gid_parts(value: Optional[str]):
+    """Inverse of `_encode_run_gid` returning the `(slug, project, entity)`
+    triple, or `None` if `value` isn't a v1 Run GID.
+
+    Mirrors `_decode_run_gid` but exposes all three parts so the read path
+    in `_from_model` can decide whether a pin is same-project (decode back
+    to a bare slug, for back-compat) or cross-project (decode to a `RunRef`).
+    """
+    if not value:
+        return None
+    try:
+        decoded = base64.b64decode(value, validate=True).decode("utf-8")
+    except Exception:
+        return None
+    parts = decoded.split(":")
+    if len(parts) >= 5 and parts[0] in ("Run", "BucketType") and parts[1] == "v1":
+        slug = ":".join(parts[2:-2])
+        project = parts[-2]
+        entity = parts[-1]
+        return (slug, project, entity)
+    return None
+
+
 __all__ = [
     "SectionLayoutSettings",
     "SectionPanelSettings",
@@ -89,10 +113,149 @@ __all__ = [
     "WorkspaceSettings",
     "RunSettings",
     "RunsetSettings",
+    "RunRef",
     "Workspace",
 ]
 
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+
+# RunRef is a pure data container with no validation requirements, so we use
+# the stdlib `dataclasses.dataclass` (frozen) rather than `pydantic.dataclasses`.
+# Pydantic v2 supports stdlib dataclasses transparently as field types, and
+# this avoids a benign-but-noisy pydantic warning that fires when a frozen
+# pydantic dataclass appears inside a Union[...] field annotation.
+@dataclasses.dataclass(frozen=True)
+class RunRef:
+    """Typed reference to a W&B run, optionally in another (entity, project).
+
+    Use for cross-project pinned and baseline runs, where a bare slug can't
+    disambiguate which project the run lives in. When `entity` or `project`
+    are `None`, they fall back to the enclosing workspace's own values at
+    serialization time.
+
+    Attributes:
+        slug (str): The run's slug (the value of `wandb.Run.id`, also the
+            last path segment of a run URL). For example, `"abc1234"`.
+        entity (Optional[str]): The owning entity of the referenced run.
+            `None` means "same as the workspace's entity".
+        project (Optional[str]): The project the referenced run lives in.
+            `None` means "same as the workspace's project".
+
+    Example:
+        ```python
+        # Cross-project, fully specified
+        ws.RunRef("abc1234", entity="other-team", project="other-project")
+
+        # Same project (entity / project default to the workspace's own)
+        ws.RunRef("abc1234")
+        ```
+    """
+
+    slug: str
+    entity: Optional[str] = None
+    project: Optional[str] = None
+
+
+def _resolve_run_ref(
+    value: Union[str, RunRef],
+    workspace_entity: str,
+    workspace_project: str,
+):
+    """Normalize a user-supplied run reference to `(slug, entity, project)`.
+
+    Accepted input forms:
+    - `RunRef(slug, entity=None, project=None)` — `None` fields fall back
+      to the workspace's own `(entity, project)`.
+    - `"entity/project/slug"` slash-form string — split into 3 non-empty
+      parts; anything else raises `ValueError`.
+    - bare slug `"abc1234"` — paired with the workspace's own
+      `(entity, project)`.
+
+    Pre-encoded `Run:v1:` GID strings pass through unchanged; the wire
+    encoder detects them and short-circuits to avoid double-encoding.
+    """
+    if isinstance(value, RunRef):
+        return (
+            value.slug,
+            value.entity if value.entity is not None else workspace_entity,
+            value.project if value.project is not None else workspace_project,
+        )
+    if not isinstance(value, str):
+        raise TypeError(
+            f"Run reference must be str or RunRef, got {type(value).__name__}"
+        )
+    # Pre-encoded GID: `_encode_run_gid` will detect and passthrough,
+    # so we don't need to parse the embedded entity/project here.
+    if _decode_run_gid(value) != value:
+        return (value, workspace_entity, workspace_project)
+    if "/" in value:
+        parts = value.split("/")
+        if len(parts) != 3 or not all(parts):
+            raise ValueError(
+                f"Cross-project run reference {value!r} must be of the form "
+                "'entity/project/slug' with three non-empty parts."
+            )
+        entity, project, slug = parts
+        return (slug, entity, project)
+    return (value, workspace_entity, workspace_project)
+
+
+def _encode_pin(
+    value: Union[str, RunRef], workspace_entity: str, workspace_project: str
+) -> str:
+    """Encode a single user-supplied pin into the wire-format GID."""
+    slug, entity, project = _resolve_run_ref(value, workspace_entity, workspace_project)
+    return _encode_run_gid(slug, project, entity)
+
+
+def _format_decoded_pin(
+    value: Optional[str],
+    workspace_entity: str,
+    workspace_project: str,
+):
+    """Convert a wire-format GID into the user-facing pin shape.
+
+    Returns:
+    - The bare slug string when the decoded `(entity, project)` matches
+      the workspace's own — preserving zero back-compat break for the
+      same-project case.
+    - A `RunRef(slug, entity, project)` when the pin lives in a different
+      `(entity, project)`.
+    - `value` unchanged if it isn't a v1 Run GID (forgiving for legacy or
+      non-encoded values that may exist in older specs).
+    """
+    parts = _decode_run_gid_parts(value)
+    if parts is None:
+        return value
+    slug, project, entity = parts
+    if entity == workspace_entity and project == workspace_project:
+        return slug
+    return RunRef(slug=slug, entity=entity, project=project)
+
+
+def _canonicalize_pin(value):
+    """Canonical `(slug, entity_or_None, project_or_None)` for the
+    baseline-dedupe check in `RunsetSettings.ensure_baseline_pinned`.
+
+    Bare-slug strings canonicalize with `None` for entity/project because
+    the workspace's defaults aren't visible at validator time. That's fine
+    because two bare-slug entries are still equal iff their slugs are
+    equal, which is the only thing the dedupe needs to detect.
+    """
+    if isinstance(value, RunRef):
+        return (value.slug, value.entity, value.project)
+    if isinstance(value, str):
+        parts = _decode_run_gid_parts(value)
+        if parts is not None:
+            slug, project, entity = parts
+            return (slug, entity, project)
+        if "/" in value:
+            split = value.split("/")
+            if len(split) == 3 and all(split):
+                entity, project, slug = split
+                return (slug, entity, project)
+    return (value, None, None)
 
 
 def _is_internal(k):
@@ -443,27 +606,44 @@ class RunsetSettings(Base):
             Column names use format: "run:displayName", "summary:metric", "config:param".
             run:displayName is automatically added if not present.
             Example: ["summary:accuracy", "summary:loss"]
-        baseline_run (Optional[str]): W&B run slug of the baseline run (the
-            value of `wandb.Run.id`, e.g. `"1mbku38n"` — also the last path
-            segment of a run URL). Used for delta columns and comparison
-            styling. When set, the baseline run is automatically added to
-            `pinned_runs` to match the W&B app's behavior. Must refer to a
-            run in the workspace's own project — cross-project pins are not
-            supported by this SDK yet (see the W&B app's "Add cross-project
-            runs" drawer for the UI equivalent).
-        pinned_runs (LList[str]): Ordered list of W&B run slugs to keep
-            visible in the run selector and always fetched for plots. Pass
-            slug strings (`wandb.Run.id`), not GraphQL IDs. The W&B app
-            caps this at 20 entries.
+        baseline_run (Optional[Union[str, RunRef]]): The baseline run used
+            for delta columns and comparison styling. Accepts any of:
+
+            - a bare slug `"1mbku38n"` (the value of `wandb.Run.id`, also
+              the last path segment of a run URL), interpreted as a run in
+              the workspace's own project.
+            - a slash-form string `"entity/project/abc1234"` for a run in
+              a different entity/project (cross-project).
+            - a `RunRef(slug, entity=None, project=None)`; `None`
+              entity/project default to the workspace's own.
+
+            When set, the baseline run is automatically added to
+            `pinned_runs` to match the W&B app's behavior.
+        pinned_runs (LList[Union[str, RunRef]]): Ordered list of runs to
+            keep visible in the run selector and always fetched for plots.
+            Each entry accepts the same three forms as `baseline_run`. The
+            W&B app caps this list at 20 entries.
 
     Example:
         ```python
-        # Using string filters (new)
+        # Using string filters
         RunsetSettings(
             filters="Config('learning_rate') = 0.001 and State = 'finished'",
             pinned_columns=["summary:accuracy", "summary:loss"],
             baseline_run="1mbku38n",  # wandb.Run.id (the slug from the URL)
             pinned_runs=["1mbku38n", "2u1g3j1c"],
+        )
+
+        # Cross-project pins / baseline
+        RunsetSettings(
+            baseline_run=RunRef(
+                "abc1234", entity="other-team", project="other-project"
+            ),
+            pinned_runs=[
+                "1mbku38n",                                  # same project
+                "other-team/other-project/abc1234",          # slash shorthand
+                RunRef("xyz9876", entity="t", project="p"),  # typed RunRef
+            ],
         )
 
         # Using FilterExpr list (original way)
@@ -502,8 +682,8 @@ class RunsetSettings(Base):
     pinned_columns: LList[str] = Field(default_factory=list)
 
     # Baseline / pinned runs
-    baseline_run: Optional[str] = None
-    pinned_runs: LList[str] = Field(default_factory=list)
+    baseline_run: Optional[Union[str, RunRef]] = None
+    pinned_runs: LList[Union[str, RunRef]] = Field(default_factory=list)
 
     # Internal fields for backend serialization (not user-facing)
     _visible_columns: LList[str] = Field(default_factory=list, init=False, repr=False)
@@ -537,11 +717,19 @@ class RunsetSettings(Base):
         `setRunPinnedAndBaseline`, so any spec produced by the UI has the
         baseline ID present in `pinnedRunIds`. We enforce the same here so
         SDK-produced specs match.
+
+        The dedupe check compares canonical `(slug, entity, project)`
+        tuples (see `_canonicalize_pin`), so a baseline given as
+        `RunRef("abc", "e", "p")` is correctly recognized as already
+        present when `pinned_runs` contains the slash-form `"e/p/abc"`.
         """
-        if self.baseline_run and self.baseline_run not in self.pinned_runs:
-            new_pinned = list(self.pinned_runs)
-            new_pinned.append(self.baseline_run)
-            object.__setattr__(self, "pinned_runs", new_pinned)
+        if self.baseline_run is not None:
+            baseline_canon = _canonicalize_pin(self.baseline_run)
+            pinned_canons = {_canonicalize_pin(p) for p in self.pinned_runs}
+            if baseline_canon not in pinned_canons:
+                new_pinned = list(self.pinned_runs)
+                new_pinned.append(self.baseline_run)
+                object.__setattr__(self, "pinned_runs", new_pinned)
         if len(self.pinned_runs) > 20:
             wandb.termwarn(
                 f"pinned_runs has {len(self.pinned_runs)} entries; "
@@ -758,11 +946,13 @@ class Workspace(Base):
                 order=[expr.Ordering.from_key(s) for s in runset_model.sort.keys],
                 run_settings=run_settings,
                 pinned_columns=pinned_columns,
-                baseline_run=_decode_run_gid(
-                    model.spec.section.run_sets[0].baseline_run_id
+                baseline_run=_format_decoded_pin(
+                    model.spec.section.run_sets[0].baseline_run_id,
+                    model.entity,
+                    model.project,
                 ),
                 pinned_runs=[
-                    _decode_run_gid(rid) or rid
+                    _format_decoded_pin(rid, model.entity, model.project)
                     for rid in (model.spec.section.run_sets[0].pinned_run_ids or [])
                 ],
             ),
@@ -919,17 +1109,17 @@ class Workspace(Base):
             keys=[o.to_key() for o in self.runset_settings.order]
         )
         runset.baseline_run_id = (
-            _encode_run_gid(
+            _encode_pin(
                 self.runset_settings.baseline_run,
-                self.project,
                 self.entity,
+                self.project,
             )
             if self.runset_settings.baseline_run
             else None
         )
         runset.pinned_run_ids = (
             [
-                _encode_run_gid(s, self.project, self.entity)
+                _encode_pin(s, self.entity, self.project)
                 for s in self.runset_settings.pinned_runs
             ]
             if self.runset_settings.pinned_runs
