@@ -1,6 +1,6 @@
 import unicodedata
 from typing import Any, Dict
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from wandb_workspaces.workspaces.errors import SpecVersionError, UnsupportedViewError
 
@@ -43,14 +43,6 @@ def validate_url(url: str) -> str:
     else:
         raise UnsupportedViewError(
             r"Please use a saved view that looks like https://wandb.ai/{entity}/{project}?nw=a0b1c2d3"
-        )
-
-    # Supported NW query params
-    query_dict = parse_qs(parsed_url.query)
-    nw = query_dict.get("nw")
-    if nw and nw[0].startswith("nwuser"):
-        raise UnsupportedViewError(
-            r"Workspace API does not currently support user views.  Please use a saved view that looks like https://wandb.ai/{entity}/{project}?nw=a0b1c2d3"
         )
 
     return url

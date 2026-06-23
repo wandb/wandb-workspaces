@@ -253,6 +253,33 @@ def test_save_workspace():
         assert gql_definition.operation == "mutation"
 
 
+def test_save_personal_view_is_read_only():
+    mock_upsert_response = {
+        "upsertView": {
+            "view": {"id": "new-view-id", "name": "nw-generatedid-v"},
+            "inserted": True,
+        }
+    }
+
+    mock_api_instance, mock_client = create_mock_wandb_api(mock_upsert_response)
+
+    with patch("wandb.Api", return_value=mock_api_instance):
+        workspace = ws.Workspace(entity="test", project="test")
+        # Simulate a workspace loaded from a personal/user view URL
+        workspace._internal_name = "nw-nwuserbufo-w"
+
+        # save() must refuse *before* issuing any write
+        with pytest.raises(UnsupportedViewError):
+            workspace.save()
+        assert mock_client.execute.call_count == 0
+
+        # save_as_new_view() is the supported escape hatch and persists a new
+        # saved view (nw-{id}-v), so it should succeed
+        workspace.save_as_new_view()
+        assert mock_client.execute.call_count == 1
+        assert not workspace._internal_name.startswith("nw-nwuser")
+
+
 def test_workspace_url_uses_service_api_app_url_without_client():
     class _ServiceApi:
         app_url = "https://service.wandb.test/"
@@ -318,9 +345,9 @@ def test_validate_spec_version(example, should_pass):
             True,
         ),
         (
-            # username url
+            # personal/user view url
             "https://wandb.ai/entity/project?nw=nwusermegatruong",
-            False,
+            True,
         ),
         (
             # sweeps url
@@ -639,10 +666,7 @@ def test_cross_project_pinned_run_slash_form_roundtrip():
 
     model = workspace._to_model()
     gid = model.spec.section.run_sets[0].pinned_run_ids[0]
-    assert (
-        base64.b64decode(gid).decode()
-        == "Run:v1:abc1234:other-project:other-team"
-    )
+    assert base64.b64decode(gid).decode() == "Run:v1:abc1234:other-project:other-team"
 
     workspace2 = ws.Workspace._from_model(model)
     assert workspace2.runset_settings.pinned_runs == [
@@ -662,10 +686,7 @@ def test_cross_project_pinned_run_runref_roundtrip():
 
     model = workspace._to_model()
     gid = model.spec.section.run_sets[0].pinned_run_ids[0]
-    assert (
-        base64.b64decode(gid).decode()
-        == "Run:v1:abc1234:other-project:other-team"
-    )
+    assert base64.b64decode(gid).decode() == "Run:v1:abc1234:other-project:other-team"
 
     workspace2 = ws.Workspace._from_model(model)
     assert workspace2.runset_settings.pinned_runs == [pin]
@@ -716,9 +737,7 @@ def test_runref_defaults_to_workspace_entity_project():
 
     model = workspace._to_model()
     gid = model.spec.section.run_sets[0].pinned_run_ids[0]
-    assert (
-        base64.b64decode(gid).decode() == "Run:v1:abc1234:my-project:my-entity"
-    )
+    assert base64.b64decode(gid).decode() == "Run:v1:abc1234:my-project:my-entity"
 
     workspace2 = ws.Workspace._from_model(model)
     assert workspace2.runset_settings.pinned_runs == ["abc1234"]
@@ -747,9 +766,7 @@ def test_baseline_run_cross_project_auto_added_to_pinned():
     )
     model = workspace._to_model()
     runset = model.spec.section.run_sets[0]
-    expected_gid = base64.b64encode(
-        b"Run:v1:abc1234:other-project:other-team"
-    ).decode()
+    expected_gid = base64.b64encode(b"Run:v1:abc1234:other-project:other-team").decode()
     assert runset.baseline_run_id == expected_gid
     assert runset.pinned_run_ids == [expected_gid]
 

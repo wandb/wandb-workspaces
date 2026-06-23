@@ -210,11 +210,21 @@ def get_view_dict(entity: str, project: str, view_name: str) -> Dict[str, Any]:
 
 
 def _internal_name_to_url_query_str(name: str) -> str:
-    name = name.replace("nw-", "").replace("-v", "")
+    # strip the "nw-" prefix and the "-v" (saved) / "-w" (personal) suffix
+    if name.startswith("nw-"):
+        name = name[len("nw-") :]
+    for suffix in ("-v", "-w"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+
     return name
 
 
 def _url_query_str_to_internal_name(name: str) -> str:
+    # personal views are stored with a "-w" suffix; saved views use "-v"
+    if name.startswith("nwuser"):
+        return f"nw-{name}-w"
     return f"nw-{name}-v"
 
 
