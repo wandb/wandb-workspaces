@@ -119,6 +119,10 @@ class View(WorkspaceAPIBaseModel):
         )
 
 
+VIEW_NAME_PREFIX = "nw-"
+VIEW_NAME_SUFFIXES = {"-v", "-w"}
+
+
 def upsert_view2(view: View) -> Dict[str, Any]:
     query = """
         mutation UpsertView2($id: ID, $entityName: String, $projectName: String, $type: String, $name: String, $displayName: String, $description: String, $spec: String) {
@@ -210,12 +214,21 @@ def get_view_dict(entity: str, project: str, view_name: str) -> Dict[str, Any]:
 
 
 def _internal_name_to_url_query_str(name: str) -> str:
-    name = name.replace("nw-", "").replace("-v", "")
+    if name.startswith(VIEW_NAME_PREFIX):
+        name = name[len(VIEW_NAME_PREFIX) :]
+    for suffix in VIEW_NAME_SUFFIXES:
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+
     return name
 
 
 def _url_query_str_to_internal_name(name: str) -> str:
-    return f"nw-{name}-v"
+    # personal views are stored with a "-w" suffix; saved views use "-v"
+    if name.startswith("nwuser"):
+        return f"{VIEW_NAME_PREFIX}{name}-w"
+    return f"{VIEW_NAME_PREFIX}{name}-v"
 
 
 def _generate_view_name() -> str:

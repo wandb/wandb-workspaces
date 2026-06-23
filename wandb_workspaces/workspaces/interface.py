@@ -38,6 +38,7 @@ import wandb
 from annotated_types import Annotated, Ge
 from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, model_validator
 from pydantic.dataclasses import dataclass
+from wandb.errors import UnsupportedError
 
 from wandb_workspaces._graphql import get_app_url
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
@@ -46,6 +47,7 @@ from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
 from . import internal
+from . import errors
 
 
 def _encode_run_gid(slug: str, project: str, entity: str) -> str:
@@ -1032,6 +1034,12 @@ class Workspace(Base):
         Returns:
             Workspace: The updated workspace with the saved internal name and ID.
         """
+        if self._internal_name.startswith("nw-nwuser"):
+            raise errors.UnsupportedViewError(
+                "Personal workspace views are read-only via the API. "
+                "Use `save_as_new_view()` to persist changes as a saved view."
+            )
+
         view = self._to_model()
 
         # If creating a new view with `ws.Workspace(...)`
