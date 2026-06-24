@@ -164,7 +164,9 @@ def _serialize_group_colors(
         return {}
 
     if len(groupby) == 0:
-        wandb.termwarn("Omitting group_colors because runset_settings.groupby is empty.")
+        wandb.termwarn(
+            "Omitting group_colors because runset_settings.groupby is empty."
+        )
         return {}
 
     group_keys = [_key_to_string(_groupby_to_key(group)) for group in groupby]
@@ -1160,8 +1162,7 @@ class Workspace(Base):
                             ),
                             filters=filters_value,
                             grouping=[
-                                _groupby_to_key(g)
-                                for g in self.runset_settings.groupby
+                                _groupby_to_key(g) for g in self.runset_settings.groupby
                             ],
                             sort=internal.Sort(
                                 keys=[o.to_key() for o in self.runset_settings.order]
