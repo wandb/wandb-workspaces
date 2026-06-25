@@ -26,11 +26,11 @@ workspace.save()
 ```
 """
 
-import copy
 import base64
+import copy
 import dataclasses
 import os
-from typing import Dict, Iterable, Literal, Optional, Union
+from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union, cast
 from typing import List as LList
 from urllib.parse import parse_qs, urlparse, urlunparse
 
@@ -41,11 +41,18 @@ from pydantic.dataclasses import dataclass
 
 from wandb_workspaces._graphql import get_app_url
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
-from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns
+from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns, _generate_name
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
 from . import internal
+from ._run_color_groups import (
+    RUN_COLOR_GROUP_KEY_PREFIX,
+    GroupPath,
+    build_run_color_group_key,
+    group_path_key_from_segments,
+    parse_run_color_group_key,
+)
 
 
 def _encode_run_gid(slug: str, project: str, entity: str) -> str:
@@ -114,10 +121,134 @@ __all__ = [
     "RunSettings",
     "RunsetSettings",
     "RunRef",
+    "GroupPath",
     "Workspace",
 ]
 
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+
+def _key_to_string(key: expr.Key) -> str:
+    return f"{key.section}:{key.name}"
+
+
+def _groupby_to_key(group: expr.MetricType) -> expr.Key:
+    key = group.to_key()
+    group_str = key.name if key.section == "run" else f"{key.section}.{key.name}"
+    return expr.groupby_str_to_key(group_str)
+
+
+def _groupby_from_key(key: expr.Key) -> expr.MetricType:
+    if key.section == "config":
+        path = ".".join(part for part in key.name.split(".") if part != "value")
+        config = expr.Config(path)
+        if _groupby_to_key(config) == key:
+            return config
+    return expr.BaseMetric.from_key(key)
+
+
+def _group_color_path_segments(path: object) -> Optional[Tuple[Any, ...]]:
+    if isinstance(path, str):
+        return (path,)
+    if isinstance(path, GroupPath):
+        return path.segments
+    return None
+
+
+def _serialize_group_colors(
+    group_colors: Dict[object, object],
+    groupby: LList[expr.MetricType],
+    runset_id: str,
+) -> Dict[str, str]:
+    if not group_colors:
+        return {}
+
+    if len(groupby) == 0:
+        wandb.termwarn(
+            "Omitting group_colors because runset_settings.groupby is empty."
+        )
+        return {}
+
+    group_keys = [_key_to_string(_groupby_to_key(group)) for group in groupby]
+    serialized: Dict[str, str] = {}
+    seen_paths: set[Tuple[str, ...]] = set()
+
+    for raw_path, raw_color in group_colors.items():
+        segments = _group_color_path_segments(raw_path)
+        if segments is None:
+            wandb.termwarn(
+                f"Omitting group color for unsupported path key {raw_path!r}; "
+                "use a string or ws.GroupPath(...)."
+            )
+            continue
+        if len(segments) == 0:
+            wandb.termwarn("Omitting group color for empty GroupPath().")
+            continue
+        if not all(isinstance(segment, str) for segment in segments):
+            wandb.termwarn(
+                f"Omitting group color for path {raw_path!r}; "
+                "all group path segments must be strings."
+            )
+            continue
+        if len(segments) > len(group_keys):
+            wandb.termwarn(
+                f"Omitting group color for path {raw_path!r}; depth "
+                f"{len(segments)} exceeds groupby depth {len(group_keys)}."
+            )
+            continue
+        if not isinstance(raw_color, str):
+            wandb.termwarn(
+                f"Omitting group color for path {raw_path!r}; color must be a string."
+            )
+            continue
+
+        normalized_segments = tuple(segments)
+        if normalized_segments in seen_paths:
+            wandb.termwarn(
+                f"Omitting duplicate group color for path {raw_path!r}; "
+                "the first color for this path was kept."
+            )
+            continue
+
+        seen_paths.add(normalized_segments)
+        path_entries = [
+            {"kind": "group", "key": group_keys[index], "value": segment}
+            for index, segment in enumerate(normalized_segments)
+        ]
+        serialized[build_run_color_group_key(runset_id, path_entries)] = raw_color
+
+    return serialized
+
+
+def _deserialize_group_color(
+    key: str,
+    color: object,
+    runset_id: str,
+    groupby: LList[expr.Key],
+) -> Optional[Tuple[object, str]]:
+    parsed = parse_run_color_group_key(key)
+    if parsed is None:
+        return None
+    if parsed["runset_id"] != runset_id:
+        return None
+    if not isinstance(color, str):
+        return None
+
+    path = parsed["path"]
+    if len(path) == 0 or len(path) > len(groupby):
+        return None
+
+    group_keys = [_key_to_string(group) for group in groupby]
+    segments = []
+    for index, entry in enumerate(path):
+        if entry["key"] != group_keys[index]:
+            return None
+        value = entry["value"]
+        if not isinstance(value, str):
+            return None
+        segments.append(value)
+
+    return group_path_key_from_segments(tuple(segments)), color
 
 
 # RunRef is a pure data container with no validation requirements, so we use
@@ -537,6 +668,9 @@ class RunsetSettings(Base):
         order (LList[expr.Ordering]): A list of metrics and ordering to apply to the runset.
         run_settings (Dict[str, RunSettings]): A dictionary of run settings, where the key
             is the run's ID and the value is a RunSettings object.
+        group_colors (Dict[Union[str, GroupPath], str]): Colors for grouped run
+            hierarchy nodes. Keys follow `groupby` order; a string targets the
+            first group level and `GroupPath(...)` targets nested levels.
         pinned_columns (LList[str]): List of column names to pin.
             Column names use format: "run:displayName", "summary:metric", "config:param".
             run:displayName is automatically added if not present.
@@ -612,6 +746,19 @@ class RunsetSettings(Base):
     }
     ```
     """
+    group_colors: Dict[object, object] = Field(default_factory=dict)
+    """
+    A dictionary of group path colors. A string key targets the first groupby
+    level; use GroupPath(...) for nested group paths.
+
+    Example usage:
+    ```
+    group_colors = {
+        "sweep_alpha": "#4E79A7",
+        GroupPath("sweep_alpha", "model_vit"): "#59A14F",
+    }
+    ```
+    """
 
     # Column management
     pinned_columns: LList[str] = Field(default_factory=list)
@@ -623,6 +770,9 @@ class RunsetSettings(Base):
     # Internal fields for backend serialization (not user-facing)
     _visible_columns: LList[str] = Field(default_factory=list, init=False, repr=False)
     _column_order: LList[str] = Field(default_factory=list, init=False, repr=False)
+    _custom_run_colors_passthrough: Dict[str, object] = Field(
+        default_factory=dict, init=False, repr=False
+    )
 
     @model_validator(mode="after")
     def validate_and_setup_columns(self):
@@ -755,8 +905,11 @@ class Workspace(Base):
     def _from_model(cls, model: internal.View):
         # construct configs from disjoint parts of settings
         run_settings = {}
+        group_colors: Dict[object, object] = {}
+        custom_run_colors_passthrough: Dict[str, object] = {}
+        runset_model = model.spec.section.run_sets[0]
 
-        disabled_runs = model.spec.section.run_sets[0].selections.tree
+        disabled_runs = runset_model.selections.tree
         for item in disabled_runs:
             if isinstance(item, str):
                 run_settings[item] = RunSettings(disabled=True)
@@ -766,14 +919,28 @@ class Workspace(Base):
 
         custom_run_colors = model.spec.section.custom_run_colors
         for k, v in custom_run_colors.items():
-            if k != "ref":
-                id = k
-                color = v
+            if k == "ref":
+                continue
 
-                if id not in run_settings:
-                    run_settings[id] = RunSettings(color=color)
+            if isinstance(k, str) and k.startswith(RUN_COLOR_GROUP_KEY_PREFIX):
+                group_color = _deserialize_group_color(
+                    k, v, runset_model.id, runset_model.grouping
+                )
+                if group_color is None:
+                    custom_run_colors_passthrough[k] = v
                 else:
-                    run_settings[id].color = color
+                    path_key, color = group_color
+                    if path_key not in group_colors:
+                        group_colors[path_key] = color
+                continue
+
+            id = k
+            color = v
+
+            if id not in run_settings:
+                run_settings[id] = RunSettings(color=color)
+            else:
+                run_settings[id].color = color
 
         regex_query = True if model.spec.section.run_sets[0].search.is_regex else False
 
@@ -830,7 +997,6 @@ class Workspace(Base):
             col for col, is_pinned in run_feed.column_pinned.items() if is_pinned
         ]
 
-        runset_model = model.spec.section.run_sets[0]
         if isinstance(runset_model.filters, dict) and expr.is_filter_v2(
             runset_model.filters
         ):
@@ -840,7 +1006,9 @@ class Workspace(Base):
             # Legacy filters: the workspace was saved before v2 and hasn't been
             # opened in the UI yet (which does lazy conversion).  Convert the
             # legacy Filters tree to v2.
-            stashed_v2 = expr.filters_tree_to_v2(runset_model.filters)
+            stashed_v2 = expr.filters_tree_to_v2(
+                cast(expr.Filters, runset_model.filters)
+            )
             filter_string = expr.filters_v2_to_string(stashed_v2)
 
         # then construct the Workspace object
@@ -857,20 +1025,24 @@ class Workspace(Base):
                 query=runset_model.search.query,
                 regex_query=regex_query,
                 filters=filter_string,
-                groupby=[expr.BaseMetric.from_key(v) for v in runset_model.grouping],
+                groupby=[_groupby_from_key(v) for v in runset_model.grouping],
                 order=[expr.Ordering.from_key(s) for s in runset_model.sort.keys],
                 run_settings=run_settings,
+                group_colors=group_colors,
                 pinned_columns=pinned_columns,
                 baseline_run=_format_decoded_pin(
-                    model.spec.section.run_sets[0].baseline_run_id,
+                    runset_model.baseline_run_id,
                     model.entity,
                     model.project,
                 ),
                 pinned_runs=[
                     _format_decoded_pin(rid, model.entity, model.project)
-                    for rid in (model.spec.section.run_sets[0].pinned_run_ids or [])
+                    for rid in (runset_model.pinned_run_ids or [])
                 ],
             ),
+        )
+        obj.runset_settings._custom_run_colors_passthrough = (
+            custom_run_colors_passthrough
         )
         obj._internal_name = model.name
         obj._internal_id = model.id
@@ -937,6 +1109,24 @@ class Workspace(Base):
                 expr.expr_to_filters(self.runset_settings.filters)  # type: ignore[arg-type] # validator ensures this is always str
             )
 
+        runset_id = self._internal_runset_id
+        if self.runset_settings.group_colors and not runset_id:
+            runset_id = _generate_name()
+            object.__setattr__(self, "_internal_runset_id", runset_id)
+
+        custom_run_colors = {
+            **self.runset_settings._custom_run_colors_passthrough,
+            **_serialize_group_colors(
+                self.runset_settings.group_colors,
+                self.runset_settings.groupby,
+                runset_id,
+            ),
+            **{
+                id: config.color
+                for id, config in self.runset_settings.run_settings.items()
+            },
+        }
+
         return internal.View(
             entity=self.entity,
             project=self.project,
@@ -959,7 +1149,7 @@ class Workspace(Base):
                     settings=internal_settings,
                     run_sets=[
                         internal.Runset(
-                            id=self._internal_runset_id,
+                            id=runset_id,
                             run_feed=internal.RunFeed(
                                 column_pinned=column_pinned_dict,
                                 column_visible=column_visible_dict,
@@ -971,7 +1161,9 @@ class Workspace(Base):
                                 is_regex=is_regex,
                             ),
                             filters=filters_value,
-                            grouping=[g.to_key() for g in self.runset_settings.groupby],
+                            grouping=[
+                                _groupby_to_key(g) for g in self.runset_settings.groupby
+                            ],
                             sort=internal.Sort(
                                 keys=[o.to_key() for o in self.runset_settings.order]
                             ),
@@ -1001,10 +1193,7 @@ class Workspace(Base):
                             ),
                         ),
                     ],
-                    custom_run_colors={
-                        id: config.color
-                        for id, config in self.runset_settings.run_settings.items()
-                    },
+                    custom_run_colors=custom_run_colors,
                 ),
             ),
         )

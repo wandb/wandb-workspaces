@@ -11,6 +11,11 @@ import wandb_workspaces.reports.v2.internal as _wr
 import wandb_workspaces.expr
 import wandb_workspaces.reports.v2 as wr
 import wandb_workspaces.workspaces as ws
+import wandb_workspaces.workspaces.interface as ws_interface
+from wandb_workspaces.workspaces._run_color_groups import (
+    RUN_COLOR_GROUP_KEY_PREFIX,
+    parse_run_color_group_key,
+)
 from tests.weave_panel_factory import WeavePanelFactory
 from wandb_workspaces.utils.validators import (
     validate_no_emoji,
@@ -423,6 +428,171 @@ def test_empty_column_settings():
     # Test round-trip - should be empty list
     workspace2 = ws.Workspace._from_model(model)
     assert workspace2.runset_settings.pinned_columns == []
+
+
+def _workspace_with_group_colors(groupby=None, group_colors=None):
+    return ws.Workspace(
+        entity="test-entity",
+        project="test-project",
+        runset_settings=ws.RunsetSettings(
+            groupby=groupby or [],
+            group_colors=group_colors or {},
+        ),
+    )
+
+
+def _only_group_color(workspace):
+    model = workspace._to_model()
+    custom_run_color = model.spec.section.custom_run_colors
+    assert len(custom_run_color) == 1
+    key, color = next(iter(custom_run_color.items()))
+    return model, parse_run_color_group_key(key), color
+
+
+def _custom_run_colors(workspace):
+    return workspace._to_model().spec.section.custom_run_colors
+
+
+def _capture_termwarns(monkeypatch):
+    warnings = []
+    monkeypatch.setattr(ws_interface.wandb, "termwarn", warnings.append)
+    return warnings
+
+
+@pytest.mark.parametrize(
+    ("groupby", "group_colors", "color", "path"),
+    [
+        (
+            [ws.Metric("group")],
+            {"sweep_alpha": "#4E79A7"},
+            "#4E79A7",
+            [{"kind": "group", "key": "run:group", "value": "sweep_alpha"}],
+        ),
+        (
+            [ws.Metric("group"), ws.Config("model")],
+            {ws.GroupPath("sweep_alpha", "model_vit"): "#59A14F"},
+            "#59A14F",
+            [
+                {"kind": "group", "key": "run:group", "value": "sweep_alpha"},
+                {"kind": "group", "key": "config:model.value", "value": "model_vit"},
+            ],
+        ),
+    ],
+)
+def test_group_colors_serialize_path(groupby, group_colors, color, path):
+    model, parsed, actual_color = _only_group_color(
+        _workspace_with_group_colors(groupby=groupby, group_colors=group_colors)
+    )
+
+    assert model.spec.section.run_sets[0].id
+    assert actual_color == color
+    assert parsed == {
+        "runset_id": model.spec.section.run_sets[0].id,
+        "path": path,
+    }
+
+
+def test_invalid_group_colors_warn_and_omit(monkeypatch):
+    workspace = _workspace_with_group_colors(
+        groupby=[ws.Metric("group")],
+        group_colors={
+            ws.GroupPath(): "#111111",
+            ws.GroupPath("sweep_alpha", "model_vit"): "#222222",
+            ws.GroupPath("sweep_alpha", 1): "#333333",
+            ws.GroupPath("sweep_beta"): 123,
+        },
+    )
+    warnings = _capture_termwarns(monkeypatch)
+
+    assert _custom_run_colors(workspace) == {}
+    assert len(warnings) == 4
+    assert any("empty GroupPath" in warning for warning in warnings)
+    assert any("exceeds groupby depth" in warning for warning in warnings)
+    assert any("segments must be strings" in warning for warning in warnings)
+    assert any("color must be a string" in warning for warning in warnings)
+
+
+def test_group_colors_without_groupby_warn_and_omit(monkeypatch):
+    workspace = _workspace_with_group_colors(
+        group_colors={"sweep_alpha": "#4E79A7"}
+    )
+    warnings = _capture_termwarns(monkeypatch)
+
+    assert _custom_run_colors(workspace) == {}
+    assert warnings == [
+        "Omitting group_colors because runset_settings.groupby is empty."
+    ]
+
+
+def test_duplicate_group_color_path_warns_and_keeps_first(monkeypatch):
+    workspace = _workspace_with_group_colors(
+        groupby=[ws.Metric("group")],
+        group_colors={
+            "sweep_alpha": "#111111",
+            ws.GroupPath("sweep_alpha"): "#222222",
+        },
+    )
+    warnings = _capture_termwarns(monkeypatch)
+
+    assert list(_custom_run_colors(workspace).values()) == ["#111111"]
+    assert len(warnings) == 1
+    assert "duplicate group color" in warnings[0]
+
+
+def test_group_colors_round_trip_from_model():
+    workspace = _workspace_with_group_colors(
+        groupby=[
+            ws.Metric("group"),
+            ws.Config("model"),
+            ws.Config("pbt.workspace.value"),
+        ],
+        group_colors={
+            "sweep_alpha": "#4E79A7",
+            ws.GroupPath("sweep_alpha", "model_vit"): "#59A14F",
+        },
+    )
+    model = workspace._to_model()
+
+    workspace2 = ws.Workspace._from_model(model)
+    model2 = workspace2._to_model()
+
+    assert [type(group) for group in workspace2.runset_settings.groupby] == [
+        ws.Metric,
+        ws.Config,
+        ws.Config,
+    ]
+    assert [group.name for group in workspace2.runset_settings.groupby] == [
+        "Group",
+        "model",
+        "pbt.workspace.value",
+    ]
+    assert [group.name for group in model2.spec.section.run_sets[0].grouping] == [
+        "group",
+        "model.value",
+        "pbt.workspace.value",
+    ]
+    assert workspace2.runset_settings.group_colors == {
+        "sweep_alpha": "#4E79A7",
+        ws.GroupPath("sweep_alpha", "model_vit"): "#59A14F",
+    }
+    assert model2.spec.section.custom_run_colors == model.spec.section.custom_run_colors
+
+
+def test_unknown_run_color_group_keys_round_trip_as_passthrough():
+    workspace = _workspace_with_group_colors(groupby=[ws.Metric("group")])
+    model = workspace._to_model()
+    unknown_key = f"{RUN_COLOR_GROUP_KEY_PREFIX}not-json:also-not-json"
+    model.spec.section.custom_run_colors[unknown_key] = "#123456"
+
+    workspace2 = ws.Workspace._from_model(model)
+    model2 = workspace2._to_model()
+
+    assert workspace2.runset_settings.group_colors == {}
+    assert (
+        workspace2.runset_settings._custom_run_colors_passthrough[unknown_key]
+        == "#123456"
+    )
+    assert model2.spec.section.custom_run_colors[unknown_key] == "#123456"
 
 
 def test_run_display_name_auto_added_to_pinned():
