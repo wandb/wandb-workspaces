@@ -666,6 +666,16 @@ def test_metric_to_backend_groupby():
         # Pass-through when ".value" is already present (flat-key format)
         ("pbt.workspace.value", "pbt.workspace.value"),
         ("config.pbt.workspace.value", "pbt.workspace.value"),
+        # Run-level attributes map to their backend name with NO ".value"
+        # (regression: "Group" used to serialize as "Group.value" and render
+        # as a single collapsed "Group: -" bar).
+        ("Group", "group"),
+        ("Sweep", "sweep"),
+        ("State", "state"),
+        # Explicit Config() of a name that collides with a run attribute is
+        # still treated as a config key.
+        (wr.Config("Group"), "Group.value"),
+        ("config.Group", "Group.value"),
         # Edge cases
         (None, None),
         ("", ".value"),
@@ -687,7 +697,11 @@ def test_metric_to_frontend_groupby():
         ("keys.value.key1", wr.Config("keys.key1")),
         # Flat-key format (.value at end)
         ("pbt.workspace.value", wr.Config("pbt.workspace")),
-        # Non-config paths pass through unchanged
+        # Run-level attributes map back to their frontend name
+        ("group", "Group"),
+        ("sweep", "Sweep"),
+        ("state", "State"),
+        # Non-config / unrecognized paths pass through unchanged
         ("non_config_path", "non_config_path"),
         (None, None),
         ("None", "None"),

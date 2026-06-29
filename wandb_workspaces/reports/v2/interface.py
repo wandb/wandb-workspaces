@@ -4402,11 +4402,17 @@ def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[
     Normalise a group-by key so the backend always receives a path containing
     ``.value``.
 
-    By default, assumes nested dict config and inserts ``.value`` after the
-    first segment. If ``.value`` already appears anywhere in the path, the
-    value is returned as-is — this allows users to pass the exact backend key
-    for flat dotted config keys (see ambiguity note in
-    ``expr.groupby_str_to_key`` for details).
+    Run-level attributes (``Group``, ``Sweep``, ``State``, ...) are addressed by
+    their backend name with NO ``.value`` suffix, mirroring how
+    ``expr.groupby_str_to_key`` handles Runset grouping. Without this, grouping a
+    panel by ``"Group"`` serialized to ``"Group.value"``, which the frontend
+    could not resolve and rendered as a single collapsed ``"Group: -"`` bar.
+
+    Otherwise the key is assumed to be a config (hyperparameter) key: nested dict
+    config gets ``.value`` inserted after the first segment. If ``.value``
+    already appears anywhere in the path, the value is returned as-is; this
+    allows users to pass the exact backend key for flat dotted config keys (see
+    ambiguity note in ``expr.groupby_str_to_key`` for details).
 
     Accepts
     --------
@@ -4415,17 +4421,27 @@ def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[
     3. "epochs" / "a.b"                 ➔ "epochs.value" / "a.value.b"
     4. "a.b.value"                      ➔ "a.b.value"  (pass-through)
     5. "a.value.b"                      ➔ "a.value.b"  (pass-through)
+    6. "Group" / "Sweep" / "State"      ➔ "group" / "sweep" / "state"
     """
     if val in (None, "None"):
         return val
 
-    # 1) unwrap wr.Config
+    # 1) unwrap wr.Config / strip a "config." prefix. Either form is an explicit
+    #    signal that the key is a config (hyperparameter) key, so we must NOT
+    #    treat it as a run-level attribute even if its name collides with one
+    #    (e.g. wr.Config("Group") means a config key literally named "Group").
+    explicit_config = False
     if isinstance(val, Config):
         val = val.name
-
-    # 2) drop an explicit "config." prefix for uniform handling
-    if val.startswith("config."):
+        explicit_config = True
+    elif val.startswith("config."):
         val = val.split("config.", 1)[1]
+        explicit_config = True
+
+    # 2) bare run-level attributes map to their backend name with no ".value"
+    #    suffix (the same path expr.groupby_str_to_key uses for Runset grouping).
+    if not explicit_config and val in expr.FE_METRIC_NAME_MAP:
+        return expr.to_backend_name(val)
 
     segments = val.split(".")
 
@@ -4449,16 +4465,20 @@ def _metric_to_frontend_groupby(val: Optional[str]):
         "epochs.value"   ➔ Config("epochs")
         "a.value.b"      ➔ Config("a.b")
         "a.b.value"      ➔ Config("a.b")
+        "group"          ➔ "Group"   (run-level attribute)
     Handles both nested-dict format (``.value`` after first segment) and
-    flat-key format (``.value`` at the end). Anything without ``.value``
-    in the path is returned unchanged.
+    flat-key format (``.value`` at the end). A path without ``.value`` is a
+    run-level attribute: its backend name is mapped back to the frontend form
+    (e.g. "group" ➔ "Group"); anything unrecognized is returned unchanged.
     """
     if val in (None, "None") or not isinstance(val, str):
         return val
 
     parts = val.split(".")
     if "value" not in parts:
-        return val  # not a config key, just return as-is
+        # Not a config key: map known run-level backend names back to their
+        # frontend form (the inverse of _metric_to_backend_groupby).
+        return expr._convert_be_to_fe_metric_name(val)
 
     # Strip the "value" segment wherever it appears and reconstruct the path
     path_parts = [p for p in parts if p != "value"]
