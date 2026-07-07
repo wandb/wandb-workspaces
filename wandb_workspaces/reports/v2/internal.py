@@ -21,7 +21,6 @@ from pydantic import (
     StringConstraints,
     computed_field,
     field_validator,
-    root_validator,
     validator,
 )
 from pydantic.alias_generators import to_camel
@@ -260,17 +259,9 @@ class PanelBankConfig(ReportAPIBaseModel):
     sections: LList[PanelBankConfigSectionsItem] = Field(
         default_factory=lambda: [PanelBankConfigSectionsItem()]
     )
-
-    # Run keys are arbitrarily added here, so add some type checking for safety
-    # All run keys have the shape (key:str, value:colour)
-    @root_validator(pre=True)
-    def check_arbitrary_keys(cls, values):  # noqa: N805
-        fixed_keys = cls.__annotations__.keys()
-        ignored_keys = {"ref"}
-        for k, v in values.items():
-            if k not in fixed_keys and k not in ignored_keys and not isinstance(v, str):
-                raise ValueError(f"Arbitrary key '{k}' must be of type 'str'")
-        return values
+    # Opaque, UI-only maps the app writes here; round-tripped, not SDK-authored.
+    panel_config_overrides: Optional[dict] = None
+    panel_placement_overrides: Optional[dict] = None
 
 
 class PanelBankSectionConfig(ReportAPIBaseModel):
