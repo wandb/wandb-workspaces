@@ -875,8 +875,16 @@ class Workspace(Base):
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
 
+    # Wire values stashed on load and replayed on save, so a load -> save
+    # round-trip preserves what _to_model would otherwise regenerate or drop.
     _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
     _stashed_filter_string: Optional[str] = Field(default=None, init=False, repr=False)
+    _stashed_panel_config_overrides: Optional[dict] = Field(
+        default=None, init=False, repr=False
+    )
+    _stashed_panel_placement_overrides: Optional[dict] = Field(
+        default=None, init=False, repr=False
+    )
 
     @property
     def auto_generate_panels(self) -> bool:
@@ -1049,6 +1057,11 @@ class Workspace(Base):
         obj._internal_runset_id = runset_model.id
         obj._stashed_filters_v2 = stashed_v2
         obj._stashed_filter_string = filter_string
+        panel_bank_config = model.spec.section.panel_bank_config
+        obj._stashed_panel_config_overrides = panel_bank_config.panel_config_overrides
+        obj._stashed_panel_placement_overrides = (
+            panel_bank_config.panel_placement_overrides
+        )
         return obj
 
     def _to_model(self) -> internal.View:
@@ -1142,6 +1155,8 @@ class Workspace(Base):
                             auto_organize_prefix=auto_organize_prefix,
                         ),
                         sections=sections,
+                        panel_config_overrides=self._stashed_panel_config_overrides,
+                        panel_placement_overrides=self._stashed_panel_placement_overrides,
                     ),
                     panel_bank_section_config=internal.PanelBankSectionConfig(
                         pinned=False
