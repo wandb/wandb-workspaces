@@ -28,5 +28,6 @@ workspace.name = target_view_name
 # 3. Save as a new view in the destination project; logs the new view's URL.
 workspace.save_as_new_view()
 
-# NOTE: panels reference metric names, so copied panels may render empty for
-# metrics the target project hasn't logged.
+# NOTE: an auto-generated view regenerates its panels from the target project's
+# metrics; an explicitly-built view carries its panels as-is, so those may render
+# empty for metrics the target project hasn't logged.
