@@ -1,7 +1,7 @@
 import base64
 import os
 import sys
-from typing import Any, Dict, Generic, Type, TypeVar
+from typing import Any, Dict, Generic, Optional, Type, TypeVar
 from unittest.mock import Mock, patch
 
 import pytest
@@ -268,6 +268,87 @@ def test_workspace_without_overrides_omits_override_keys():
     pbc = dumped["section"]["panelBankConfig"]
     assert "panelConfigOverrides" not in pbc
     assert "panelPlacementOverrides" not in pbc
+
+
+def _view_with_section_settings(
+    settings: dict, workspace_settings: Optional[dict] = None
+) -> ws_internal.View:
+    section = {
+        "panelBankConfig": {
+            "state": 1,
+            "settings": {},
+            "sections": [{"name": "Charts", "panels": []}],
+        },
+        "panelBankSectionConfig": {"name": "Report Panels", "pinned": False},
+        "customRunColors": {},
+        "runSets": [{}],
+        "settings": settings,
+    }
+    if workspace_settings is not None:
+        section["workspaceSettings"] = workspace_settings
+    spec = ws_internal.WorkspaceViewspec.model_validate({"section": section})
+    return ws_internal.View(
+        entity="e", project="p", display_name="d", name="nw-x-v", id="id", spec=spec
+    )
+
+
+def test_auto_generate_panels_absent_roundtrips_as_omitted():
+    """Absent in both blocks stays absent so the app defaults to auto-generating."""
+    workspace = ws.Workspace._from_model(_view_with_section_settings({}))
+    assert workspace.auto_generate_panels is None
+
+    settings = workspace._to_model().spec.model_dump(by_alias=True, exclude_none=True)[
+        "section"
+    ]["settings"]
+    assert "shouldAutoGeneratePanels" not in settings
+
+
+def test_auto_generate_panels_reads_legacy_settings():
+    """A legacy view (no workspaceSettings) is read from section.settings."""
+    view = _view_with_section_settings({"shouldAutoGeneratePanels": True})
+    workspace = ws.Workspace._from_model(view)
+    assert workspace.auto_generate_panels is True
+    assert workspace._to_model().spec.section.settings.should_auto_generate_panels
+
+
+def test_auto_generate_panels_reads_modern_workspace_settings():
+    """A modern view is read from workspaceSettings and re-emitted (not the modern
+    block, which stays unwritten so the app's legacy migration still fires)."""
+    view = _view_with_section_settings({}, {"shouldAutoGeneratePanels": False})
+    workspace = ws.Workspace._from_model(view)
+    assert workspace.auto_generate_panels is False
+
+    model = workspace._to_model()
+    assert model.spec.section.settings.should_auto_generate_panels is False
+    assert model.spec.section.workspace_settings is None
+
+
+def test_auto_generate_panels_modern_block_overrides_legacy():
+    """A non-empty workspaceSettings is authoritative; legacy is ignored (matches
+    the app), so a modern block lacking the flag reads as absent, not the legacy value."""
+    view = _view_with_section_settings(
+        {"shouldAutoGeneratePanels": True}, {"linePlot": {}}
+    )
+    workspace = ws.Workspace._from_model(view)
+    assert workspace.auto_generate_panels is None
+
+
+def test_auto_generate_panels_ignores_non_bool():
+    """The app's transient 'pending' (or any non-bool) is not treated as a value."""
+    view = _view_with_section_settings({}, {"shouldAutoGeneratePanels": "pending"})
+    workspace = ws.Workspace._from_model(view)
+    assert workspace.auto_generate_panels is None
+
+
+def test_from_scratch_workspace_emits_auto_generate_panels_false():
+    """A from-scratch workspace stays curated (explicit false), unchanged."""
+    workspace = ws.Workspace(entity="e", project="p")
+    assert workspace.auto_generate_panels is False
+
+    settings = workspace._to_model().spec.model_dump(by_alias=True, exclude_none=True)[
+        "section"
+    ]["settings"]
+    assert settings["shouldAutoGeneratePanels"] is False
 
 
 def test_save_workspace():
