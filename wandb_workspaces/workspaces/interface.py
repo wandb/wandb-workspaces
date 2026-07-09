@@ -528,9 +528,14 @@ class Section(Base):
     )
     panel_settings: SectionPanelSettings = Field(default_factory=SectionPanelSettings)
 
+    # Set from a loaded spec's `__id__`, never generated (unlike Panel._id). A
+    # fresh section then omits `__id__`; a loaded one keeps its id so placement
+    # overrides resolve.
+    _id: Optional[str] = Field(default=None, init=False, repr=False)
+
     @classmethod
     def _from_model(cls, model: internal.PanelBankConfigSectionsItem):
-        return cls(
+        obj = cls(
             name=model.name,
             panels=[_lookup_panel(p) for p in model.panels],
             is_open=model.is_open,
@@ -538,6 +543,8 @@ class Section(Base):
             layout_settings=SectionLayoutSettings._from_model(model.flow_config),
             panel_settings=SectionPanelSettings._from_model(model.local_panel_settings),
         )
+        obj._id = model.id
+        return obj
 
     def _to_model(self):
         panel_models = [p._to_model() for p in self.panels]
@@ -547,6 +554,7 @@ class Section(Base):
         # Add warning that panel layout only works if they set section settings layout = "custom"
 
         return internal.PanelBankConfigSectionsItem(
+            id=self._id or None,
             name=self.name,
             panels=panel_models,
             is_open=self.is_open,
