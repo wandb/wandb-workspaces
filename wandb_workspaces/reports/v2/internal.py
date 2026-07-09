@@ -238,6 +238,7 @@ class LocalPanelSettings(ReportAPIBaseModel):
 
 
 class PanelBankConfigSectionsItem(ReportAPIBaseModel):
+    id: Optional[str] = Field(None, alias="__id__")
     name: str = "Hidden Panels"
     is_open: bool = False
     type: str = "flow"
