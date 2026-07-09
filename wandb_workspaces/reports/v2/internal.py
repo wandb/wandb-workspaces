@@ -611,6 +611,8 @@ class Layout(ReportAPIBaseModel):
 class Panel(ReportAPIBaseModel):
     id: str = Field("", alias="__id__")
     layout: Layout = Field(default_factory=Layout)
+    # `false` marks a panel the user customized in the app; None for auto/SDK-authored panels.
+    is_auto: Optional[bool] = None
 
 
 class GridSettings(ReportAPIBaseModel):
