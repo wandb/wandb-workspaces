@@ -850,9 +850,10 @@ class Workspace(Base):
             the top of the workspace in the UI.
         runset_settings (RunsetSettings): Settings for the runset
             (the left bar containing runs) in a workspace.
-        auto_generate_panels (bool): Whether to automatically generate panels for all keys logged in this project.
+        auto_generate_panels (Optional[bool]): Whether to automatically generate panels for all keys logged in this project.
             Recommended if you would like all available data to be visualized by default.
-            This can only be set during workspace creation and cannot be modified afterward.
+            None defers to the app default (generate); a value loaded from an existing
+            view is preserved on save. This can only be set during workspace creation.
     """
 
     entity: str
@@ -861,7 +862,9 @@ class Workspace(Base):
     sections: LList[Section] = Field(default_factory=list)
     settings: WorkspaceSettings = Field(default_factory=WorkspaceSettings)
     runset_settings: RunsetSettings = Field(default_factory=RunsetSettings)
-    _auto_generate_panels: bool = Field(
+    # Default False keeps from-scratch workspaces curated (explicit false). A
+    # value loaded via _from_model (None/True/False) is preserved on round-trip.
+    _auto_generate_panels: Optional[bool] = Field(
         default=False, repr=True, alias="auto_generate_panels"
     )
 
@@ -887,7 +890,7 @@ class Workspace(Base):
     )
 
     @property
-    def auto_generate_panels(self) -> bool:
+    def auto_generate_panels(self) -> Optional[bool]:
         return self._auto_generate_panels
 
     @property
@@ -954,6 +957,19 @@ class Workspace(Base):
 
         section_settings = model.spec.section.settings
         panel_bank_settings = model.spec.section.panel_bank_config.settings
+
+        # shouldAutoGeneratePanels moved from legacy `section.settings` to modern
+        # `section.workspaceSettings`, so prefer a populated modern block (more
+        # than just `ref`) and fall back to legacy, matching the app. Guard for a
+        # bool because the app can store a transient 'pending'.
+        workspace_settings_raw = model.spec.section.workspace_settings or {}
+        if any(key != "ref" for key in workspace_settings_raw):
+            raw_auto_generate = workspace_settings_raw.get("shouldAutoGeneratePanels")
+            auto_generate_panels = (
+                raw_auto_generate if isinstance(raw_auto_generate, bool) else None
+            )
+        else:
+            auto_generate_panels = section_settings.should_auto_generate_panels
         x_axis = expr._convert_be_to_fe_metric_name(section_settings.x_axis)
         point_viz_method: Literal["bucketing", "downsampling"]
         if (pvm := section_settings.point_visualization_method) == "bucketing-gorilla":
@@ -1024,6 +1040,7 @@ class Workspace(Base):
             entity=model.entity,
             project=model.project,
             name=model.display_name,
+            auto_generate_panels=auto_generate_panels,
             sections=[
                 Section._from_model(s)
                 for s in model.spec.section.panel_bank_config.sections

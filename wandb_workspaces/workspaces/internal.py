@@ -49,7 +49,10 @@ class ViewspecSectionSettings(WorkspaceAPIBaseModel):
     point_visualization_method: Optional[PointVizMethod] = None
     suppress_legends: Optional[bool] = None
     tooltip_number_of_runs: Optional[TooltipNumberOfRuns] = None
-    should_auto_generate_panels: bool = False
+    # The app treats an absent value as True and auto-generates panels; only an
+    # explicit False disables that. Keep it Optional so None is omitted on save
+    # (exclude_none) and an absent flag round-trips as absent, not forced False.
+    should_auto_generate_panels: Optional[bool] = None
 
     @computed_field  # type: ignore[misc]
     @property
@@ -76,6 +79,12 @@ class ViewspecSection(WorkspaceAPIBaseModel):
     name: str = ""
     run_sets: LList[Runset] = Field(default_factory=lambda: [Runset()])
     settings: ViewspecSectionSettings = Field(default_factory=ViewspecSectionSettings)
+    # Captures the app's modern `workspaceSettings` block so _from_model can read
+    # shouldAutoGeneratePanels from it. _to_model never writes it back; emitting
+    # it would stop the app migrating the legacy `settings`.
+    #
+    # TODO: Support all modern workspace settings.
+    workspace_settings: Optional[dict] = None
     open_run_set: int = 0
     open_viz: bool = True
 
