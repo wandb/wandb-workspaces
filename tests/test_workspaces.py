@@ -11,6 +11,7 @@ import wandb_workspaces.reports.v2.internal as _wr
 import wandb_workspaces.expr
 import wandb_workspaces.reports.v2 as wr
 import wandb_workspaces.workspaces as ws
+import wandb_workspaces.workspaces.internal as ws_internal
 import wandb_workspaces.workspaces.interface as ws_interface
 from wandb_workspaces.workspaces._run_color_groups import (
     RUN_COLOR_GROUP_KEY_PREFIX,
@@ -220,6 +221,53 @@ def test_load_workspace_from_url():
             "name": "test_project",
             "viewName": "nw-51cset95tvn-v",
         }
+
+
+def test_workspace_roundtrips_panel_overrides():
+    """A view with UI-only override keys loads with its sections intact and
+    re-saves with the keys preserved (via the interface stash)."""
+    overrides = {"val_loss": {"config": {"chartTitle": "Loss"}}}
+    placements = {"val_loss": {"sectionId": "sec-1", "orderKey": "a0"}}
+
+    spec = ws_internal.WorkspaceViewspec.model_validate(
+        {
+            "section": {
+                "panelBankConfig": {
+                    "state": 1,
+                    "settings": {},
+                    "sections": [{"name": "Charts", "panels": []}],
+                    "panelConfigOverrides": overrides,
+                    "panelPlacementOverrides": placements,
+                },
+                "panelBankSectionConfig": {"name": "Report Panels", "pinned": False},
+                "customRunColors": {},
+                "runSets": [{}],
+                "settings": {},
+            }
+        }
+    )
+    model = ws_internal.View(
+        entity="e", project="p", display_name="d", name="nw-x-v", id="id", spec=spec
+    )
+
+    workspace = ws.Workspace._from_model(model)
+    assert [s.name for s in workspace.sections] == ["Charts"]
+
+    roundtripped = workspace._to_model().spec.section.panel_bank_config
+    assert roundtripped.panel_config_overrides == overrides
+    assert roundtripped.panel_placement_overrides == placements
+
+
+def test_workspace_without_overrides_omits_override_keys():
+    """A from-scratch workspace never emits the UI-only override keys."""
+    dumped = (
+        ws.Workspace(entity="e", project="p")
+        ._to_model()
+        .spec.model_dump(by_alias=True, exclude_none=True)
+    )
+    pbc = dumped["section"]["panelBankConfig"]
+    assert "panelConfigOverrides" not in pbc
+    assert "panelPlacementOverrides" not in pbc
 
 
 def test_save_workspace():
