@@ -528,9 +528,14 @@ class Section(Base):
     )
     panel_settings: SectionPanelSettings = Field(default_factory=SectionPanelSettings)
 
+    # Set from a loaded spec's `__id__`, never generated (unlike Panel._id). A
+    # fresh section then omits `__id__`; a loaded one keeps its id so placement
+    # overrides resolve.
+    _id: Optional[str] = Field(default=None, init=False, repr=False)
+
     @classmethod
     def _from_model(cls, model: internal.PanelBankConfigSectionsItem):
-        return cls(
+        obj = cls(
             name=model.name,
             panels=[_lookup_panel(p) for p in model.panels],
             is_open=model.is_open,
@@ -538,6 +543,8 @@ class Section(Base):
             layout_settings=SectionLayoutSettings._from_model(model.flow_config),
             panel_settings=SectionPanelSettings._from_model(model.local_panel_settings),
         )
+        obj._id = model.id
+        return obj
 
     def _to_model(self):
         panel_models = [p._to_model() for p in self.panels]
@@ -547,6 +554,7 @@ class Section(Base):
         # Add warning that panel layout only works if they set section settings layout = "custom"
 
         return internal.PanelBankConfigSectionsItem(
+            id=self._id or None,
             name=self.name,
             panels=panel_models,
             is_open=self.is_open,
@@ -888,6 +896,11 @@ class Workspace(Base):
     _stashed_panel_placement_overrides: Optional[dict] = Field(
         default=None, init=False, repr=False
     )
+    # Per-custom-panel wire dumps captured on load, keyed by `__custom_panel__:<_id>`.
+    # Lets _to_model detect an SDK edit that a preserved config override would shadow.
+    _stashed_custom_panel_dumps: Optional[dict] = Field(
+        default=None, init=False, repr=False
+    )
 
     @property
     def auto_generate_panels(self) -> Optional[bool]:
@@ -1079,10 +1092,80 @@ class Workspace(Base):
         obj._stashed_panel_placement_overrides = (
             panel_bank_config.panel_placement_overrides
         )
+        obj._stashed_custom_panel_dumps = {
+            key: dump for key, (_, dump) in obj._custom_panel_index().items()
+        } or None
         return obj
+
+    def _custom_panel_index(self) -> Dict[str, Tuple[Optional[str], dict]]:
+        """Map each custom panel's override key to its `(section._id, wire dump)`.
+
+        Only panels marked `isAuto is False` are custom and keyed as
+        `__custom_panel__:<_id>` (matching the app's `getOverrideKey`). Auto panels and
+        `UnknownPanel`s (which lack `_is_auto`) are skipped.
+        """
+        index: Dict[str, Tuple[Optional[str], dict]] = {}
+        for section in self.sections:
+            for panel in section.panels:
+                # UnknownPanel has neither attribute; getattr keeps it out safely.
+                panel_id = getattr(panel, "_id", None)
+                if getattr(panel, "_is_auto", None) is False and panel_id is not None:
+                    key = f"__custom_panel__:{panel_id}"
+                    index[key] = (
+                        section._id,
+                        panel._to_model().model_dump(by_alias=True),
+                    )
+        return index
+
+    def _reconciled_overrides(self) -> Tuple[Optional[dict], Optional[dict]]:
+        """Reconcile the stashed override maps against the current (maybe edited) panels.
+
+        Returns `(config_overrides, placement_overrides)` to emit. A placement override
+        for a custom panel that moved to a different section is dropped so the SDK move
+        takes effect (the panel falls back to its spec-array position); config overrides
+        are preserved, but a warning is raised for any customized panel whose config was
+        edited, since the override still takes precedence.
+        """
+        config_overrides = self._stashed_panel_config_overrides
+        placement_overrides = self._stashed_panel_placement_overrides
+        if not config_overrides and not placement_overrides:
+            return config_overrides, placement_overrides
+
+        index = self._custom_panel_index()
+
+        if placement_overrides:
+            pruned = dict(placement_overrides)
+            for key, (section_id, _) in index.items():
+                override = pruned.get(key)
+                # Drop only when we're sure this is a genuine cross-section move; leave
+                # entries of unexpected shape intact rather than risk corrupting them.
+                if (
+                    isinstance(override, dict)
+                    and "sectionId" in override
+                    and override["sectionId"] != section_id
+                ):
+                    del pruned[key]
+            placement_overrides = pruned or None
+
+        if config_overrides:
+            baseline = self._stashed_custom_panel_dumps or {}
+            edited = [
+                key
+                for key, (_, dump) in index.items()
+                if key in config_overrides and dump != baseline.get(key)
+            ]
+            if edited:
+                wandb.termwarn(
+                    f"{len(edited)} customized panel(s) were edited in the SDK, but their "
+                    "saved UI customizations are preserved and may take precedence over "
+                    "those edits. Editing customized panels is not yet fully supported."
+                )
+
+        return config_overrides, placement_overrides
 
     def _to_model(self) -> internal.View:
         sections = [s._to_model() for s in self.sections]
+        config_overrides, placement_overrides = self._reconciled_overrides()
 
         is_regex = True if self.runset_settings.regex_query else None
         auto_organize_prefix = 2 if self.settings.group_by_prefix == "last" else 1
@@ -1172,8 +1255,8 @@ class Workspace(Base):
                             auto_organize_prefix=auto_organize_prefix,
                         ),
                         sections=sections,
-                        panel_config_overrides=self._stashed_panel_config_overrides,
-                        panel_placement_overrides=self._stashed_panel_placement_overrides,
+                        panel_config_overrides=config_overrides,
+                        panel_placement_overrides=placement_overrides,
                     ),
                     panel_bank_section_config=internal.PanelBankSectionConfig(
                         pinned=False

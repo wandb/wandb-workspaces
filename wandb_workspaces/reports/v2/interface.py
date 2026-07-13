@@ -1314,6 +1314,8 @@ class Panel(Base):
     _id: str = Field(
         default_factory=internal._generate_name, init=False, repr=False, kw_only=True
     )
+    # `false` for a UI-customized panel loaded from a spec; None otherwise.
+    _is_auto: Optional[bool] = Field(default=None, init=False, repr=False, kw_only=True)
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -2216,6 +2218,7 @@ class LinePlot(Panel):
                 override_marks=self.line_marks,
             ),
             id=self._id,
+            is_auto=self._is_auto,
             layout=self.layout._to_model(),
         )
 
@@ -2263,6 +2266,7 @@ class LinePlot(Panel):
         object.__setattr__(obj, "legend_fields", model.config.legend_fields)
         object.__setattr__(obj, "metric_regex", model.config.metric_regex)
         object.__setattr__(obj, "_id", model.id)
+        object.__setattr__(obj, "_is_auto", model.is_auto)
         object.__setattr__(
             obj, "point_visualization_method", model.config.point_visualization_method
         )
@@ -2349,6 +2353,7 @@ class ScatterPlot(Panel):
             ),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2378,6 +2383,7 @@ class ScatterPlot(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -2452,6 +2458,7 @@ class BarPlot(Panel):
             ),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2477,6 +2484,7 @@ class BarPlot(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -2521,6 +2529,7 @@ class ScalarChart(Panel):
             ),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2536,6 +2545,7 @@ class ScalarChart(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -2556,6 +2566,7 @@ class CodeComparer(Panel):
             config=internal.CodeComparerConfig(diff=self.diff),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2565,6 +2576,7 @@ class CodeComparer(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -2639,6 +2651,7 @@ class ParallelCoordinatesPlot(Panel):
             ),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2658,6 +2671,7 @@ class ParallelCoordinatesPlot(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -2683,6 +2697,7 @@ class ParameterImportancePlot(Panel):
             ),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2692,6 +2707,7 @@ class ParameterImportancePlot(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
 
         return obj
 
@@ -2714,6 +2730,7 @@ class RunComparer(Panel):
             config=internal.RunComparerConfig(diff_only=self.diff_only),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2723,6 +2740,7 @@ class RunComparer(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
 
         return obj
 
@@ -2791,6 +2809,7 @@ class MediaBrowser(Panel):
             ),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2817,6 +2836,7 @@ class MediaBrowser(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
 
         return obj
 
@@ -2837,6 +2857,7 @@ class MarkdownPanel(Panel):
             config=internal.MarkdownPanelConfig(value=self.markdown),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2846,6 +2867,7 @@ class MarkdownPanel(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
 
         return obj
 
@@ -2930,6 +2952,7 @@ class CustomChart(Panel):
             ),
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -2962,6 +2985,7 @@ class CustomChart(Panel):
             layout=Layout._from_model(model.layout),
         )
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -3005,12 +3029,14 @@ class WeavePanel(Panel):
             config=self.config,
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
     def _from_model(cls, model: internal.WeavePanel):
         obj = cls(config=model.config)
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -3246,6 +3272,7 @@ class WeavePanelSummaryTable(Panel):
             },
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -3254,6 +3281,7 @@ class WeavePanelSummaryTable(Panel):
         table_name = inputs["key"]["val"]
         obj = cls(table_name=table_name)
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -3383,6 +3411,7 @@ class WeavePanelArtifactVersionedFile(Panel):
             },
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -3395,6 +3424,7 @@ class WeavePanelArtifactVersionedFile(Panel):
         file = inputs["path"]["val"]
         obj = cls(artifact=artifact, version=version, file=file)
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 
@@ -3497,6 +3527,7 @@ class WeavePanelArtifact(WeavePanel):
             },
             layout=self.layout._to_model(),
             id=self._id,
+            is_auto=self._is_auto,
         )
 
     @classmethod
@@ -3508,6 +3539,7 @@ class WeavePanelArtifact(WeavePanel):
         )
         obj = cls(artifact=artifact, tab=tab)
         obj._id = model.id
+        obj._is_auto = model.is_auto
         return obj
 
 

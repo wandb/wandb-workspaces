@@ -30,4 +30,8 @@ workspace.save_as_new_view()
 
 # NOTE: an auto-generated view regenerates its panels from the target project's
 # metrics; an explicitly-built view carries its panels as-is, so those may render
-# empty for metrics the target project hasn't logged.
+# empty for metrics the target project hasn't logged. In either case, your UI
+# customizations - custom panels and the sections they sit in - carry over to the
+# copy. Editing a customized panel's config via the SDK isn't fully supported yet,
+# so the saved customization takes precedence over the edit and the SDK logs a
+# warning.

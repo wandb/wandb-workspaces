@@ -238,6 +238,7 @@ class LocalPanelSettings(ReportAPIBaseModel):
 
 
 class PanelBankConfigSectionsItem(ReportAPIBaseModel):
+    id: Optional[str] = Field(None, alias="__id__")
     name: str = "Hidden Panels"
     is_open: bool = False
     type: str = "flow"
@@ -610,6 +611,8 @@ class Layout(ReportAPIBaseModel):
 class Panel(ReportAPIBaseModel):
     id: str = Field("", alias="__id__")
     layout: Layout = Field(default_factory=Layout)
+    # `false` marks a panel the user customized in the app; None for auto/SDK-authored panels.
+    is_auto: Optional[bool] = None
 
 
 class GridSettings(ReportAPIBaseModel):

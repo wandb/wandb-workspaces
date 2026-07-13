@@ -1,7 +1,7 @@
 import base64
 import os
 import sys
-from typing import Any, Dict, Generic, Optional, Type, TypeVar
+from typing import Any, Dict, Generic, Optional, Type, TypeVar, get_args
 from unittest.mock import Mock, patch
 
 import pytest
@@ -268,6 +268,189 @@ def test_workspace_without_overrides_omits_override_keys():
     pbc = dumped["section"]["panelBankConfig"]
     assert "panelConfigOverrides" not in pbc
     assert "panelPlacementOverrides" not in pbc
+
+
+def _custom_panel_dict(panel_id: str = "p1") -> dict:
+    """A custom (isAuto=False) LinePlot wire dict with a known ``__id__``."""
+    pd = wr.interface.LinePlot(y=["loss"])._to_model().model_dump(by_alias=True)
+    pd["__id__"] = panel_id
+    pd["isAuto"] = False
+    return pd
+
+
+def _view_with_custom_panels(
+    sections: list,
+    config_overrides: Optional[dict] = None,
+    placement_overrides: Optional[dict] = None,
+) -> ws_internal.View:
+    pbc: Dict[str, Any] = {"state": 1, "settings": {}, "sections": sections}
+    if config_overrides is not None:
+        pbc["panelConfigOverrides"] = config_overrides
+    if placement_overrides is not None:
+        pbc["panelPlacementOverrides"] = placement_overrides
+    spec = ws_internal.WorkspaceViewspec.model_validate(
+        {
+            "section": {
+                "panelBankConfig": pbc,
+                "panelBankSectionConfig": {"name": "Report Panels", "pinned": False},
+                "customRunColors": {},
+                "runSets": [{}],
+                "settings": {},
+            }
+        }
+    )
+    return ws_internal.View(
+        entity="e", project="p", display_name="d", name="nw-x-v", id="id", spec=spec
+    )
+
+
+def _representative_panels() -> list:
+    """One instance of every interface panel type."""
+    panels = [
+        wr.interface.LinePlot(),
+        wr.interface.ScatterPlot(),
+        wr.interface.BarPlot(),
+        wr.interface.ScalarChart(),
+        wr.interface.CodeComparer(),
+        wr.interface.ParallelCoordinatesPlot(),
+        wr.interface.ParameterImportancePlot(),
+        wr.interface.RunComparer(),
+        wr.interface.MediaBrowser(),
+        wr.interface.MarkdownPanel(),
+        wr.interface.CustomChart(),
+        wr.interface.WeavePanel(),
+    ]
+    panels += [
+        wr.interface._lookup_panel(WeavePanelFactory.build_summary_table_panel()),
+        wr.interface._lookup_panel(WeavePanelFactory.build_artifact_panel()),
+        wr.interface._lookup_panel(WeavePanelFactory.build_artifact_version_panel()),
+    ]
+    return panels
+
+
+def test_section_id_roundtrips_and_fresh_section_omits_it():
+    """A loaded section keeps its ``__id__``; a from-scratch section emits none."""
+    view = _view_with_custom_panels(
+        [{"__id__": "sec-1", "name": "Charts", "panels": []}]
+    )
+    section = (
+        ws.Workspace._from_model(view)
+        ._to_model()
+        .spec.section.panel_bank_config.sections[0]
+    )
+    assert section.id == "sec-1"
+
+    dumped = ws.Section(name="New")._to_model().model_dump(
+        by_alias=True, exclude_none=True
+    )
+    assert "__id__" not in dumped
+
+
+def test_custom_panel_isauto_roundtrips_and_fresh_panel_omits_it():
+    """A loaded custom panel keeps ``isAuto: false``; a fresh panel emits none."""
+    view = _view_with_custom_panels(
+        [{"__id__": "sec-1", "name": "Charts", "panels": [_custom_panel_dict()]}]
+    )
+    panel = (
+        ws.Workspace._from_model(view)
+        ._to_model()
+        .spec.section.panel_bank_config.sections[0]
+        .panels[0]
+    )
+    assert panel.model_dump(by_alias=True, exclude_none=True)["isAuto"] is False
+
+    fresh = wr.interface.LinePlot(y=["loss"])._to_model().model_dump(
+        by_alias=True, exclude_none=True
+    )
+    assert "isAuto" not in fresh
+
+
+@pytest.mark.parametrize(
+    "panel", _representative_panels(), ids=lambda p: type(p).__name__
+)
+def test_all_panel_types_preserve_isauto(panel):
+    """Every panel type preserves ``isAuto`` across a model round-trip."""
+    object.__setattr__(panel, "_is_auto", False)
+    reloaded = wr.interface._lookup_panel(panel._to_model())
+    assert reloaded._is_auto is False
+
+
+def test_representative_panels_cover_every_panel_type():
+    """The representative list covers every ``PanelTypes`` member except
+    ``UnknownPanel`` (which has no ``_is_auto``)."""
+    covered = {type(p) for p in _representative_panels()}
+    expected = set(get_args(wr.interface.PanelTypes)) - {wr.interface.UnknownPanel}
+    assert covered == expected
+
+
+def test_override_resolution_invariants():
+    """After a round-trip, every override key and ``sectionId`` resolves to a
+    panel or section present in the output."""
+    config = {"__custom_panel__:p1": {"config": {"chartTitle": "Loss"}}}
+    placement = {"__custom_panel__:p1": {"sectionId": "sec-1", "orderKey": "a0"}}
+    view = _view_with_custom_panels(
+        [{"__id__": "sec-1", "name": "Charts", "panels": [_custom_panel_dict("p1")]}],
+        config,
+        placement,
+    )
+    pbc = ws.Workspace._from_model(view)._to_model().spec.section.panel_bank_config
+    section_ids = {s.id for s in pbc.sections}
+    panel_ids = {p.id for s in pbc.sections for p in s.panels}
+
+    for ov in pbc.panel_placement_overrides.values():
+        assert ov["sectionId"] in section_ids
+    for key in {**pbc.panel_config_overrides, **pbc.panel_placement_overrides}:
+        assert key.split("__custom_panel__:")[-1] in panel_ids
+
+
+def test_placement_override_dropped_when_panel_moves_sections():
+    """Moving a custom panel drops its placement override so the SDK move wins."""
+    config = {"__custom_panel__:p1": {"config": {"chartTitle": "Loss"}}}
+    placement = {"__custom_panel__:p1": {"sectionId": "sec-1", "orderKey": "a0"}}
+    view = _view_with_custom_panels(
+        [
+            {"__id__": "sec-1", "name": "Charts", "panels": [_custom_panel_dict("p1")]},
+            {"__id__": "sec-2", "name": "More", "panels": []},
+        ],
+        config,
+        placement,
+    )
+    workspace = ws.Workspace._from_model(view)
+    workspace.sections[1].panels.append(workspace.sections[0].panels.pop(0))
+
+    pbc = workspace._to_model().spec.section.panel_bank_config
+    assert not pbc.panel_placement_overrides  # dropped (None or {})
+    assert pbc.panel_config_overrides == config  # untouched
+
+
+def test_config_override_preserved_and_warns_on_edit():
+    """Editing a customized panel keeps its override and warns that the edit
+    may be shadowed."""
+    config = {"__custom_panel__:p1": {"config": {"chartTitle": "Loss"}}}
+    view = _view_with_custom_panels(
+        [{"__id__": "sec-1", "name": "Charts", "panels": [_custom_panel_dict("p1")]}],
+        config,
+    )
+    workspace = ws.Workspace._from_model(view)
+    workspace.sections[0].panels[0].title = "Edited"
+
+    with patch.object(ws_interface.wandb, "termwarn") as warn:
+        pbc = workspace._to_model().spec.section.panel_bank_config
+    warn.assert_called_once()
+    assert pbc.panel_config_overrides == config
+
+
+def test_clean_copy_emits_no_override_warning():
+    """A load and re-save with no edits emits no warning."""
+    config = {"__custom_panel__:p1": {"config": {"chartTitle": "Loss"}}}
+    view = _view_with_custom_panels(
+        [{"__id__": "sec-1", "name": "Charts", "panels": [_custom_panel_dict("p1")]}],
+        config,
+    )
+    workspace = ws.Workspace._from_model(view)
+    with patch.object(ws_interface.wandb, "termwarn") as warn:
+        workspace._to_model()
+    warn.assert_not_called()
 
 
 def _view_with_section_settings(
