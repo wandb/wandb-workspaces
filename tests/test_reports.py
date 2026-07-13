@@ -676,6 +676,12 @@ def test_metric_to_backend_groupby():
         # still treated as a config key.
         (wr.Config("Group"), "Group.value"),
         ("config.Group", "Group.value"),
+        # A bare string already resolves a run attribute (above); wr.Metric is
+        # the explicit form — same result, and the counterpart to wr.Config for
+        # a colliding name. Names are FE-to-BE mapped like everywhere else.
+        (wr.Metric("Group"), "group"),
+        (wr.Metric("State"), "state"),
+        (wr.Metric("CreatedTimestamp"), "createdAt"),
         # Edge cases
         (None, None),
         ("", ".value"),
@@ -697,12 +703,14 @@ def test_metric_to_frontend_groupby():
         ("keys.value.key1", wr.Config("keys.key1")),
         # Flat-key format (.value at end)
         ("pbt.workspace.value", wr.Config("pbt.workspace")),
-        # Run-level attributes map back to their frontend name
+        # Known run-level attributes map back to their plain frontend name.
         ("group", "Group"),
         ("sweep", "Sweep"),
         ("state", "State"),
-        # Non-config / unrecognized paths pass through unchanged
-        ("non_config_path", "non_config_path"),
+        ("createdAt", "CreatedTimestamp"),
+        # Unrecognized run-section paths stay a Metric (a bare string there
+        # would re-serialize down the config ".value" path and not round-trip).
+        ("non_config_path", wr.Metric("non_config_path")),
         (None, None),
         ("None", "None"),
     ]
