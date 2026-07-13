@@ -800,6 +800,21 @@ def test_groupby_aggregate_behavior():
         assert model.config.aggregate is False
 
 
+def test_groupby_metric_field_round_trip():
+    """wr.Metric is a valid groupby and survives a panel round-trip."""
+
+    for cls in (wr.LinePlot, wr.BarPlot):
+        # wr.Metric is accepted on the field and serializes to its backend name.
+        model = cls(groupby=wr.Metric("Group"))._to_model()
+        assert model.config.group_by == "group"
+
+        # Run attribute round-trips to its plain frontend name; a logged
+        # metric stays a Metric.
+        assert cls._from_model(model).groupby == "Group"
+        loss = cls._from_model(cls(groupby=wr.Metric("loss"))._to_model())
+        assert loss.groupby == wr.Metric("loss")
+
+
 def test_strip_refs():
     """Test that _strip_refs removes ref fields correctly from nested structures"""
     # Test comprehensive nested structure with proper ref objects
