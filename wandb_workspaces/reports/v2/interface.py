@@ -2105,8 +2105,10 @@ class LinePlot(Panel):
         title_x (Optional[str]): The label of the x-axis.
         title_y (Optional[str]): The label of the y-axis.
         ignore_outliers (Optional[bool]): If set to `True`, do not plot outliers.
-        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
-            report pulls information from.
+        groupby (Optional[Union[str, Config, Metric]]): Group runs by a key. A bare
+            string or `wr.Metric(...)` names a run-level attribute (e.g. "Group");
+            `wr.Config(...)` names a config key. A bare string matching an
+            attribute name resolves to the attribute, not a config key.
         groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
             function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
         groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
@@ -2155,7 +2157,7 @@ class LinePlot(Panel):
     title_x: Optional[str] = None
     title_y: Optional[str] = None
     ignore_outliers: Optional[bool] = None
-    groupby: Optional[Union[str, Config]] = None
+    groupby: Optional[Union[str, Config, Metric]] = None
     groupby_aggfunc: Optional[GroupAgg] = None
     groupby_rangefunc: Optional[GroupArea] = None
     smoothing_factor: Optional[float] = None
@@ -2399,8 +2401,10 @@ class BarPlot(Panel):
         range_x (Tuple[float | None, float | None]): Tuple that specifies the range of the x-axis.
         title_x (Optional[str]): The label of the x-axis.
         title_y (Optional[str]): The label of the y-axis.
-        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
-            report pulls information from.
+        groupby (Optional[Union[str, Config, Metric]]): Group runs by a key. A bare
+            string or `wr.Metric(...)` names a run-level attribute (e.g. "Group");
+            `wr.Config(...)` names a config key. A bare string matching an
+            attribute name resolves to the attribute, not a config key.
         groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
             function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
         groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
@@ -2422,7 +2426,7 @@ class BarPlot(Panel):
     range_x: Range = Field(default_factory=lambda: (None, None))
     title_x: Optional[str] = None
     title_y: Optional[str] = None
-    groupby: Optional[Union[str, Config]] = None
+    groupby: Optional[Union[str, Config, Metric]] = None
     groupby_aggfunc: Optional[GroupAgg] = None
     groupby_rangefunc: Optional[GroupArea] = None
     max_runs_to_show: Optional[int] = None
