@@ -2105,8 +2105,10 @@ class LinePlot(Panel):
         title_x (Optional[str]): The label of the x-axis.
         title_y (Optional[str]): The label of the y-axis.
         ignore_outliers (Optional[bool]): If set to `True`, do not plot outliers.
-        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
-            report pulls information from.
+        groupby (Optional[Union[str, Config, Metric]]): Group runs by a key. A bare
+            string or `wr.Metric(...)` names a run-level attribute (e.g. "Group");
+            `wr.Config(...)` names a config key. A bare string matching an
+            attribute name resolves to the attribute, not a config key.
         groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
             function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
         groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
@@ -2155,7 +2157,7 @@ class LinePlot(Panel):
     title_x: Optional[str] = None
     title_y: Optional[str] = None
     ignore_outliers: Optional[bool] = None
-    groupby: Optional[Union[str, Config]] = None
+    groupby: Optional[Union[str, Config, Metric]] = None
     groupby_aggfunc: Optional[GroupAgg] = None
     groupby_rangefunc: Optional[GroupArea] = None
     smoothing_factor: Optional[float] = None
@@ -2399,8 +2401,10 @@ class BarPlot(Panel):
         range_x (Tuple[float | None, float | None]): Tuple that specifies the range of the x-axis.
         title_x (Optional[str]): The label of the x-axis.
         title_y (Optional[str]): The label of the y-axis.
-        groupby (Optional[str]): Group runs based on a metric logged to your W&B project that the
-            report pulls information from.
+        groupby (Optional[Union[str, Config, Metric]]): Group runs by a key. A bare
+            string or `wr.Metric(...)` names a run-level attribute (e.g. "Group");
+            `wr.Config(...)` names a config key. A bare string matching an
+            attribute name resolves to the attribute, not a config key.
         groupby_aggfunc (Optional[GroupAgg]): Aggregate runs with specified
             function. Options include "mean", "min", "max", "median", "sum", "samples", or `None`.
         groupby_rangefunc (Optional[GroupArea]):  Group runs based on a range. Options
@@ -2422,7 +2426,7 @@ class BarPlot(Panel):
     range_x: Range = Field(default_factory=lambda: (None, None))
     title_x: Optional[str] = None
     title_y: Optional[str] = None
-    groupby: Optional[Union[str, Config]] = None
+    groupby: Optional[Union[str, Config, Metric]] = None
     groupby_aggfunc: Optional[GroupAgg] = None
     groupby_rangefunc: Optional[GroupArea] = None
     max_runs_to_show: Optional[int] = None
@@ -4397,16 +4401,27 @@ def _metric_to_frontend_panel_grid(x: str):
     return _metric_to_frontend(x)
 
 
-def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[str]:
+def _metric_to_backend_groupby(
+    val: Optional[Union[str, "Config", "Metric"]]
+) -> Optional[str]:
     """
-    Normalise a group-by key so the backend always receives a path containing
-    ``.value``.
+    Normalise a group-by key into the string the backend expects.
 
-    By default, assumes nested dict config and inserts ``.value`` after the
-    first segment. If ``.value`` already appears anywhere in the path, the
-    value is returned as-is — this allows users to pass the exact backend key
-    for flat dotted config keys (see ambiguity note in
-    ``expr.groupby_str_to_key`` for details).
+    Run-level attributes (``Group``, ``Sweep``, ``State``, ...) are addressed by
+    their backend name with NO ``.value`` suffix, mirroring how
+    ``expr.groupby_str_to_key`` handles Runset grouping. Without this, grouping a
+    panel by ``"Group"`` serialized to ``"Group.value"``, which the frontend
+    could not resolve and rendered as a single collapsed ``"Group: -"`` bar.
+
+    Otherwise the key is assumed to be a config (hyperparameter) key: nested dict
+    config gets ``.value`` inserted after the first segment. If ``.value``
+    already appears anywhere in the path, the value is returned as-is; this
+    allows users to pass the exact backend key for flat dotted config keys (see
+    ambiguity note in ``expr.groupby_str_to_key`` for details).
+
+    A bare string matching a run-level attribute name (any key in
+    ``expr.FE_METRIC_NAME_MAP``) resolves to that attribute, not a config key;
+    use ``wr.Config("State")`` for a config key of the same name.
 
     Accepts
     --------
@@ -4415,21 +4430,35 @@ def _metric_to_backend_groupby(val: Optional[Union[str, "Config"]]) -> Optional[
     3. "epochs" / "a.b"                 ➔ "epochs.value" / "a.value.b"
     4. "a.b.value"                      ➔ "a.b.value"  (pass-through)
     5. "a.value.b"                      ➔ "a.value.b"  (pass-through)
+    6. "Group" / "Sweep" / "State"      ➔ "group" / "sweep" / "state"
+    7. wr.Metric("Group")               ➔ "group"  (explicit run attribute)
     """
     if val in (None, "None"):
         return val
 
-    # 1) unwrap wr.Config
+    # 1) wr.Metric is an explicit run-section key: return its backend name, no
+    #    ".value" (that envelope is config-only). Counterpart to wr.Config.
+    if isinstance(val, Metric):
+        return expr.to_backend_name(val.name)
+
+    # 2) wr.Config / a "config." prefix explicitly marks a config key, so don't
+    #    treat it as a run attribute even if the name collides with one.
+    explicit_config = False
     if isinstance(val, Config):
         val = val.name
-
-    # 2) drop an explicit "config." prefix for uniform handling
-    if val.startswith("config."):
+        explicit_config = True
+    elif val.startswith("config."):
         val = val.split("config.", 1)[1]
+        explicit_config = True
+
+    # 3) bare run-level attributes map to their backend name with no ".value"
+    #    suffix (the same path expr.groupby_str_to_key uses for Runset grouping).
+    if not explicit_config and val in expr.FE_METRIC_NAME_MAP:
+        return expr.to_backend_name(val)
 
     segments = val.split(".")
 
-    # 3) if ".value" is already present anywhere, the user has provided the
+    # 4) if ".value" is already present anywhere, the user has provided the
     #    exact backend key — pass through as-is.
     #    Note: this means a config key literally named "value" (e.g.
     #    wandb.config.settings = {"value": 123} -> backend key
@@ -4449,16 +4478,23 @@ def _metric_to_frontend_groupby(val: Optional[str]):
         "epochs.value"   ➔ Config("epochs")
         "a.value.b"      ➔ Config("a.b")
         "a.b.value"      ➔ Config("a.b")
+        "group"          ➔ "Group"   (known run-level attribute)
     Handles both nested-dict format (``.value`` after first segment) and
-    flat-key format (``.value`` at the end). Anything without ``.value``
-    in the path is returned unchanged.
+    flat-key format (``.value`` at the end). A path without ``.value`` is a
+    run-section key: a known run attribute maps back to its plain frontend name
+    (e.g. "group" ➔ "Group"); any other name is returned as a ``Metric``, since
+    a bare string there would re-serialize down the config ".value" path.
     """
     if val in (None, "None") or not isinstance(val, str):
         return val
 
     parts = val.split(".")
     if "value" not in parts:
-        return val  # not a config key, just return as-is
+        # Run-section key: known run attributes round-trip as their plain
+        # frontend name; anything else must stay a Metric to round-trip.
+        if val in expr.FE_METRIC_NAME_MAP.inv:
+            return expr.to_frontend_name(val)
+        return Metric(val)
 
     # Strip the "value" segment wherever it appears and reconstruct the path
     path_parts = [p for p in parts if p != "value"]

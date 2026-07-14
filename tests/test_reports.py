@@ -666,6 +666,22 @@ def test_metric_to_backend_groupby():
         # Pass-through when ".value" is already present (flat-key format)
         ("pbt.workspace.value", "pbt.workspace.value"),
         ("config.pbt.workspace.value", "pbt.workspace.value"),
+        # Run-level attributes map to their backend name with NO ".value"
+        # (regression: "Group" used to serialize as "Group.value" and render
+        # as a single collapsed "Group: -" bar).
+        ("Group", "group"),
+        ("Sweep", "sweep"),
+        ("State", "state"),
+        # Explicit Config() of a name that collides with a run attribute is
+        # still treated as a config key.
+        (wr.Config("Group"), "Group.value"),
+        ("config.Group", "Group.value"),
+        # A bare string already resolves a run attribute (above); wr.Metric is
+        # the explicit form — same result, and the counterpart to wr.Config for
+        # a colliding name. Names are FE-to-BE mapped like everywhere else.
+        (wr.Metric("Group"), "group"),
+        (wr.Metric("State"), "state"),
+        (wr.Metric("CreatedTimestamp"), "createdAt"),
         # Edge cases
         (None, None),
         ("", ".value"),
@@ -687,8 +703,14 @@ def test_metric_to_frontend_groupby():
         ("keys.value.key1", wr.Config("keys.key1")),
         # Flat-key format (.value at end)
         ("pbt.workspace.value", wr.Config("pbt.workspace")),
-        # Non-config paths pass through unchanged
-        ("non_config_path", "non_config_path"),
+        # Known run-level attributes map back to their plain frontend name.
+        ("group", "Group"),
+        ("sweep", "Sweep"),
+        ("state", "State"),
+        ("createdAt", "CreatedTimestamp"),
+        # Unrecognized run-section paths stay a Metric (a bare string there
+        # would re-serialize down the config ".value" path and not round-trip).
+        ("non_config_path", wr.Metric("non_config_path")),
         (None, None),
         ("None", "None"),
     ]
@@ -776,6 +798,21 @@ def test_groupby_aggregate_behavior():
         model = panel._to_model()
         assert model.config.group_by in (None, "None")
         assert model.config.aggregate is False
+
+
+def test_groupby_metric_field_round_trip():
+    """wr.Metric is a valid groupby and survives a panel round-trip."""
+
+    for cls in (wr.LinePlot, wr.BarPlot):
+        # wr.Metric is accepted on the field and serializes to its backend name.
+        model = cls(groupby=wr.Metric("Group"))._to_model()
+        assert model.config.group_by == "group"
+
+        # Run attribute round-trips to its plain frontend name; a logged
+        # metric stays a Metric.
+        assert cls._from_model(model).groupby == "Group"
+        loss = cls._from_model(cls(groupby=wr.Metric("loss"))._to_model())
+        assert loss.groupby == wr.Metric("loss")
 
 
 def test_strip_refs():
