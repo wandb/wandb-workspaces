@@ -2258,8 +2258,53 @@ class TestReportSharing:
         url = report.enable_share_link()
         assert "accessToken=tok_abc123" in url
         assert captured["variables"]["viewId"] == "dummy-id"
-        assert captured["variables"]["entityName"] == "ent"
-        assert captured["variables"]["projectName"] == "proj"
+        assert captured["variables"]["projects"] == [
+            {"entityName": "ent", "projectName": "proj"}
+        ]
+
+    def test_enable_share_link_includes_cross_project_runsets(self, monkeypatch):
+        """The access token is scoped to the owning project plus every runset project."""
+        captured = {}
+
+        class _Client:
+            app_url = "https://wandb.ai/"
+
+            def execute(self, query, *, variable_values):
+                if TestReportSharing._query_name(query) == "ViewAccessTokens":
+                    return {"view": {"accessTokens": []}}
+                if TestReportSharing._query_name(query) == "createAccessToken":
+                    captured["variables"] = variable_values
+                    return {
+                        "createAccessToken": {
+                            "accessToken": {"token": "tok_xproj", "type": "PUBLIC"}
+                        }
+                    }
+                raise AssertionError(f"Unexpected query: {query}")
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+        report.blocks = [
+            wr.PanelGrid(
+                runsets=[
+                    wr.Runset(entity="ent", project="proj"),
+                    wr.Runset(entity="other-ent", project="other-proj"),
+                    # Duplicate of the owning project should be collapsed.
+                    wr.Runset(entity="ent", project="proj"),
+                    # A runset without an explicit project is skipped.
+                    wr.Runset(),
+                ]
+            ),
+        ]
+
+        report.enable_share_link()
+        assert captured["variables"]["projects"] == [
+            {"entityName": "ent", "projectName": "proj"},
+            {"entityName": "other-ent", "projectName": "other-proj"},
+        ]
 
     def test_enable_share_link_returns_existing(self, monkeypatch):
         """enable_share_link returns existing link if one is already active."""

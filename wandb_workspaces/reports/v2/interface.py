@@ -3722,6 +3722,36 @@ class Report(Base):
             return None
         return self._build_share_url(token)
 
+    def _share_link_projects(self) -> LList[Dict[str, str]]:
+        """Every project a magic-link viewer needs access to render this report.
+
+        Panel-grid runsets can reference projects other than the report's owning
+        project. A public access token scoped to only the owning project leaves
+        those cross-project tables unrenderable for logged-out viewers, so the
+        token must cover the owning project plus every runset project. Mirrors
+        the frontend's ``useReportProjects``.
+        """
+        specifiers: LList[Dict[str, str]] = [
+            {"entityName": self.entity, "projectName": self.project}
+        ]
+        for block in self.blocks:
+            if not isinstance(block, PanelGrid):
+                continue
+            for runset in block.runsets:
+                if runset.entity and runset.project:
+                    specifiers.append(
+                        {"entityName": runset.entity, "projectName": runset.project}
+                    )
+
+        seen = set()
+        unique: LList[Dict[str, str]] = []
+        for ps in specifiers:
+            key = (ps["entityName"], ps["projectName"])
+            if key not in seen:
+                seen.add(key)
+                unique.append(ps)
+        return unique
+
     def enable_share_link(self) -> str:
         """Enable "anyone with link can view" sharing for this report.
 
@@ -3745,8 +3775,7 @@ class Report(Base):
             gql.create_access_token,
             {
                 "viewId": self.id,
-                "entityName": self.entity,
-                "projectName": self.project,
+                "projects": self._share_link_projects(),
             },
         )
         token = r["createAccessToken"]["accessToken"]["token"]
@@ -4402,7 +4431,7 @@ def _metric_to_frontend_panel_grid(x: str):
 
 
 def _metric_to_backend_groupby(
-    val: Optional[Union[str, "Config", "Metric"]]
+    val: Optional[Union[str, "Config", "Metric"]],
 ) -> Optional[str]:
     """
     Normalise a group-by key into the string the backend expects.

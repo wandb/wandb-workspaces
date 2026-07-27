@@ -98,13 +98,12 @@ view_access_tokens = """
 create_access_token = """
     mutation createAccessToken(
         $viewId: ID!
-        $entityName: String!
-        $projectName: String!
+        $projects: [ProjectSpecifier!]!
     ) {
         createAccessToken(
             input: {
                 viewId: $viewId
-                projects: [{ entityName: $entityName, projectName: $projectName }]
+                projects: $projects
             }
         ) {
             accessToken {
