@@ -114,22 +114,6 @@ create_access_token = """
     }
 """
 
-update_access_token_projects = """
-    mutation updateAccessTokenProjects(
-        $token: String!
-        $projects: [ProjectSpecifier!]!
-    ) {
-        updateAccessTokenProjects(
-            input: {
-                token: $token
-                projects: $projects
-            }
-        ) {
-            success
-        }
-    }
-"""
-
 revoke_access_token = """
     mutation revokeAccessToken($token: String!) {
         revokeAccessToken(input: { token: $token }) {

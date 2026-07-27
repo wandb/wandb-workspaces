@@ -2316,36 +2316,24 @@ class TestReportSharing:
             {"entityName": "nested-ent", "projectName": "nested-proj"},
         ]
 
-    def test_enable_share_link_refreshes_existing_tokens(self, monkeypatch):
-        """enable_share_link refreshes every existing PUBLIC token before returning."""
-        updated = []
+    def test_enable_share_link_returns_existing(self, monkeypatch):
+        """enable_share_link returns existing link if one is already active."""
 
         class _Client:
             app_url = "https://wandb.ai/"
 
             def execute(self, query, *, variable_values):
-                query_name = TestReportSharing._query_name(query)
-                if query_name == "ViewAccessTokens":
-                    return {
-                        "view": {
-                            "accessTokens": [
-                                {
-                                    "token": "existing_tok",
-                                    "type": "PUBLIC",
-                                    "revokedAt": None,
-                                },
-                                {
-                                    "token": "another_tok",
-                                    "type": "PUBLIC",
-                                    "revokedAt": None,
-                                },
-                            ]
-                        }
+                return {
+                    "view": {
+                        "accessTokens": [
+                            {
+                                "token": "existing_tok",
+                                "type": "PUBLIC",
+                                "revokedAt": None,
+                            }
+                        ]
                     }
-                if query_name == "updateAccessTokenProjects":
-                    updated.append(variable_values)
-                    return {"updateAccessTokenProjects": {"success": True}}
-                raise AssertionError(f"Unexpected query: {query}")
+                }
 
         class _Api:
             client = _Client()
@@ -2356,52 +2344,6 @@ class TestReportSharing:
 
         url = report.enable_share_link()
         assert "accessToken=existing_tok" in url
-        assert updated == [
-            {
-                "token": "existing_tok",
-                "projects": [{"entityName": "ent", "projectName": "proj"}],
-            },
-            {
-                "token": "another_tok",
-                "projects": [{"entityName": "ent", "projectName": "proj"}],
-            },
-        ]
-
-    def test_enable_share_link_raises_when_existing_token_refresh_fails(
-        self, monkeypatch
-    ):
-        """enable_share_link reports a failed existing-token scope update."""
-
-        class _Client:
-            app_url = "https://wandb.ai/"
-
-            def execute(self, query, *, variable_values):
-                query_name = TestReportSharing._query_name(query)
-                if query_name == "ViewAccessTokens":
-                    return {
-                        "view": {
-                            "accessTokens": [
-                                {
-                                    "token": "existing_tok",
-                                    "type": "PUBLIC",
-                                    "revokedAt": None,
-                                }
-                            ]
-                        }
-                    }
-                if query_name == "updateAccessTokenProjects":
-                    return {"updateAccessTokenProjects": {"success": False}}
-                raise AssertionError(f"Unexpected query: {query}")
-
-        class _Api:
-            client = _Client()
-            default_entity = "ent"
-
-        self._api = _Api()
-        report = self._make_report(monkeypatch)
-
-        with pytest.raises(RuntimeError, match="failed to update access token projects"):
-            report.enable_share_link()
 
     def test_enable_share_link_raises_without_id(self, monkeypatch):
         """enable_share_link raises ValueError if report has no id."""

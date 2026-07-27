@@ -3733,18 +3733,6 @@ class Report(Base):
         visit_blocks(self.blocks)
         return list(projects.values())
 
-    def _update_share_link_projects(self, tokens: LList[str]) -> None:
-        """Synchronize existing public access tokens with the report's projects."""
-        projects = self._share_link_projects()
-        for token in tokens:
-            r = execute_graphql(
-                _get_api(),
-                gql.update_access_token_projects,
-                {"token": token, "projects": projects},
-            )
-            if not r["updateAccessTokenProjects"]["success"]:
-                raise RuntimeError("failed to update access token projects")
-
     def get_share_url(self) -> Optional[str]:
         """Fetch the magic link URL for this report, or None if sharing is not enabled.
 
@@ -3764,7 +3752,7 @@ class Report(Base):
         """Enable "anyone with link can view" sharing for this report.
 
         Creates a public access token for the report. If a share link already
-        exists, refreshes its project access and returns the existing link.
+        exists, returns the existing link.
 
         Returns:
             str: The magic link URL that can be shared.
@@ -3772,10 +3760,9 @@ class Report(Base):
         if not self.id:
             raise ValueError("save report before enabling share link")
 
-        existing_tokens = self._get_active_share_tokens()
-        if existing_tokens:
-            self._update_share_link_projects(existing_tokens)
-            url = self._build_share_url(existing_tokens[0])
+        existing = self._get_active_share_token()
+        if existing is not None:
+            url = self._build_share_url(existing)
             wandb.termlog("Share link already active.")
             return url
 
