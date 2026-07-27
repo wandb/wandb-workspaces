@@ -98,19 +98,34 @@ view_access_tokens = """
 create_access_token = """
     mutation createAccessToken(
         $viewId: ID!
-        $entityName: String!
-        $projectName: String!
+        $projects: [ProjectSpecifier!]!
     ) {
         createAccessToken(
             input: {
                 viewId: $viewId
-                projects: [{ entityName: $entityName, projectName: $projectName }]
+                projects: $projects
             }
         ) {
             accessToken {
                 token
                 type
             }
+        }
+    }
+"""
+
+update_access_token_projects = """
+    mutation updateAccessTokenProjects(
+        $token: String!
+        $projects: [ProjectSpecifier!]!
+    ) {
+        updateAccessTokenProjects(
+            input: {
+                token: $token
+                projects: $projects
+            }
+        ) {
+            success
         }
     }
 """
