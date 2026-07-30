@@ -2300,9 +2300,7 @@ class TestReportSharing:
                 text="Collapsed",
                 collapsed_blocks=[
                     wr.PanelGrid(
-                        runsets=[
-                            wr.Runset(entity="nested-ent", project="nested-proj")
-                        ]
+                        runsets=[wr.Runset(entity="nested-ent", project="nested-proj")]
                     )
                 ],
             ),
@@ -2316,24 +2314,38 @@ class TestReportSharing:
             {"entityName": "nested-ent", "projectName": "nested-proj"},
         ]
 
-    def test_enable_share_link_returns_existing(self, monkeypatch):
-        """enable_share_link returns existing link if one is already active."""
+    def test_enable_share_link_refreshes_existing_token_scope(self, monkeypatch):
+        """enable_share_link refreshes the returned token when its scope changed."""
+        updated = []
 
         class _Client:
             app_url = "https://wandb.ai/"
 
             def execute(self, query, *, variable_values):
-                return {
-                    "view": {
-                        "accessTokens": [
-                            {
-                                "token": "existing_tok",
-                                "type": "PUBLIC",
-                                "revokedAt": None,
-                            }
-                        ]
+                query_name = TestReportSharing._query_name(query)
+                if query_name == "ViewAccessTokens":
+                    return {
+                        "view": {
+                            "accessTokens": [
+                                {
+                                    "token": "existing_tok",
+                                    "type": "PUBLIC",
+                                    "revokedAt": None,
+                                    "projects": [],
+                                },
+                                {
+                                    "token": "another_tok",
+                                    "type": "PUBLIC",
+                                    "revokedAt": None,
+                                    "projects": [],
+                                },
+                            ]
+                        }
                     }
-                }
+                if query_name == "updateAccessTokenProjects":
+                    updated.append(variable_values)
+                    return {"updateAccessTokenProjects": {"success": True}}
+                raise AssertionError(f"Unexpected query: {query}")
 
         class _Api:
             client = _Client()
@@ -2344,6 +2356,97 @@ class TestReportSharing:
 
         url = report.enable_share_link()
         assert "accessToken=existing_tok" in url
+        assert updated == [
+            {
+                "token": "existing_tok",
+                "projects": [{"entityName": "ent", "projectName": "proj"}],
+            }
+        ]
+
+    def test_enable_share_link_skips_update_when_scope_matches(self, monkeypatch):
+        """enable_share_link avoids a mutation when the existing scope is current."""
+
+        class _Client:
+            app_url = "https://wandb.ai/"
+
+            def execute(self, query, *, variable_values):
+                if TestReportSharing._query_name(query) == "ViewAccessTokens":
+                    return {
+                        "view": {
+                            "accessTokens": [
+                                {
+                                    "token": "existing_tok",
+                                    "type": "PUBLIC",
+                                    "revokedAt": None,
+                                    "projects": [
+                                        {
+                                            "entityName": "other-ent",
+                                            "name": "other-proj",
+                                        },
+                                        {"entityName": "ent", "name": "proj"},
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+                raise AssertionError(f"Unexpected query: {query}")
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+        report.blocks = [
+            wr.PanelGrid(
+                runsets=[
+                    wr.Runset(entity="other-ent", project="other-proj")
+                ]
+            )
+        ]
+
+        url = report.enable_share_link()
+
+        assert "accessToken=existing_tok" in url
+
+    def test_enable_share_link_raises_when_existing_token_refresh_fails(
+        self, monkeypatch
+    ):
+        """enable_share_link reports a failed existing-token scope update."""
+
+        class _Client:
+            app_url = "https://wandb.ai/"
+
+            def execute(self, query, *, variable_values):
+                query_name = TestReportSharing._query_name(query)
+                if query_name == "ViewAccessTokens":
+                    return {
+                        "view": {
+                            "accessTokens": [
+                                {
+                                    "token": "existing_tok",
+                                    "type": "PUBLIC",
+                                    "revokedAt": None,
+                                    "projects": [],
+                                }
+                            ]
+                        }
+                    }
+                if query_name == "updateAccessTokenProjects":
+                    return {"updateAccessTokenProjects": {"success": False}}
+                raise AssertionError(f"Unexpected query: {query}")
+
+        class _Api:
+            client = _Client()
+            default_entity = "ent"
+
+        self._api = _Api()
+        report = self._make_report(monkeypatch)
+
+        with pytest.raises(
+            RuntimeError, match="failed to update access token projects"
+        ):
+            report.enable_share_link()
 
     def test_enable_share_link_raises_without_id(self, monkeypatch):
         """enable_share_link raises ValueError if report has no id."""

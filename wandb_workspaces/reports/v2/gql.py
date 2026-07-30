@@ -90,6 +90,10 @@ view_access_tokens = """
                 token
                 type
                 revokedAt
+                projects {
+                    entityName
+                    name
+                }
             }
         }
     }
@@ -110,6 +114,22 @@ create_access_token = """
                 token
                 type
             }
+        }
+    }
+"""
+
+update_access_token_projects = """
+    mutation updateAccessTokenProjects(
+        $token: String!
+        $projects: [ProjectSpecifier!]!
+    ) {
+        updateAccessTokenProjects(
+            input: {
+                token: $token
+                projects: $projects
+            }
+        ) {
+            success
         }
     }
 """

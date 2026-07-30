@@ -3733,6 +3733,18 @@ class Report(Base):
         visit_blocks(self.blocks)
         return list(projects.values())
 
+    def _update_share_link_projects(
+        self, token: str, projects: LList[Dict[str, str]]
+    ) -> None:
+        """Synchronize an existing public access token with the report's projects."""
+        r = execute_graphql(
+            _get_api(),
+            gql.update_access_token_projects,
+            {"token": token, "projects": projects},
+        )
+        if not r["updateAccessTokenProjects"]["success"]:
+            raise RuntimeError("failed to update access token projects")
+
     def get_share_url(self) -> Optional[str]:
         """Fetch the magic link URL for this report, or None if sharing is not enabled.
 
@@ -3752,7 +3764,7 @@ class Report(Base):
         """Enable "anyone with link can view" sharing for this report.
 
         Creates a public access token for the report. If a share link already
-        exists, returns the existing link.
+        exists, refreshes its project access and returns the existing link.
 
         Returns:
             str: The magic link URL that can be shared.
@@ -3760,9 +3772,21 @@ class Report(Base):
         if not self.id:
             raise ValueError("save report before enabling share link")
 
-        existing = self._get_active_share_token()
-        if existing is not None:
-            url = self._build_share_url(existing)
+        existing_tokens = self._get_active_share_token_objects()
+        if existing_tokens:
+            existing = existing_tokens[0]
+            desired_projects = self._share_link_projects()
+            current_scope = {
+                (project["entityName"], project["name"])
+                for project in existing["projects"]
+            }
+            desired_scope = {
+                (project["entityName"], project["projectName"])
+                for project in desired_projects
+            }
+            if current_scope != desired_scope:
+                self._update_share_link_projects(existing["token"], desired_projects)
+            url = self._build_share_url(existing["token"])
             wandb.termlog("Share link already active.")
             return url
 
@@ -3817,6 +3841,10 @@ class Report(Base):
 
     def _get_active_share_tokens(self) -> LList[str]:
         """Return all active PUBLIC access token strings."""
+        return [token["token"] for token in self._get_active_share_token_objects()]
+
+    def _get_active_share_token_objects(self) -> LList[Dict[str, Any]]:
+        """Return all active PUBLIC access token objects."""
         r = execute_graphql(
             _get_api(),
             gql.view_access_tokens,
@@ -3826,7 +3854,7 @@ class Report(Base):
         if not view:
             return []
         return [
-            t["token"]
+            t
             for t in view["accessTokens"]
             if t["type"] == "PUBLIC" and t.get("revokedAt") is None
         ]
