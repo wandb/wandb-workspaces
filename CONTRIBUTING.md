@@ -20,7 +20,7 @@ In general, we'll be following patterns from the [W&B SDK](https://github.com/wa
 ### Setting up Python
 
 
-Before you begin, make sure you have **Python 3.9 or higher** installed on your system. You can check your Python version with:
+Before you begin, make sure you have **Python 3.10 or higher** installed on your system. You can check your Python version with:
 
 ```bash
 python --version

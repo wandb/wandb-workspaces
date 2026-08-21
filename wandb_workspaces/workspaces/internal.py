@@ -4,6 +4,7 @@ from typing import List as LList
 
 import wandb
 from annotated_types import Annotated, Ge
+from wandb.sdk.lib import runid
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from pydantic.alias_generators import to_camel
 
@@ -228,6 +229,6 @@ def _url_query_str_to_internal_name(name: str) -> str:
 
 
 def _generate_view_name() -> str:
-    random_id = wandb.util.generate_id(11)
+    random_id = runid.generate_id(11)
     name = _url_query_str_to_internal_name(random_id)
     return name
