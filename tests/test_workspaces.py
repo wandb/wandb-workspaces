@@ -101,25 +101,25 @@ def create_mock_wandb_api(execute_return_value=None, app_url="https://app.wandb.
     Helper function to create a mocked wandb.Api instance.
 
     Args:
-        execute_return_value: Return value for client.execute() calls.
+        execute_return_value: Return value for execute_graphql() calls.
                              Can be a single value or a list for side_effect.
-        app_url: The app URL to return from client.app_url
+        app_url: The app URL to return from the service API
 
     Returns:
-        tuple: (mock_api_instance, mock_client) for assertions
+        tuple: (mock_api_instance, mock_service_api) for assertions
     """
     mock_api_instance = Mock()
-    mock_client = Mock()
+    mock_service_api = Mock()
 
     if isinstance(execute_return_value, list):
-        mock_client.execute.side_effect = execute_return_value
+        mock_service_api.execute_graphql.side_effect = execute_return_value
     else:
-        mock_client.execute.return_value = execute_return_value
+        mock_service_api.execute_graphql.return_value = execute_return_value
 
-    mock_client.app_url = app_url
-    mock_api_instance.client = mock_client
+    mock_service_api.app_url = app_url
+    mock_api_instance._service_api = mock_service_api
 
-    return mock_api_instance, mock_client
+    return mock_api_instance, mock_service_api
 
 
 @pytest.mark.skipif(
@@ -208,13 +208,11 @@ def test_load_workspace_from_url():
         assert workspace.sections[1].name == "Hidden Panels"
 
         # Verify the mock was called
-        assert mock_client.execute.call_count == 1
-        cargs = mock_client.execute.call_args[0]
-        ckwargs = mock_client.execute.call_args.kwargs
-        gql_definition = cargs[0].definitions[0]
-        assert gql_definition.name.value == "View"
-        assert gql_definition.operation == "query"
-        assert ckwargs["variable_values"] == {
+        assert mock_client.execute_graphql.call_count == 1
+        cargs = mock_client.execute_graphql.call_args[0]
+        ckwargs = mock_client.execute_graphql.call_args.kwargs
+        assert "query View" in cargs[0]
+        assert ckwargs["variables"] == {
             "viewType": "project-view",
             "entityName": "test_entity",
             "projectName": "test_project",
@@ -340,8 +338,8 @@ def test_section_id_roundtrips_and_fresh_section_omits_it():
     )
     assert section.id == "sec-1"
 
-    dumped = ws.Section(name="New")._to_model().model_dump(
-        by_alias=True, exclude_none=True
+    dumped = (
+        ws.Section(name="New")._to_model().model_dump(by_alias=True, exclude_none=True)
     )
     assert "__id__" not in dumped
 
@@ -359,8 +357,10 @@ def test_custom_panel_isauto_roundtrips_and_fresh_panel_omits_it():
     )
     assert panel.model_dump(by_alias=True, exclude_none=True)["isAuto"] is False
 
-    fresh = wr.interface.LinePlot(y=["loss"])._to_model().model_dump(
-        by_alias=True, exclude_none=True
+    fresh = (
+        wr.interface.LinePlot(y=["loss"])
+        ._to_model()
+        .model_dump(by_alias=True, exclude_none=True)
     )
     assert "isAuto" not in fresh
 
@@ -550,24 +550,22 @@ def test_save_workspace():
         workspace.save()
         workspace.save_as_new_view()
 
-        assert mock_client.execute.call_count == 3
-        cargs_list = mock_client.execute.call_args_list
+        assert mock_client.execute_graphql.call_count == 3
+        cargs_list = mock_client.execute_graphql.call_args_list
 
         # Important: id SHOULD not be in the first call as view hasn't been created
-        assert "id" not in cargs_list[0].kwargs["variable_values"]
+        assert "id" not in cargs_list[0].kwargs["variables"]
 
         # Important: id SHOULD be in the second call as the view has been created
-        assert "id" in cargs_list[1].kwargs["variable_values"]
+        assert "id" in cargs_list[1].kwargs["variables"]
 
         # Important: id SHOULD not be in the third call as we want to make a new view
-        assert "id" not in cargs_list[2].kwargs["variable_values"]
+        assert "id" not in cargs_list[2].kwargs["variables"]
 
         # all the gql should be the same
         assert cargs_list[0][0][0] == cargs_list[1][0][0]
         assert cargs_list[1][0][0] == cargs_list[2][0][0]
-        gql_definition = cargs_list[0][0][0].definitions[0]
-        assert gql_definition.name.value == "UpsertView2"
-        assert gql_definition.operation == "mutation"
+        assert "mutation UpsertView2" in cargs_list[0][0][0]
 
 
 def test_workspace_url_uses_service_api_app_url_without_client():
@@ -825,9 +823,7 @@ def test_invalid_group_colors_warn_and_omit(monkeypatch):
 
 
 def test_group_colors_without_groupby_warn_and_omit(monkeypatch):
-    workspace = _workspace_with_group_colors(
-        group_colors={"sweep_alpha": "#4E79A7"}
-    )
+    workspace = _workspace_with_group_colors(group_colors={"sweep_alpha": "#4E79A7"})
     warnings = _capture_termwarns(monkeypatch)
 
     assert _custom_run_colors(workspace) == {}
@@ -1121,10 +1117,7 @@ def test_cross_project_pinned_run_slash_form_roundtrip():
 
     model = workspace._to_model()
     gid = model.spec.section.run_sets[0].pinned_run_ids[0]
-    assert (
-        base64.b64decode(gid).decode()
-        == "Run:v1:abc1234:other-project:other-team"
-    )
+    assert base64.b64decode(gid).decode() == "Run:v1:abc1234:other-project:other-team"
 
     workspace2 = ws.Workspace._from_model(model)
     assert workspace2.runset_settings.pinned_runs == [
@@ -1144,10 +1137,7 @@ def test_cross_project_pinned_run_runref_roundtrip():
 
     model = workspace._to_model()
     gid = model.spec.section.run_sets[0].pinned_run_ids[0]
-    assert (
-        base64.b64decode(gid).decode()
-        == "Run:v1:abc1234:other-project:other-team"
-    )
+    assert base64.b64decode(gid).decode() == "Run:v1:abc1234:other-project:other-team"
 
     workspace2 = ws.Workspace._from_model(model)
     assert workspace2.runset_settings.pinned_runs == [pin]
@@ -1198,9 +1188,7 @@ def test_runref_defaults_to_workspace_entity_project():
 
     model = workspace._to_model()
     gid = model.spec.section.run_sets[0].pinned_run_ids[0]
-    assert (
-        base64.b64decode(gid).decode() == "Run:v1:abc1234:my-project:my-entity"
-    )
+    assert base64.b64decode(gid).decode() == "Run:v1:abc1234:my-project:my-entity"
 
     workspace2 = ws.Workspace._from_model(model)
     assert workspace2.runset_settings.pinned_runs == ["abc1234"]
@@ -1229,9 +1217,7 @@ def test_baseline_run_cross_project_auto_added_to_pinned():
     )
     model = workspace._to_model()
     runset = model.spec.section.run_sets[0]
-    expected_gid = base64.b64encode(
-        b"Run:v1:abc1234:other-project:other-team"
-    ).decode()
+    expected_gid = base64.b64encode(b"Run:v1:abc1234:other-project:other-team").decode()
     assert runset.baseline_run_id == expected_gid
     assert runset.pinned_run_ids == [expected_gid]
 

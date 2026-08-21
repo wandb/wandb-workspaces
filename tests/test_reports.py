@@ -1,3 +1,4 @@
+import re
 import sys
 import warnings
 from typing import Any, Dict, Generic, Type, TypeVar
@@ -317,9 +318,9 @@ def test_idempotency(request, factory_name) -> None:
 
     # Panels must preserve their id through the round-trip
     if factory_name in panel_factory_names:
-        assert model.id, (
-            f"{cls.__name__}: panel id should not be empty after _to_model()"
-        )
+        assert (
+            model.id
+        ), f"{cls.__name__}: panel id should not be empty after _to_model()"
 
 
 def test_fix_panel_collisions():
@@ -402,20 +403,20 @@ def test_report_delete(monkeypatch):
     that the Report.delete method sends the expected GraphQL mutation and
     returns True when the backend acknowledges success."""
 
-    # Track the arguments that the mocked `execute` receives for later assertions
+    # Track the arguments that the mocked `execute_graphql` receives for later assertions
     captured: Dict[str, Any] = {}
 
-    class _DummyClient:
-        def execute(self, query, *, variable_values):  # type: ignore
+    class _DummyServiceApi:
+        def execute_graphql(self, query, *, variables):  # type: ignore
             # Save inputs so the test can inspect them later
             captured["query"] = query
-            captured["variables"] = variable_values
+            captured["variables"] = variables
             # Simulate a successful deleteView response from the backend
             return {"deleteView": {"success": True}}
 
     class _DummyApi:
         def __init__(self):
-            self.client = _DummyClient()
+            self._service_api = _DummyServiceApi()
 
     # Monkey-patch the private helper used by Report.delete so that no real
     # network calls are made.
@@ -468,16 +469,18 @@ def test_v2_report_url_uses_service_api_app_url_without_client(monkeypatch):
 
 def test_runset_project_lookup(monkeypatch):
     """Test that Runset._to_model() correctly handles project ID lookup"""
-    # Mock the wandb API client
-    mock_client = Mock()
+    # Mock the wandb API service transport
+    mock_service_api = Mock()
 
     def mock_get_api():
-        return type("MockApi", (), {"client": mock_client})()
+        api = type("MockApi", (), {})()
+        api._service_api = mock_service_api
+        return api
 
     monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", mock_get_api)
 
     # Test successful case - project exists and ID is added
-    mock_client.execute.return_value = {
+    mock_service_api.execute_graphql.return_value = {
         "project": {"internalId": "UHJvamVjdEludGVybmFsSWQ6MTIzNDU="}
     }
     runset = wr.Runset(entity="test-entity", project="test-project")
@@ -487,7 +490,7 @@ def test_runset_project_lookup(monkeypatch):
     assert model.project.id == "UHJvamVjdEludGVybmFsSWQ6MTIzNDU="
 
     # Test error case - project not found
-    mock_client.execute.return_value = {"project": None}
+    mock_service_api.execute_graphql.return_value = {"project": None}
     with pytest.raises(ValueError) as exc_info:
         wr.Runset(entity="bad-entity", project="bad-project")._to_model()
     assert "project 'bad-entity/bad-project' not found" in str(exc_info.value)
@@ -689,9 +692,9 @@ def test_metric_to_backend_groupby():
 
     for input_val, expected in test_cases:
         result = wr.interface._metric_to_backend_groupby(input_val)
-        assert result == expected, (
-            f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
-        )
+        assert (
+            result == expected
+        ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
 
 
 def test_metric_to_frontend_groupby():
@@ -717,9 +720,9 @@ def test_metric_to_frontend_groupby():
 
     for input_val, expected in test_cases:
         result = wr.interface._metric_to_frontend_groupby(input_val)
-        assert result == expected, (
-            f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
-        )
+        assert (
+            result == expected
+        ), f"Input: {input_val!r}, Expected: {expected!r}, Got: {result!r}"
 
 
 def test_orderby_round_trip_preserves_section():
@@ -924,11 +927,13 @@ def test_url_to_viewspec_strips_refs(monkeypatch):
         "normalField": "should_remain",
     }
 
-    mock_client = Mock()
-    mock_client.execute.return_value = {"view": mock_viewspec}
+    mock_service_api = Mock()
+    mock_service_api.execute_graphql.return_value = {"view": mock_viewspec}
 
     def mock_get_api():
-        return type("MockApi", (), {"client": mock_client})()
+        api = type("MockApi", (), {})()
+        api._service_api = mock_service_api
+        return api
 
     monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", mock_get_api)
 
@@ -1105,9 +1110,9 @@ def test_block_validation_no_unknown_blocks():
 
     # Ensure no blocks are UnknownBlock
     for block in model.spec.blocks:
-        assert not isinstance(block, internal.UnknownBlock), (
-            f"Block should not be UnknownBlock, got {type(block).__name__}"
-        )
+        assert not isinstance(
+            block, internal.UnknownBlock
+        ), f"Block should not be UnknownBlock, got {type(block).__name__}"
 
     # Verify specific block types
     assert isinstance(model.spec.blocks[0], internal.Heading)
@@ -1241,14 +1246,17 @@ class TestRunsetCustomRunColors:
     @pytest.fixture(autouse=True)
     def mock_api(self, monkeypatch):
         """Mock the wandb API to avoid network calls."""
-        mock_client = Mock()
-        mock_client.execute.return_value = {
+        mock_service_api = Mock()
+        mock_service_api.execute_graphql.return_value = {
             "project": {"internalId": "test-project-id"}
         }
-        monkeypatch.setattr(
-            "wandb_workspaces.reports.v2.interface._get_api",
-            lambda: type("MockApi", (), {"client": mock_client})(),
-        )
+
+        def _make_api():
+            api = type("MockApi", (), {})()
+            api._service_api = mock_service_api
+            return api
+
+        monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", _make_api)
 
     def test_runset_colors_applied_to_panel_grid(self):
         """Colors defined on Runset should be included in PanelGrid._to_model()."""
@@ -1413,14 +1421,17 @@ class TestRunsetRunSettings:
     @pytest.fixture(autouse=True)
     def mock_api(self, monkeypatch):
         """Mock the wandb API to avoid network calls."""
-        mock_client = Mock()
-        mock_client.execute.return_value = {
+        mock_service_api = Mock()
+        mock_service_api.execute_graphql.return_value = {
             "project": {"internalId": "test-project-id"}
         }
-        monkeypatch.setattr(
-            "wandb_workspaces.reports.v2.interface._get_api",
-            lambda: type("MockApi", (), {"client": mock_client})(),
-        )
+
+        def _make_api():
+            api = type("MockApi", (), {})()
+            api._service_api = mock_service_api
+            return api
+
+        monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", _make_api)
 
     def test_disabled_runs_serialize_to_selections_tree(self):
         """Disabled runs in run_settings should appear in selections.tree."""
@@ -1643,14 +1654,17 @@ class TestRunsetColumnConfig:
 
     @pytest.fixture(autouse=True)
     def mock_api(self, monkeypatch):
-        mock_client = Mock()
-        mock_client.execute.return_value = {
+        mock_service_api = Mock()
+        mock_service_api.execute_graphql.return_value = {
             "project": {"internalId": "test-project-id"}
         }
-        monkeypatch.setattr(
-            "wandb_workspaces.reports.v2.interface._get_api",
-            lambda: type("MockApi", (), {"client": mock_client})(),
-        )
+
+        def _make_api():
+            api = type("MockApi", (), {})()
+            api._service_api = mock_service_api
+            return api
+
+        monkeypatch.setattr("wandb_workspaces.reports.v2.interface._get_api", _make_api)
 
     def test_pinned_columns_serialize(self):
         runset = wr.Runset(
@@ -2209,7 +2223,8 @@ class TestReportSharing:
 
     @staticmethod
     def _query_name(query):
-        return query.definitions[0].name.value
+        match = re.search(r"\b(?:query|mutation)\s+(\w+)", query)
+        return match.group(1) if match else None
 
     def _make_report(self, monkeypatch):
         """Create a report with a mocked API."""
@@ -2222,7 +2237,6 @@ class TestReportSharing:
         """Create a report that has not been saved (no id)."""
 
         class _Api:
-            client = None
             default_entity = "ent"
 
         self._api = _Api()
@@ -2233,14 +2247,14 @@ class TestReportSharing:
         """enable_share_link creates a PUBLIC access token and returns the URL."""
         captured = {}
 
-        class _Client:
+        class _ServiceApi:
             app_url = "https://wandb.ai/"
 
-            def execute(self, query, *, variable_values):
+            def execute_graphql(self, query, *, variables):
                 if TestReportSharing._query_name(query) == "ViewAccessTokens":
                     return {"view": {"accessTokens": []}}
                 if TestReportSharing._query_name(query) == "createAccessToken":
-                    captured["variables"] = variable_values
+                    captured["variables"] = variables
                     return {
                         "createAccessToken": {
                             "accessToken": {"token": "tok_abc123", "type": "PUBLIC"}
@@ -2249,8 +2263,10 @@ class TestReportSharing:
                 raise AssertionError(f"Unexpected query: {query}")
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2266,14 +2282,14 @@ class TestReportSharing:
         """Share links include deduplicated runset projects, including nested grids."""
         captured = {}
 
-        class _Client:
+        class _ServiceApi:
             app_url = "https://wandb.ai/"
 
-            def execute(self, query, *, variable_values):
+            def execute_graphql(self, query, *, variables):
                 if TestReportSharing._query_name(query) == "ViewAccessTokens":
                     return {"view": {"accessTokens": []}}
                 if TestReportSharing._query_name(query) == "createAccessToken":
-                    captured["variables"] = variable_values
+                    captured["variables"] = variables
                     return {
                         "createAccessToken": {
                             "accessToken": {"token": "tok_xproj", "type": "PUBLIC"}
@@ -2282,8 +2298,10 @@ class TestReportSharing:
                 raise AssertionError(f"Unexpected query: {query}")
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2318,10 +2336,10 @@ class TestReportSharing:
         """enable_share_link refreshes the returned token when its scope changed."""
         updated = []
 
-        class _Client:
+        class _ServiceApi:
             app_url = "https://wandb.ai/"
 
-            def execute(self, query, *, variable_values):
+            def execute_graphql(self, query, *, variables):
                 query_name = TestReportSharing._query_name(query)
                 if query_name == "ViewAccessTokens":
                     return {
@@ -2343,13 +2361,15 @@ class TestReportSharing:
                         }
                     }
                 if query_name == "updateAccessTokenProjects":
-                    updated.append(variable_values)
+                    updated.append(variables)
                     return {"updateAccessTokenProjects": {"success": True}}
                 raise AssertionError(f"Unexpected query: {query}")
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2366,10 +2386,10 @@ class TestReportSharing:
     def test_enable_share_link_skips_update_when_scope_matches(self, monkeypatch):
         """enable_share_link avoids a mutation when the existing scope is current."""
 
-        class _Client:
+        class _ServiceApi:
             app_url = "https://wandb.ai/"
 
-            def execute(self, query, *, variable_values):
+            def execute_graphql(self, query, *, variables):
                 if TestReportSharing._query_name(query) == "ViewAccessTokens":
                     return {
                         "view": {
@@ -2392,17 +2412,15 @@ class TestReportSharing:
                 raise AssertionError(f"Unexpected query: {query}")
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
         report.blocks = [
-            wr.PanelGrid(
-                runsets=[
-                    wr.Runset(entity="other-ent", project="other-proj")
-                ]
-            )
+            wr.PanelGrid(runsets=[wr.Runset(entity="other-ent", project="other-proj")])
         ]
 
         url = report.enable_share_link()
@@ -2414,10 +2432,10 @@ class TestReportSharing:
     ):
         """enable_share_link reports a failed existing-token scope update."""
 
-        class _Client:
+        class _ServiceApi:
             app_url = "https://wandb.ai/"
 
-            def execute(self, query, *, variable_values):
+            def execute_graphql(self, query, *, variables):
                 query_name = TestReportSharing._query_name(query)
                 if query_name == "ViewAccessTokens":
                     return {
@@ -2437,8 +2455,10 @@ class TestReportSharing:
                 raise AssertionError(f"Unexpected query: {query}")
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2458,8 +2478,8 @@ class TestReportSharing:
         """disable_share_link revokes the active PUBLIC token."""
         captured = {}
 
-        class _Client:
-            def execute(self, query, *, variable_values):
+        class _ServiceApi:
+            def execute_graphql(self, query, *, variables):
                 if TestReportSharing._query_name(query) == "ViewAccessTokens":
                     return {
                         "view": {
@@ -2473,13 +2493,15 @@ class TestReportSharing:
                         }
                     }
                 if TestReportSharing._query_name(query) == "revokeAccessToken":
-                    captured["variables"] = variable_values
+                    captured["variables"] = variables
                     return {"revokeAccessToken": {"success": True}}
                 raise AssertionError(f"Unexpected query: {query}")
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2491,8 +2513,8 @@ class TestReportSharing:
         """disable_share_link revokes all active PUBLIC tokens."""
         revoked = []
 
-        class _Client:
-            def execute(self, query, *, variable_values):
+        class _ServiceApi:
+            def execute_graphql(self, query, *, variables):
                 if TestReportSharing._query_name(query) == "ViewAccessTokens":
                     return {
                         "view": {
@@ -2503,13 +2525,15 @@ class TestReportSharing:
                         }
                     }
                 if TestReportSharing._query_name(query) == "revokeAccessToken":
-                    revoked.append(variable_values["token"])
+                    revoked.append(variables["token"])
                     return {"revokeAccessToken": {"success": True}}
                 raise AssertionError(f"Unexpected query: {query}")
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2520,13 +2544,15 @@ class TestReportSharing:
     def test_disable_share_link_no_active_link(self, monkeypatch):
         """disable_share_link returns False when no active link exists."""
 
-        class _Client:
-            def execute(self, query, *, variable_values):
+        class _ServiceApi:
+            def execute_graphql(self, query, *, variables):
                 return {"view": {"accessTokens": []}}
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2542,10 +2568,10 @@ class TestReportSharing:
     def test_get_share_url(self, monkeypatch):
         """get_share_url returns the magic link URL when active."""
 
-        class _Client:
+        class _ServiceApi:
             app_url = "https://wandb.ai/"
 
-            def execute(self, query, *, variable_values):
+            def execute_graphql(self, query, *, variables):
                 return {
                     "view": {
                         "accessTokens": [
@@ -2555,8 +2581,10 @@ class TestReportSharing:
                 }
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2568,13 +2596,15 @@ class TestReportSharing:
     def test_get_share_url_none_when_no_link(self, monkeypatch):
         """get_share_url returns None when no active share link exists."""
 
-        class _Client:
-            def execute(self, query, *, variable_values):
+        class _ServiceApi:
+            def execute_graphql(self, query, *, variables):
                 return {"view": {"accessTokens": []}}
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
@@ -2590,13 +2620,15 @@ class TestReportSharing:
     def test_get_share_url_none_when_view_is_null(self, monkeypatch):
         """get_share_url returns None when the API returns view: null."""
 
-        class _Client:
-            def execute(self, query, *, variable_values):
+        class _ServiceApi:
+            def execute_graphql(self, query, *, variables):
                 return {"view": None}
 
         class _Api:
-            client = _Client()
             default_entity = "ent"
+
+            def __init__(self):
+                self._service_api = _ServiceApi()
 
         self._api = _Api()
         report = self._make_report(monkeypatch)
