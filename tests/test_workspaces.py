@@ -344,6 +344,76 @@ def test_section_id_roundtrips_and_fresh_section_omits_it():
     assert "__id__" not in dumped
 
 
+def test_section_flags_roundtrip_and_fresh_section_omits_them():
+    """A loaded section keeps ``isPanelsAuto`` and ``defaultName`` (the app's
+    compression and auto-section matching depend on them); a from-scratch
+    section emits neither, and an absent flag stays absent."""
+    view = _view_with_custom_panels(
+        [
+            {
+                "__id__": "sec-1",
+                "name": "train",
+                "isPanelsAuto": False,
+                "panels": [],
+            },
+            {
+                "__id__": "sec-2",
+                "name": "Renamed Charts",
+                "isPanelsAuto": True,
+                "defaultName": "Charts",
+                "panels": [],
+            },
+            {"__id__": "sec-3", "name": "Legacy", "panels": []},
+        ]
+    )
+    sections = (
+        ws.Workspace._from_model(view)
+        ._to_model()
+        .spec.section.panel_bank_config.sections
+    )
+
+    manual = sections[0].model_dump(by_alias=True, exclude_none=True)
+    assert manual["isPanelsAuto"] is False
+    assert "defaultName" not in manual
+
+    renamed = sections[1].model_dump(by_alias=True, exclude_none=True)
+    assert renamed["isPanelsAuto"] is True
+    assert renamed["defaultName"] == "Charts"
+
+    legacy = sections[2].model_dump(by_alias=True, exclude_none=True)
+    assert "isPanelsAuto" not in legacy
+    assert "defaultName" not in legacy
+
+    fresh = (
+        ws.Section(name="New")._to_model().model_dump(by_alias=True, exclude_none=True)
+    )
+    assert "isPanelsAuto" not in fresh
+    assert "defaultName" not in fresh
+
+
+def test_unflagged_panels_stamped_custom_only_in_ispanelsauto_true_sections():
+    """In a preserved ``isPanelsAuto: true`` section, the app's save-time
+    compression deletes any panel not explicitly ``isAuto: false``, so panels
+    without the flag (fresh SDK-authored ones) are stamped custom on emit.
+    Sections without the preserved ``true`` flag emit panels untouched."""
+    view = _view_with_custom_panels(
+        [
+            {"__id__": "sec-1", "name": "Charts", "isPanelsAuto": True, "panels": []},
+            {"__id__": "sec-2", "name": "Legacy", "panels": []},
+        ]
+    )
+    workspace = ws.Workspace._from_model(view)
+    workspace.sections[0].panels.append(wr.LinePlot(y=["loss"]))
+    workspace.sections[1].panels.append(wr.LinePlot(y=["loss"]))
+    sections = workspace._to_model().spec.section.panel_bank_config.sections
+
+    stamped = sections[0].panels[0].model_dump(by_alias=True, exclude_none=True)
+    assert stamped["isAuto"] is False
+
+    untouched = sections[1].panels[0].model_dump(by_alias=True, exclude_none=True)
+    assert "isAuto" not in untouched
+
+
 def test_custom_panel_isauto_roundtrips_and_fresh_panel_omits_it():
     """A loaded custom panel keeps ``isAuto: false``; a fresh panel emits none."""
     view = _view_with_custom_panels(
