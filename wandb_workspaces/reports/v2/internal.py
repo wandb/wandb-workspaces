@@ -247,6 +247,13 @@ class PanelBankConfigSectionsItem(ReportAPIBaseModel):
     local_panel_settings: LocalPanelSettings = Field(default_factory=LocalPanelSettings)
     panels: LList["PanelTypes"] = Field(default_factory=list)
     pinned: Optional[bool] = None
+    # App-managed section flags; round-tripped, not SDK-authored. `isPanelsAuto`
+    # gates the app's save-time compression of auto-generated panels, and
+    # `defaultName` lets a renamed section keep receiving its auto panels.
+    # Optional so an absent flag round-trips as absent (exclude_none), not
+    # forced to a default.
+    is_panels_auto: Optional[bool] = None
+    default_name: Optional[str] = None
 
     @validator("panels", pre=True, each_item=True)
     def parse_panel(cls, v):  # noqa: N805

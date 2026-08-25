@@ -533,6 +533,14 @@ class Section(Base):
     # overrides resolve.
     _id: Optional[str] = Field(default=None, init=False, repr=False)
 
+    # App-managed section flags loaded from the spec and round-tripped verbatim
+    # so an SDK save can't strip them. `isPanelsAuto` gates the app's save-time
+    # compression of auto panels (stripping it can permanently trap a section's
+    # auto panels in the saved spec); `defaultName` keeps a renamed section
+    # matched to its auto panels. Fresh sections omit both.
+    _is_panels_auto: Optional[bool] = Field(default=None, init=False, repr=False)
+    _default_name: Optional[str] = Field(default=None, init=False, repr=False)
+
     @classmethod
     def _from_model(cls, model: internal.PanelBankConfigSectionsItem):
         obj = cls(
@@ -544,6 +552,8 @@ class Section(Base):
             panel_settings=SectionPanelSettings._from_model(model.local_panel_settings),
         )
         obj._id = model.id
+        obj._is_panels_auto = model.is_panels_auto
+        obj._default_name = model.default_name
         return obj
 
     def _to_model(self):
@@ -561,6 +571,8 @@ class Section(Base):
             pinned=self.pinned,
             flow_config=flow_config,
             local_panel_settings=local_panel_settings,
+            is_panels_auto=self._is_panels_auto,
+            default_name=self._default_name,
         )
 
 
