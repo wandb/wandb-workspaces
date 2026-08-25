@@ -391,6 +391,29 @@ def test_section_flags_roundtrip_and_fresh_section_omits_them():
     assert "defaultName" not in fresh
 
 
+def test_unflagged_panels_stamped_custom_only_in_ispanelsauto_true_sections():
+    """In a preserved ``isPanelsAuto: true`` section, the app's save-time
+    compression deletes any panel not explicitly ``isAuto: false``, so panels
+    without the flag (fresh SDK-authored ones) are stamped custom on emit.
+    Sections without the preserved ``true`` flag emit panels untouched."""
+    view = _view_with_custom_panels(
+        [
+            {"__id__": "sec-1", "name": "Charts", "isPanelsAuto": True, "panels": []},
+            {"__id__": "sec-2", "name": "Legacy", "panels": []},
+        ]
+    )
+    workspace = ws.Workspace._from_model(view)
+    workspace.sections[0].panels.append(wr.LinePlot(y=["loss"]))
+    workspace.sections[1].panels.append(wr.LinePlot(y=["loss"]))
+    sections = workspace._to_model().spec.section.panel_bank_config.sections
+
+    stamped = sections[0].panels[0].model_dump(by_alias=True, exclude_none=True)
+    assert stamped["isAuto"] is False
+
+    untouched = sections[1].panels[0].model_dump(by_alias=True, exclude_none=True)
+    assert "isAuto" not in untouched
+
+
 def test_custom_panel_isauto_roundtrips_and_fresh_panel_omits_it():
     """A loaded custom panel keeps ``isAuto: false``; a fresh panel emits none."""
     view = _view_with_custom_panels(

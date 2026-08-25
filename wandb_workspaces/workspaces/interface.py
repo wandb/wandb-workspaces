@@ -558,6 +558,20 @@ class Section(Base):
 
     def _to_model(self):
         panel_models = [p._to_model() for p in self.panels]
+
+        # In a section the app has marked `isPanelsAuto: true`, the app's
+        # save-time compression keeps only panels explicitly marked
+        # `isAuto: false` and strips the rest (regenerating true auto panels
+        # from history keys). A panel without the flag — e.g. one authored in
+        # this SDK and appended to a loaded section — would be silently
+        # deleted by the app's next save. Stamp unflagged panels as custom so
+        # they survive. Sections without a preserved `true` flag emit their
+        # panels untouched.
+        if self._is_panels_auto is True:
+            for pm in panel_models:
+                if getattr(pm, "is_auto", False) is None:
+                    pm.is_auto = False
+
         flow_config = self.layout_settings._to_model()
         local_panel_settings = self.panel_settings._to_model()
 
