@@ -48,6 +48,7 @@ from pydantic import ConfigDict, Field, model_validator, validator
 from pydantic.dataclasses import dataclass
 
 from wandb_workspaces._graphql import execute_graphql, get_app_url
+from wandb_workspaces.utils.slugs import slugify_title
 
 from . import gql, internal
 from ... import expr
@@ -3651,7 +3652,7 @@ class Report(Base):
 
         base = urlparse(get_app_url(_get_api()))
 
-        title = self.title.replace(" ", "-")
+        title = slugify_title(self.title)
 
         scheme = base.scheme
         netloc = base.netloc
@@ -4455,7 +4456,7 @@ def _metric_to_frontend_panel_grid(x: str):
 
 
 def _metric_to_backend_groupby(
-    val: Optional[Union[str, "Config", "Metric"]]
+    val: Optional[Union[str, "Config", "Metric"]],
 ) -> Optional[str]:
     """
     Normalise a group-by key into the string the backend expects.

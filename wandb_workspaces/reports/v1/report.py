@@ -1,8 +1,6 @@
 import base64
 import inspect
 import json
-import re
-import urllib
 from copy import deepcopy
 from typing import List as LList
 
@@ -12,6 +10,7 @@ from wandb.apis.public import Api as PublicApi
 from wandb.sdk.lib import ipython
 
 from wandb_workspaces._graphql import execute_graphql, get_app_url
+from wandb_workspaces.utils.slugs import slugify_title
 
 from ._blocks import P, PanelGrid, UnknownBlock, WeaveBlock, block_mapping, weave_blocks
 from .mutations import UPSERT_VIEW, VIEW_REPORT
@@ -195,9 +194,7 @@ class Report(Base):
 
     @property
     def url(self) -> str:
-        title = re.sub(r"\W", "-", self.title)
-        title = re.sub(r"-+", "-", title)
-        title = urllib.parse.quote(title)
+        title = slugify_title(self.title)
         id = self.id.replace("=", "")
         app_url = get_app_url(self._api)
         if not app_url.endswith("/"):
