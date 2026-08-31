@@ -2634,3 +2634,110 @@ class TestReportSharing:
         report = self._make_report(monkeypatch)
 
         assert report.get_share_url() is None
+
+
+def _report_viewspec_dict(blocks, **overrides):
+    """Build a minimal report viewspec dict with the given raw blocks."""
+    spec = {
+        "id": "test-report-id",
+        "name": "test-report",
+        "displayName": "Untitled Report",
+        "description": "",
+        "project": {"name": "test-project", "entityName": "test-entity"},
+        "spec": {
+            "version": 5,
+            "panelSettings": {},
+            "blocks": blocks,
+            "width": "readable",
+            "authors": [],
+            "discussionThreads": [],
+        },
+    }
+    spec.update(overrides)
+    return spec
+
+
+# A single empty paragraph: the spec an empty report created in the UI has.
+_SENTINEL_PARAGRAPH = {"type": "paragraph", "children": [{"text": ""}]}
+
+
+class TestReportFromModelSentinelStripping:
+    """`_from_model` strips the sentinel paragraphs that `_to_model` adds.
+
+    `_to_model` pads with a leading and a trailing sentinel, and pads an empty
+    report with two, so SDK-written reports always have at least two blocks.
+    Reports created in the UI do not -- an empty one has exactly one sentinel,
+    which used to raise IndexError here (WB-38722).
+    """
+
+    def _load(self, blocks):
+        from wandb_workspaces.reports.v2 import internal
+
+        model = internal.ReportViewspec.model_validate(_report_viewspec_dict(blocks))
+        return wr.Report._from_model(model)
+
+    def test_single_sentinel_paragraph_loads(self):
+        """An empty UI-created report loads to a report with no blocks."""
+        report = self._load([_SENTINEL_PARAGRAPH])
+        assert report.blocks == []
+
+    def test_no_blocks_loads(self):
+        """A spec with an empty block list loads to a report with no blocks."""
+        report = self._load([])
+        assert report.blocks == []
+
+    def test_sentinels_stripped_around_content(self):
+        """Only the sentinels are stripped; the content between them survives."""
+        report = self._load(
+            [
+                _SENTINEL_PARAGRAPH,
+                {"type": "heading", "level": 1, "children": [{"text": "Title"}]},
+                _SENTINEL_PARAGRAPH,
+            ]
+        )
+        assert len(report.blocks) == 1
+        assert isinstance(report.blocks[0], wr.H1)
+        assert report.blocks[0].text == "Title"
+
+    def test_single_content_block_survives(self):
+        """A lone non-sentinel block must not be stripped by either guard."""
+        report = self._load(
+            [{"type": "heading", "level": 1, "children": [{"text": "Only"}]}]
+        )
+        assert len(report.blocks) == 1
+        assert report.blocks[0].text == "Only"
+
+    def test_paragraph_with_text_is_not_a_sentinel(self):
+        """A paragraph with actual text is content, not padding."""
+        report = self._load(
+            [{"type": "paragraph", "children": [{"text": "real text"}]}]
+        )
+        assert len(report.blocks) == 1
+        assert isinstance(report.blocks[0], wr.P)
+        assert report.blocks[0].text == "real text"
+
+    def test_empty_report_round_trips(self):
+        """An empty UI-created report survives load -> save without raising."""
+        from wandb_workspaces.reports.v2 import internal
+
+        report = self._load([_SENTINEL_PARAGRAPH])
+        model = report._to_model()
+
+        # `_to_model` re-pads an empty report with two sentinels, so the result
+        # loads again cleanly.
+        assert model.spec.blocks == [internal.Paragraph(), internal.Paragraph()]
+        assert wr.Report._from_model(model).blocks == []
+
+    def test_from_url_loads_empty_report(self, monkeypatch):
+        """The `from_url` entry point handles an empty UI-created report."""
+        monkeypatch.setattr(
+            wr.interface,
+            "_url_to_viewspec",
+            lambda url: _report_viewspec_dict([_SENTINEL_PARAGRAPH]),
+        )
+
+        report = wr.Report.from_url(
+            "https://wandb.ai/test-entity/test-project/reports/x"
+        )
+        assert report.blocks == []
+        assert report.title == "Untitled Report"
