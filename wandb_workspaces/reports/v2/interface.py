@@ -3616,9 +3616,6 @@ class Report(Base):
     def _from_model(cls, model: internal.ReportViewspec):
         blocks = model.spec.blocks
 
-        # Strip the sentinel paragraphs added by `_to_model`.  Reports created in the
-        # UI can have a single block (or none), so both ends need a length check --
-        # stripping the leading sentinel is itself what can empty the list.
         if blocks and blocks[0] == internal.Paragraph():
             blocks = blocks[1:]
 
