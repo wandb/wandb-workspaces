@@ -3616,10 +3616,10 @@ class Report(Base):
     def _from_model(cls, model: internal.ReportViewspec):
         blocks = model.spec.blocks
 
-        if blocks[0] == internal.Paragraph():
+        if blocks and blocks[0] == internal.Paragraph():
             blocks = blocks[1:]
 
-        if blocks[-1] == internal.Paragraph():
+        if blocks and blocks[-1] == internal.Paragraph():
             blocks = blocks[:-1]
 
         obj = cls(
@@ -4455,7 +4455,7 @@ def _metric_to_frontend_panel_grid(x: str):
 
 
 def _metric_to_backend_groupby(
-    val: Optional[Union[str, "Config", "Metric"]]
+    val: Optional[Union[str, "Config", "Metric"]],
 ) -> Optional[str]:
     """
     Normalise a group-by key into the string the backend expects.
