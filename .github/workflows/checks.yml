@@ -34,6 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
 
     strategy:
       fail-fast: false
@@ -63,3 +64,5 @@ jobs:
           files: coverage.xml
           flags: python-${{ matrix.python-version }}
           fail_ci_if_error: true
+          use_oidc: true
+          use_pypi: true
