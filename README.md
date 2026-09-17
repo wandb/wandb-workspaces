@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://i.imgur.com/RUtiVzH.png" width="600" /><br><br>
+  <img src="https://i.imgur.com/RUtiVzH.png" width="600"/><br><br>
 </div>
 
 # wandb-workspaces
