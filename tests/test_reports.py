@@ -1314,6 +1314,24 @@ class TestRunsetCustomRunColors:
             "run-2": "#00FF00",
         }
 
+    def test_config_group_color_uses_panel_grid_key_format(self):
+        """Config group colors should use the frontend's config: prefix."""
+        runset = wr.Runset(entity="test", project="test", name="My Runset")
+        group = wr.RunsetGroup(
+            runset_name=runset.name,
+            keys=(wr.RunsetGroupKey(wr.Config("method"), "method-a"),),
+        )
+        panel_grid = wr.PanelGrid(
+            runsets=[runset],
+            custom_run_colors={group: "#FF0000"},
+        )
+
+        model = panel_grid._to_model()
+
+        assert model.metadata.custom_run_colors == {
+            f"{runset._id}-config:method.value:method-a": "#FF0000"
+        }
+
 
 # Tests for _from_color_dict edge cases (migration bug fixes)
 
