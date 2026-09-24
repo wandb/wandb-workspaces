@@ -715,7 +715,9 @@ class Image(Block):
             Caption appears underneath the image.
     """
 
-    url: str = "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
+    url: str = (
+        "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
+    )
     caption: TextLikeField = ""
 
     def _to_model(self):
@@ -3682,9 +3684,9 @@ class Report(Base):
             gql.upsert_view,
             {
                 "id": None if clone or not model.id else model.id,
-                "name": internal._generate_name()
-                if clone or not model.name
-                else model.name,
+                "name": (
+                    internal._generate_name() if clone or not model.name else model.name
+                ),
                 "entityName": model.project.entity_name,
                 "projectName": model.project.name,
                 "description": model.description,
@@ -4440,8 +4442,8 @@ def _metric_to_frontend_pc(x: str):
 
 
 def _metric_to_backend_panel_grid(x: Optional[MetricType]):
-    if isinstance(x, str):
-        name, *rest = x.split(".")
+    if isinstance(x, (str, Config)):
+        name, *rest = (x if isinstance(x, str) else x.name).split(".")
         rest = "." + ".".join(rest) if rest else ""
         return f"config:{name}.value{rest}"
     return _metric_to_backend(x)
