@@ -1,0 +1,25 @@
+# One-time setup (e.g., install system tools, global CLIs).
+initialize: |
+  # uv is not present on the base image; install it so maintenance can run.
+  if ! command -v uv >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/uv" ]; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  fi
+  echo "PATH=$HOME/.local/bin:$PATH" >> $ENVRC
+# Install project dependencies (runs during builds, surfaced to agent at session start).
+maintenance: |
+  export PATH="$HOME/.local/bin:$PATH"
+  uv sync
+  # ./code_checks.sh install resolves scripts/update-dev-env.sh outside the repo
+  # and fails, so install the hook directly from the uv venv.
+  uv run pre-commit install -t pre-push
+knowledge:
+  - name: lint
+    contents: |
+      uv run ruff check .
+      uv run mypy .
+  - name: test
+    contents: |
+      uv run pytest tests/ -x
+  - name: notes
+    contents: |
+      # uv sync creates .venv with all dev dependencies (ruff, mypy, pytest, pre-commit).
