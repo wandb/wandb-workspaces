@@ -47,7 +47,6 @@ dev = [
     "pandas>=2.2.2,<3",
     "numpy>=1.26.4,<2",
     "coverage>=7.5.3,<8",
-    "codecov>=2.1.13,<3",
 ]
 
 [build-system]
