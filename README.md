@@ -7,7 +7,6 @@
 <p align='center'>
 <a href="https://pypi.python.org/pypi/wandb-workspaces"><img src="https://img.shields.io/pypi/v/wandb-workspaces" /></a>
 <a href="https://github.com/wandb/wandb-workspaces/actions/workflows/checks.yml"><img src="https://github.com/wandb/wandb-workspaces/actions/workflows/checks.yml/badge.svg?branch=main" /></a>
-<a href="https://codecov.io/gh/wandb/wandb-workspaces/graph/badge.svg?token=XGL5D4023X"><img src="https://img.shields.io/codecov/c/gh/wandb/wandb-workspaces" /></a>
 </p>
 
 `wandb-workspaces` is a Python library for programatically working with [Weights & Biases](https://wandb.ai) workspaces and reports. This feature is in **Public Preview**.
