@@ -58,12 +58,3 @@ jobs:
 
       - name: Run tests
         run: uv run pytest --cov
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
-        with:
-          files: coverage.xml
-          flags: python-${{ matrix.python-version }}
-          fail_ci_if_error: true
-          use_oidc: true
-          use_pypi: true
