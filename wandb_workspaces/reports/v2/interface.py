@@ -1285,7 +1285,11 @@ class Runset(Base):
             name=model.name,
             query=model.search.query if model.search else "",
             filters=filter_string,
-            groupby=[expr.to_frontend_name(k.name) for k in model.grouping],
+            # Keep the section explicit so dotted key names are not mistaken for
+            # "section.name" when groupby strings are parsed again on save.
+            groupby=[
+                f"{k.section}.{expr.to_frontend_name(k.name)}" for k in model.grouping
+            ],
             order=[OrderBy._from_model(s) for s in model.sort.keys],
             run_settings=run_settings,
             pinned_columns=pinned_columns,
