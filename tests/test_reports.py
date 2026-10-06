@@ -652,6 +652,32 @@ def test_runset_query_parameter():
     assert reconstructed_empty_search.query == ""
 
 
+@pytest.mark.parametrize(
+    ("key", "expected_groupby"),
+    [
+        (
+            Key(section="config", name="algo_backbone.value"),
+            "config.algo_backbone.value",
+        ),
+        (Key(section="summary", name="loss"), "summary.loss"),
+        (Key(section="summary", name="eval.loss"), "summary.eval.loss"),
+        (Key(section="run", name="group"), "run.Group"),
+        (Key(section="run", name="custom.metric"), "run.custom.metric"),
+    ],
+)
+def test_runset_groupby_round_trip_preserves_section(key, expected_groupby):
+    """Loading and saving a runset must not reinterpret a grouping key's section."""
+    from wandb_workspaces.reports.v2 import internal
+
+    original = internal.Runset(grouping=[key])
+
+    runset = wr.Runset._from_model(original)
+    assert runset.groupby == [expected_groupby]
+
+    round_tripped = runset._to_model()
+    assert round_tripped.grouping == original.grouping
+
+
 def test_metric_to_backend_groupby():
     """Test the _metric_to_backend_groupby function with various input formats"""
 
