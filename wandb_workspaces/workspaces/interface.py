@@ -42,6 +42,7 @@ from pydantic.dataclasses import dataclass
 from wandb_workspaces._graphql import get_app_url
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
 from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns, _generate_name
+from wandb_workspaces.utils.colors import is_valid_color
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
@@ -155,6 +156,13 @@ def _group_color_path_segments(path: object) -> Optional[Tuple[Any, ...]]:
     return None
 
 
+def _is_valid_run_color(run_id: str, color: str) -> bool:
+    if not color or is_valid_color(color):
+        return True
+    wandb.termwarn(f"Omitting run color for {run_id!r}; {color!r} is not a color.")
+    return False
+
+
 def _serialize_group_colors(
     group_colors: Dict[object, object],
     groupby: LList[expr.MetricType],
@@ -199,6 +207,12 @@ def _serialize_group_colors(
         if not isinstance(raw_color, str):
             wandb.termwarn(
                 f"Omitting group color for path {raw_path!r}; color must be a string."
+            )
+            continue
+        if not is_valid_color(raw_color):
+            wandb.termwarn(
+                f"Omitting group color for path {raw_path!r}; "
+                f"{raw_color!r} is not a color."
             )
             continue
 
@@ -1263,6 +1277,7 @@ class Workspace(Base):
             **{
                 id: config.color
                 for id, config in self.runset_settings.run_settings.items()
+                if _is_valid_run_color(id, config.color)
             },
         }
 
