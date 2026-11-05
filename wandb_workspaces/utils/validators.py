@@ -1,5 +1,5 @@
 import unicodedata
-from typing import Any, Dict
+from typing import Any, Dict, NamedTuple
 from urllib.parse import parse_qs, urlparse
 
 from wandb_workspaces.workspaces.errors import SpecVersionError, UnsupportedViewError
@@ -30,11 +30,25 @@ def validate_spec_version(
     return spec
 
 
-def validate_url(url: str) -> str:
+class ViewUrl(NamedTuple):
+    entity: str
+    project: str
+    """The raw `nw=` query value. Empty if the URL has none."""
+    nw: str
+
+
+def parse_view_url(url: str, base_url: str) -> ViewUrl:
+    """Validate a saved view URL and return its parts."""
     parsed_url = urlparse(url)
+    parsed_base_url = urlparse(base_url)
+
+    # If `base_url` has a path, trim that from the `url`
+    path = parsed_url.path
+    base_path = parsed_base_url.path.rstrip("/")
+    if path.startswith(base_path + "/"):
+        path = path[len(base_path):]
 
     # Supported paths
-    path = parsed_url.path
     _, entity, project, *other = path.split("/")
     if len(other) == 0:
         pass
@@ -42,15 +56,14 @@ def validate_url(url: str) -> str:
         pass
     else:
         raise UnsupportedViewError(
-            r"Please use a saved view that looks like https://wandb.ai/{entity}/{project}?nw=a0b1c2d3"
+            f"Please use a saved view that looks like {base_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
         )
 
     # Supported NW query params
-    query_dict = parse_qs(parsed_url.query)
-    nw = query_dict.get("nw")
-    if nw and nw[0].startswith("nwuser"):
+    nw = parse_qs(parsed_url.query).get("nw", [""])[0]
+    if nw.startswith("nwuser"):
         raise UnsupportedViewError(
-            r"Workspace API does not currently support user views.  Please use a saved view that looks like https://wandb.ai/{entity}/{project}?nw=a0b1c2d3"
+            f"Workspace API does not currently support user views. Please use a saved view that looks like {base_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
         )
 
-    return url
+    return ViewUrl(entity=entity, project=project, nw=nw)

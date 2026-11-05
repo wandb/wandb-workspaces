@@ -32,7 +32,7 @@ import dataclasses
 import os
 from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union, cast
 from typing import List as LList
-from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 import wandb
 from annotated_types import Annotated, Ge
@@ -42,7 +42,7 @@ from pydantic.dataclasses import dataclass
 from wandb_workspaces._graphql import get_app_url
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
 from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns, _generate_name
-from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
+from wandb_workspaces.utils.validators import parse_view_url, validate_no_emoji
 
 from .. import expr
 from . import internal
@@ -941,15 +941,9 @@ class Workspace(Base):
             )
 
         base = urlparse(get_app_url(wandb.Api()))
-
-        scheme = base.scheme
-        netloc = base.netloc
-        path = os.path.join(self.entity, self.project)
-        params = ""
+        path = os.path.join(base.path.rstrip('/'), self.entity, self.project)
         query = f"nw={internal._internal_name_to_url_query_str(self._internal_name)}"
-        fragment = ""
-
-        return urlunparse((scheme, netloc, path, params, query, fragment))
+        return urlunparse((base.scheme, base.netloc, path, "", query, ""))
 
     @classmethod
     def _from_model(cls, model: internal.View):
@@ -1343,16 +1337,12 @@ class Workspace(Base):
     def from_url(cls, url: str):
         """Get a workspace from a URL."""
 
-        validate_url(url)
+        view_url = parse_view_url(url, base_url=get_app_url(wandb.Api()))
+        internal_view_name = internal._url_query_str_to_internal_name(view_url.nw)
 
-        parsed_url = urlparse(url)
-        qp = parse_qs(parsed_url.query)
-        qp_view_name = qp.get("nw", [""])[0]
-        internal_view_name = internal._url_query_str_to_internal_name(qp_view_name)
-
-        _, entity, project = parsed_url.path.split("/")
-
-        view = internal.View.from_name(entity, project, internal_view_name)
+        view = internal.View.from_name(
+            view_url.entity, view_url.project, internal_view_name
+        )
         return cls._from_model(view)
 
     def save(self):

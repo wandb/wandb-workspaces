@@ -20,8 +20,8 @@ from wandb_workspaces.workspaces._run_color_groups import (
 from tests.weave_panel_factory import WeavePanelFactory
 from wandb_workspaces.utils.validators import (
     validate_no_emoji,
+    parse_view_url,
     validate_spec_version,
-    validate_url,
 )
 from wandb_workspaces.workspaces.errors import SpecVersionError, UnsupportedViewError
 
@@ -712,61 +712,104 @@ def test_validate_spec_version(example, should_pass):
 
 
 @pytest.mark.parametrize(
-    "example, should_pass",
+    "example, base_url, should_pass",
     [
         (
             # saved view url
             "https://wandb.ai/entity/project?nw=ejh7s85g63o",
+            "https://wandb.ai",
             True,
         ),
         (
             # username url
             "https://wandb.ai/entity/project?nw=nwusermegatruong",
+            "https://wandb.ai",
             False,
         ),
         (
             # sweeps url
             "https://wandb.ai/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir",
+            "https://wandb.ai",
             False,
         ),
         (
             # singular run url
             "https://wandb.ai/entity/project/runs/1mbku38n?nw=1f8jocblz8z",
+            "https://wandb.ai",
             False,
         ),
         (
             # saved view url under an app url path prefix
-            "https://app.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix",
+            True,
+        ),
+        (
+            # same, with a trailing slash on the app url
+            "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix/",
             True,
         ),
         (
             # saved view url with a trailing /workspace under a path prefix
-            "https://app.wandb.test/some/prefix/entity/project/workspace?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix/entity/project/workspace?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix",
             True,
         ),
         (
             # username url under a path prefix is still unsupported
-            "https://app.wandb.test/some/prefix/entity/project?nw=nwusermegatruong",
+            "https://service.wandb.test/some/prefix/entity/project?nw=nwusermegatruong",
+            "https://service.wandb.test/some/prefix",
             False,
         ),
         (
             # sweeps url under a path prefix is still unsupported
-            "https://app.wandb.test/some/prefix/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir",
+            "https://service.wandb.test/some/prefix/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir",
+            "https://service.wandb.test/some/prefix",
             False,
+        ),
+        (
+            # the url path starts with the app url path
+            "https://service.wandb.test/asdf/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/asdf",
+            True,
+        ),
+        (
+            # the url path starts with a different path than the app url path, so
+            # nothing is removed and the extra segment is rejected
+            "https://service.wandb.test/asdf/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/fdsa",
+            False,
+        ),
+        (
+            # the host of the url is not compared to the host of the app url
+            "https://service.wandb.test/entity/project?nw=ejh7s85g63o",
+            "https://invalid.url",
+            True,
+        ),
+        (
+            # same, with an app url path
+            "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
+            "https://invalid.url/some/prefix",
+            True,
+        ),
+        (
+            # a url without the app url path is read as is
+            "https://service.wandb.test/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix",
+            True,
         ),
     ],
 )
-def test_validate_url(example, should_pass):
-    mock_api_instance, _ = create_mock_wandb_api(
-        app_url="https://app.wandb.test/some/prefix"
-    )
+def test_parse_view_url(example, base_url, should_pass):
+    if should_pass:
+        view_url = parse_view_url(example, base_url=base_url)
+        assert (view_url.entity, view_url.project) == ("entity", "project")
+        assert view_url.nw == "ejh7s85g63o"
+    else:
+        with pytest.raises(UnsupportedViewError):
+            parse_view_url(example, base_url=base_url)
 
-    with patch("wandb.Api", return_value=mock_api_instance):
-        if should_pass:
-            validate_url(example)
-        else:
-            with pytest.raises(UnsupportedViewError):
-                validate_url(example)
 
 
 @pytest.mark.parametrize(
