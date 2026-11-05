@@ -941,9 +941,15 @@ class Workspace(Base):
             )
 
         base = urlparse(get_app_url(wandb.Api()))
+
+        scheme = base.scheme
+        netloc = base.netloc
         path = os.path.join(base.path.rstrip('/'), self.entity, self.project)
+        params = ""
         query = f"nw={internal._internal_name_to_url_query_str(self._internal_name)}"
-        return urlunparse((base.scheme, base.netloc, path, "", query, ""))
+        fragment = ""
+
+        return urlunparse((scheme, netloc, path, params, query, fragment))
 
     @classmethod
     def _from_model(cls, model: internal.View):
