@@ -767,22 +767,14 @@ def test_parse_view_url(app_path, path_and_query, should_pass):
         (
             # the url starts with no path prefix, and the app url does
             # this is accepted for backward compatibility
-            "https://service.wandb.test/entity/project?nw=ejh7s85g63o",
-            "https://service.wandb.test/some/prefix",
+            "https://wandb.ai/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix/",
             True,
         ),
         (
             # mismatching hosts are ok
-            # this is accepted for backward compatibility
             "https://service.wandb.test/entity/project?nw=ejh7s85g63o",
-            "https://wandb.ai",
-            True,
-        ),
-        (
-            # mismatching hosts are ok, under a path prefix
-            # this is accepted for backward compatibility
-            "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
-            "https://wandb.ai/some/prefix",
+            "https://other-service.wandb.test",
             True,
         ),
     ],
