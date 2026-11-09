@@ -33,8 +33,8 @@ def validate_spec_version(
 class ViewUrl(NamedTuple):
     entity: str
     project: str
-    """The raw `nw=` query value. Empty if the URL has none."""
     nw: str
+    """The raw `nw=` query value, the id of the saved view. Never empty."""
 
 
 def parse_view_url(url: str, app_url: str) -> ViewUrl:
@@ -61,6 +61,10 @@ def parse_view_url(url: str, app_url: str) -> ViewUrl:
 
     # Supported NW query params
     nw = parse_qs(parsed_url.query).get("nw", [""])[0]
+    if not nw:
+        raise UnsupportedViewError(
+            f"The URL has no saved view id. Please use a saved view that looks like {app_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
+        )
     if nw.startswith("nwuser"):
         raise UnsupportedViewError(
             f"Workspace API does not currently support user views. Please use a saved view that looks like {app_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"

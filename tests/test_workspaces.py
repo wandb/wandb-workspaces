@@ -235,6 +235,16 @@ def test_load_workspace_from_url(app_url, url):
         }
 
 
+def test_load_workspace_from_url_without_view_id_does_not_query():
+    mock_api_instance, mock_client = create_mock_wandb_api()
+
+    with patch("wandb.Api", return_value=mock_api_instance):
+        with pytest.raises(UnsupportedViewError):
+            ws.Workspace.from_url("https://app.wandb.test/test_entity/test_project")
+
+    assert mock_client.execute_graphql.call_count == 0
+
+
 def test_workspace_roundtrips_panel_overrides():
     """A view with UI-only override keys loads with its sections intact and
     re-saves with the keys preserved (via the interface stash)."""
@@ -652,9 +662,12 @@ def test_save_workspace():
         assert "mutation UpsertView2" in cargs_list[0][0][0]
 
 
-def test_workspace_url_uses_service_api_app_url_without_client():
+@pytest.mark.parametrize("app_path", ["", "/", "/some/prefix", "/some/prefix/"])
+def test_workspace_url_uses_service_api_app_url_without_client(app_path):
+    service_app_url = f"https://service.wandb.test{app_path}"
+
     class _ServiceApi:
-        app_url = "https://service.wandb.test/some/prefix/"
+        app_url = service_app_url
 
     class _Api:
         def __init__(self):
@@ -666,7 +679,7 @@ def test_workspace_url_uses_service_api_app_url_without_client():
 
         assert (
             workspace.url
-            == "https://service.wandb.test/some/prefix/ent/proj?nw=abc123"
+            == f"https://service.wandb.test{app_path.rstrip('/')}/ent/proj?nw=abc123"
         )
 
 
@@ -711,87 +724,40 @@ def test_validate_spec_version(example, should_pass):
             validate_spec_version(example, expected_version=expected_ver)
 
 
+@pytest.mark.parametrize("app_path", ["", "/some/prefix", "/some/prefix/"])
+@pytest.mark.parametrize(
+    "path_and_query, should_pass",
+    [
+        # saved view url
+        ("/entity/project?nw=ejh7s85g63o", True),
+        # url without a saved view id
+        ("/entity/project", False),
+        # url with an empty saved view id
+        ("/entity/project?nw=", False),
+        # username url
+        ("/entity/project?nw=nwusermegatruong", False),
+        # sweeps url
+        ("/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir", False),
+        # singular run url
+        ("/entity/project/runs/1mbku38n?nw=1f8jocblz8z", False),
+        # saved view url with a trailing /workspace
+        ("/entity/project/workspace?nw=ejh7s85g63o", True),
+        # saved view url with a trailing /table
+        ("/entity/project/table?nw=ejh7s85g63o", True),
+    ],
+)
+def test_parse_view_url(app_path, path_and_query, should_pass):
+    # Tests whether the view URL parsing handles paths on the app URL properly.
+    check_parse_view_url(
+        f"https://service.wandb.test{app_path.rstrip('/')}{path_and_query}",
+        f"https://service.wandb.test{app_path}",
+        should_pass,
+    )
+
+
 @pytest.mark.parametrize(
     "example, app_url, should_pass",
     [
-        (
-            # saved view url
-            "https://wandb.ai/entity/project?nw=ejh7s85g63o",
-            "https://wandb.ai",
-            True,
-        ),
-        (
-            # username url
-            "https://wandb.ai/entity/project?nw=nwusermegatruong",
-            "https://wandb.ai",
-            False,
-        ),
-        (
-            # sweeps url
-            "https://wandb.ai/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir",
-            "https://wandb.ai",
-            False,
-        ),
-        (
-            # singular run url
-            "https://wandb.ai/entity/project/runs/1mbku38n?nw=1f8jocblz8z",
-            "https://wandb.ai",
-            False,
-        ),
-        (
-            # saved view url with a trailing /workspace
-            "https://wandb.ai/entity/project/workspace?nw=ejh7s85g63o",
-            "https://wandb.ai",
-            True,
-        ),
-        (
-            # saved view url with a trailing /table
-            "https://wandb.ai/entity/project/table?nw=ejh7s85g63o",
-            "https://wandb.ai",
-            True,
-        ),
-        (
-            # saved view url under a path prefix
-            "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
-            "https://service.wandb.test/some/prefix",
-            True,
-        ),
-        (
-            # saved view url under a path prefix, with trailing slash
-            "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
-            "https://service.wandb.test/some/prefix/",
-            True,
-        ),
-        (
-            # username url under a path prefix
-            "https://service.wandb.test/some/prefix/entity/project?nw=nwusermegatruong",
-            "https://service.wandb.test/some/prefix",
-            False,
-        ),
-        (
-            # sweeps url under a path prefix
-            "https://service.wandb.test/some/prefix/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir",
-            "https://service.wandb.test/some/prefix",
-            False,
-        ),
-        (
-            # singular run url under a path prefix
-            "https://service.wandb.test/some/prefix/entity/project/runs/1mbku38n?nw=1f8jocblz8z",
-            "https://service.wandb.test/some/prefix",
-            False,
-        ),
-        (
-            # saved view url with a trailing /workspace under a path prefix
-            "https://service.wandb.test/some/prefix/entity/project/workspace?nw=ejh7s85g63o",
-            "https://service.wandb.test/some/prefix",
-            True,
-        ),
-        (
-            # saved view url with a trailing /table under a path prefix
-            "https://service.wandb.test/some/prefix/entity/project/table?nw=ejh7s85g63o",
-            "https://service.wandb.test/some/prefix",
-            True,
-        ),
         (
             # the url starts with a path prefix, and that path prefix is different from the app url's
             "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
@@ -821,7 +787,11 @@ def test_validate_spec_version(example, should_pass):
         ),
     ],
 )
-def test_parse_view_url(example, app_url, should_pass):
+def test_parse_view_url_prefix_cases(example, app_url, should_pass):
+    check_parse_view_url(example, app_url, should_pass)
+
+
+def check_parse_view_url(example, app_url, should_pass):
     if should_pass:
         view_url = parse_view_url(example, app_url=app_url)
         assert (view_url.entity, view_url.project) == ("entity", "project")
