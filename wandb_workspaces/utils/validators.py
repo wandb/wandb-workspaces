@@ -37,16 +37,16 @@ class ViewUrl(NamedTuple):
     nw: str
 
 
-def parse_view_url(url: str, base_url: str) -> ViewUrl:
+def parse_view_url(url: str, app_url: str) -> ViewUrl:
     """Validate a saved view URL and return its parts."""
     parsed_url = urlparse(url)
-    parsed_base_url = urlparse(base_url)
+    parsed_app_url = urlparse(app_url)
 
-    # If `base_url` has a path, trim that from the `url`
+    # If `app_url` has a path, trim that from the `url`
     path = parsed_url.path
-    base_path = parsed_base_url.path.rstrip("/")
-    if path.startswith(base_path + "/"):
-        path = path[len(base_path):]
+    app_path = parsed_app_url.path.rstrip("/")
+    if path.startswith(app_path + "/"):
+        path = path[len(app_path):]
 
     # Supported paths
     _, entity, project, *other = path.split("/")
@@ -56,14 +56,14 @@ def parse_view_url(url: str, base_url: str) -> ViewUrl:
         pass
     else:
         raise UnsupportedViewError(
-            f"Please use a saved view that looks like {base_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
+            f"Please use a saved view that looks like {app_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
         )
 
     # Supported NW query params
     nw = parse_qs(parsed_url.query).get("nw", [""])[0]
     if nw.startswith("nwuser"):
         raise UnsupportedViewError(
-            f"Workspace API does not currently support user views. Please use a saved view that looks like {base_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
+            f"Workspace API does not currently support user views. Please use a saved view that looks like {app_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
         )
 
     return ViewUrl(entity=entity, project=project, nw=nw)

@@ -1343,7 +1343,7 @@ class Workspace(Base):
     def from_url(cls, url: str):
         """Get a workspace from a URL."""
 
-        view_url = parse_view_url(url, base_url=get_app_url(wandb.Api()))
+        view_url = parse_view_url(url, app_url=get_app_url(wandb.Api()))
         internal_view_name = internal._url_query_str_to_internal_name(view_url.nw)
 
         view = internal.View.from_name(

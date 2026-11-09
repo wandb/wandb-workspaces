@@ -712,7 +712,7 @@ def test_validate_spec_version(example, should_pass):
 
 
 @pytest.mark.parametrize(
-    "example, base_url, should_pass",
+    "example, app_url, should_pass",
     [
         (
             # saved view url
@@ -739,16 +739,46 @@ def test_validate_spec_version(example, should_pass):
             False,
         ),
         (
-            # saved view url under an app url path prefix
+            # saved view url with a trailing /workspace
+            "https://wandb.ai/entity/project/workspace?nw=ejh7s85g63o",
+            "https://wandb.ai",
+            True,
+        ),
+        (
+            # saved view url with a trailing /table
+            "https://wandb.ai/entity/project/table?nw=ejh7s85g63o",
+            "https://wandb.ai",
+            True,
+        ),
+        (
+            # saved view url under a path prefix
             "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
             "https://service.wandb.test/some/prefix",
             True,
         ),
         (
-            # same, with a trailing slash on the app url
+            # saved view url under a path prefix, with trailing slash
             "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
             "https://service.wandb.test/some/prefix/",
             True,
+        ),
+        (
+            # username url under a path prefix
+            "https://service.wandb.test/some/prefix/entity/project?nw=nwusermegatruong",
+            "https://service.wandb.test/some/prefix",
+            False,
+        ),
+        (
+            # sweeps url under a path prefix
+            "https://service.wandb.test/some/prefix/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir",
+            "https://service.wandb.test/some/prefix",
+            False,
+        ),
+        (
+            # singular run url under a path prefix
+            "https://service.wandb.test/some/prefix/entity/project/runs/1mbku38n?nw=1f8jocblz8z",
+            "https://service.wandb.test/some/prefix",
+            False,
         ),
         (
             # saved view url with a trailing /workspace under a path prefix
@@ -757,58 +787,48 @@ def test_validate_spec_version(example, should_pass):
             True,
         ),
         (
-            # username url under a path prefix is still unsupported
-            "https://service.wandb.test/some/prefix/entity/project?nw=nwusermegatruong",
+            # saved view url with a trailing /table under a path prefix
+            "https://service.wandb.test/some/prefix/entity/project/table?nw=ejh7s85g63o",
             "https://service.wandb.test/some/prefix",
-            False,
-        ),
-        (
-            # sweeps url under a path prefix is still unsupported
-            "https://service.wandb.test/some/prefix/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir",
-            "https://service.wandb.test/some/prefix",
-            False,
-        ),
-        (
-            # the url path starts with the app url path
-            "https://service.wandb.test/asdf/entity/project?nw=ejh7s85g63o",
-            "https://service.wandb.test/asdf",
             True,
         ),
         (
-            # the url path starts with a different path than the app url path, so
-            # nothing is removed and the extra segment is rejected
-            "https://service.wandb.test/asdf/entity/project?nw=ejh7s85g63o",
-            "https://service.wandb.test/fdsa",
-            False,
-        ),
-        (
-            # the host of the url is not compared to the host of the app url
-            "https://service.wandb.test/entity/project?nw=ejh7s85g63o",
-            "https://invalid.url",
-            True,
-        ),
-        (
-            # same, with an app url path
+            # the url starts with a path prefix, and that path prefix is different from the app url's
             "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
-            "https://invalid.url/some/prefix",
+            "https://service.wandb.test/different/prefix",
+            False,
+        ),
+        (
+            # the url starts with no path prefix, and the app url does
+            # this is accepted for backward compatibility
+            "https://service.wandb.test/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix",
             True,
         ),
         (
-            # a url without the app url path is read as is
+            # mismatching hosts are ok
+            # this is accepted for backward compatibility
             "https://service.wandb.test/entity/project?nw=ejh7s85g63o",
-            "https://service.wandb.test/some/prefix",
+            "https://wandb.ai",
+            True,
+        ),
+        (
+            # mismatching hosts are ok, under a path prefix
+            # this is accepted for backward compatibility
+            "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
+            "https://wandb.ai/some/prefix",
             True,
         ),
     ],
 )
-def test_parse_view_url(example, base_url, should_pass):
+def test_parse_view_url(example, app_url, should_pass):
     if should_pass:
-        view_url = parse_view_url(example, base_url=base_url)
+        view_url = parse_view_url(example, app_url=app_url)
         assert (view_url.entity, view_url.project) == ("entity", "project")
         assert view_url.nw == "ejh7s85g63o"
     else:
         with pytest.raises(UnsupportedViewError):
-            parse_view_url(example, base_url=base_url)
+            parse_view_url(example, app_url=app_url)
 
 
 
