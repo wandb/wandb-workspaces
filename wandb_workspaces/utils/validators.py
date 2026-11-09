@@ -1,5 +1,5 @@
 import unicodedata
-from typing import Any, Dict
+from typing import Any, Dict, NamedTuple
 from urllib.parse import parse_qs, urlparse
 
 from wandb_workspaces.workspaces.errors import SpecVersionError, UnsupportedViewError
@@ -30,11 +30,25 @@ def validate_spec_version(
     return spec
 
 
-def validate_url(url: str) -> str:
+class ViewUrl(NamedTuple):
+    entity: str
+    project: str
+    nw: str
+    """The raw `nw=` query value, the id of the saved view. Never empty."""
+
+
+def parse_view_url(url: str, app_url: str) -> ViewUrl:
+    """Validate a saved view URL and return its parts."""
     parsed_url = urlparse(url)
+    parsed_app_url = urlparse(app_url)
+
+    # If `app_url` has a path, trim that from the `url`
+    path = parsed_url.path
+    app_path = parsed_app_url.path.rstrip("/")
+    if path.startswith(app_path + "/"):
+        path = path[len(app_path):]
 
     # Supported paths
-    path = parsed_url.path
     _, entity, project, *other = path.split("/")
     if len(other) == 0:
         pass
@@ -42,15 +56,18 @@ def validate_url(url: str) -> str:
         pass
     else:
         raise UnsupportedViewError(
-            r"Please use a saved view that looks like https://wandb.ai/{entity}/{project}?nw=a0b1c2d3"
+            f"Please use a saved view that looks like {app_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
         )
 
     # Supported NW query params
-    query_dict = parse_qs(parsed_url.query)
-    nw = query_dict.get("nw")
-    if nw and nw[0].startswith("nwuser"):
+    nw = parse_qs(parsed_url.query).get("nw", [""])[0]
+    if not nw:
         raise UnsupportedViewError(
-            r"Workspace API does not currently support user views.  Please use a saved view that looks like https://wandb.ai/{entity}/{project}?nw=a0b1c2d3"
+            f"The URL has no saved view id. Please use a saved view that looks like {app_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
+        )
+    if nw.startswith("nwuser"):
+        raise UnsupportedViewError(
+            f"Workspace API does not currently support user views. Please use a saved view that looks like {app_url.rstrip('/')}/{{entity}}/{{project}}?nw=a0b1c2d3"
         )
 
-    return url
+    return ViewUrl(entity=entity, project=project, nw=nw)

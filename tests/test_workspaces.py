@@ -20,8 +20,8 @@ from wandb_workspaces.workspaces._run_color_groups import (
 from tests.weave_panel_factory import WeavePanelFactory
 from wandb_workspaces.utils.validators import (
     validate_no_emoji,
+    parse_view_url,
     validate_spec_version,
-    validate_url,
 )
 from wandb_workspaces.workspaces.errors import SpecVersionError, UnsupportedViewError
 
@@ -180,9 +180,21 @@ def test_section_pinning():
     assert section_from_none.pinned is False
 
 
-def test_load_workspace_from_url():
-    url = "https://app.wandb.test/test_entity/test_project?nw=51cset95tvn"
-
+@pytest.mark.parametrize(
+    "app_url, url",
+    [
+        (
+            "https://app.wandb.test",
+            "https://app.wandb.test/test_entity/test_project?nw=51cset95tvn",
+        ),
+        (
+            # app url with a path prefix
+            "https://app.wandb.test/some/prefix",
+            "https://app.wandb.test/some/prefix/test_entity/test_project?nw=51cset95tvn",
+        ),
+    ],
+)
+def test_load_workspace_from_url(app_url, url):
     mock_response = {
         "project": {
             "allViews": {
@@ -199,7 +211,9 @@ def test_load_workspace_from_url():
         }
     }
 
-    mock_api_instance, mock_client = create_mock_wandb_api(mock_response)
+    mock_api_instance, mock_client = create_mock_wandb_api(
+        mock_response, app_url=app_url
+    )
 
     with patch("wandb.Api", return_value=mock_api_instance):
         workspace = ws.Workspace.from_url(url)
@@ -219,6 +233,16 @@ def test_load_workspace_from_url():
             "name": "test_project",
             "viewName": "nw-51cset95tvn-v",
         }
+
+
+def test_load_workspace_from_url_without_view_id_does_not_query():
+    mock_api_instance, mock_client = create_mock_wandb_api()
+
+    with patch("wandb.Api", return_value=mock_api_instance):
+        with pytest.raises(UnsupportedViewError):
+            ws.Workspace.from_url("https://app.wandb.test/test_entity/test_project")
+
+    assert mock_client.execute_graphql.call_count == 0
 
 
 def test_workspace_roundtrips_panel_overrides():
@@ -638,9 +662,12 @@ def test_save_workspace():
         assert "mutation UpsertView2" in cargs_list[0][0][0]
 
 
-def test_workspace_url_uses_service_api_app_url_without_client():
+@pytest.mark.parametrize("app_path", ["", "/", "/some/prefix", "/some/prefix/"])
+def test_workspace_url_uses_service_api_app_url_without_client(app_path):
+    service_app_url = f"https://service.wandb.test{app_path}"
+
     class _ServiceApi:
-        app_url = "https://service.wandb.test/"
+        app_url = service_app_url
 
     class _Api:
         def __init__(self):
@@ -650,7 +677,10 @@ def test_workspace_url_uses_service_api_app_url_without_client():
         workspace = ws.Workspace(entity="ent", project="proj")
         workspace._internal_name = "nw-abc123-v"
 
-        assert workspace.url == "https://service.wandb.test/ent/proj?nw=abc123"
+        assert (
+            workspace.url
+            == f"https://service.wandb.test{app_path.rstrip('/')}/ent/proj?nw=abc123"
+        )
 
 
 @pytest.mark.parametrize(
@@ -694,37 +724,74 @@ def test_validate_spec_version(example, should_pass):
             validate_spec_version(example, expected_version=expected_ver)
 
 
+@pytest.mark.parametrize("app_path", ["", "/some/prefix", "/some/prefix/"])
 @pytest.mark.parametrize(
-    "example, should_pass",
+    "path_and_query, should_pass",
+    [
+        # saved view url
+        ("/entity/project?nw=ejh7s85g63o", True),
+        # url without a saved view id
+        ("/entity/project", False),
+        # url with an empty saved view id
+        ("/entity/project?nw=", False),
+        # username url
+        ("/entity/project?nw=nwusermegatruong", False),
+        # sweeps url
+        ("/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir", False),
+        # singular run url
+        ("/entity/project/runs/1mbku38n?nw=1f8jocblz8z", False),
+        # saved view url with a trailing /workspace
+        ("/entity/project/workspace?nw=ejh7s85g63o", True),
+        # saved view url with a trailing /table
+        ("/entity/project/table?nw=ejh7s85g63o", True),
+    ],
+)
+def test_parse_view_url(app_path, path_and_query, should_pass):
+    # Tests whether the view URL parsing handles paths on the app URL properly.
+    check_parse_view_url(
+        f"https://service.wandb.test{app_path.rstrip('/')}{path_and_query}",
+        f"https://service.wandb.test{app_path}",
+        should_pass,
+    )
+
+
+@pytest.mark.parametrize(
+    "example, app_url, should_pass",
     [
         (
-            # saved view url
+            # the url starts with a path prefix, and that path prefix is different from the app url's
+            "https://service.wandb.test/some/prefix/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/different/prefix",
+            False,
+        ),
+        (
+            # the url starts with no path prefix, and the app url does
+            # this is accepted for backward compatibility
             "https://wandb.ai/entity/project?nw=ejh7s85g63o",
+            "https://service.wandb.test/some/prefix/",
             True,
         ),
         (
-            # username url
-            "https://wandb.ai/entity/project?nw=nwusermegatruong",
-            False,
-        ),
-        (
-            # sweeps url
-            "https://wandb.ai/entity/project/sweeps/lqo1hrfk?nw=5ck3t077hir",
-            False,
-        ),
-        (
-            # singular run url
-            "https://wandb.ai/entity/project/runs/1mbku38n?nw=1f8jocblz8z",
-            False,
+            # mismatching hosts are ok
+            "https://service.wandb.test/entity/project?nw=ejh7s85g63o",
+            "https://other-service.wandb.test",
+            True,
         ),
     ],
 )
-def test_validate_url(example, should_pass):
+def test_parse_view_url_prefix_cases(example, app_url, should_pass):
+    check_parse_view_url(example, app_url, should_pass)
+
+
+def check_parse_view_url(example, app_url, should_pass):
     if should_pass:
-        validate_url(example)
+        view_url = parse_view_url(example, app_url=app_url)
+        assert (view_url.entity, view_url.project) == ("entity", "project")
+        assert view_url.nw == "ejh7s85g63o"
     else:
         with pytest.raises(UnsupportedViewError):
-            validate_url(example)
+            parse_view_url(example, app_url=app_url)
+
 
 
 @pytest.mark.parametrize(
@@ -1358,3 +1425,4 @@ def test_decoded_same_project_pin_is_bare_slug():
         assert isinstance(entry, str)
         assert "/" not in entry
     assert isinstance(workspace2.runset_settings.baseline_run, str)
+
