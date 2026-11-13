@@ -607,7 +607,11 @@ def test_from_scratch_workspace_emits_auto_generate_panels_false():
 def test_save_workspace():
     mock_upsert_response = {
         "upsertView": {
-            "view": {"id": "test-view-id-123", "name": "nw-firstworkspace-v"},
+            "view": {
+                "id": "test-view-id-123",
+                "name": "nw-firstworkspace-v",
+                "updatedAt": "2026-11-12T15:04:09Z",
+            },
             "inserted": True,
         }
     }
@@ -632,10 +636,12 @@ def test_save_workspace():
         # Important: id SHOULD not be in the third call as we want to make a new view
         assert "id" not in cargs_list[2].kwargs["variables"]
 
-        # all the gql should be the same
-        assert cargs_list[0][0][0] == cargs_list[1][0][0]
-        assert cargs_list[1][0][0] == cargs_list[2][0][0]
-        assert "mutation UpsertView2" in cargs_list[0][0][0]
+        # all calls are the same mutation; only the update of an existing view
+        # (the second call) is guarded with lastUpdatedAt
+        assert all("mutation UpsertView2" in c[0][0] for c in cargs_list)
+        assert cargs_list[0][0][0] == cargs_list[2][0][0]
+        assert "lastUpdatedAt" not in cargs_list[0][0][0]
+        assert "lastUpdatedAt" in cargs_list[1][0][0]
 
 
 def test_workspace_url_uses_service_api_app_url_without_client():

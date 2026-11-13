@@ -39,13 +39,13 @@ from annotated_types import Annotated, Ge
 from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, model_validator
 from pydantic.dataclasses import dataclass
 
-from wandb_workspaces._graphql import get_app_url
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
 from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns, _generate_name
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
-from . import internal
+from . import _api, _view_names, internal
+from .errors import ViewSpecConflictError
 from ._run_color_groups import (
     RUN_COLOR_GROUP_KEY_PREFIX,
     GroupPath,
@@ -123,6 +123,7 @@ __all__ = [
     "RunRef",
     "GroupPath",
     "Workspace",
+    "ViewSpecConflictError",
 ]
 
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid")
@@ -912,6 +913,9 @@ class Workspace(Base):
     _internal_runset_id: str = Field("", init=False, repr=False)
     "The runset ID of the workspace."
 
+    _internal_updated_at: Optional[str] = Field(None, init=False, repr=False)
+    "When the view was last updated, as read from the server. Sent on save to detect conflicts."
+
     # Wire values stashed on load and replayed on save, so a load -> save
     # round-trip preserves what _to_model would otherwise regenerate or drop.
     _stashed_filters_v2: Optional[dict] = Field(default=None, init=False, repr=False)
@@ -940,13 +944,13 @@ class Workspace(Base):
                 "save workspace or explicitly pass `_internal_name` to get a url"
             )
 
-        base = urlparse(get_app_url(wandb.Api()))
+        base = urlparse(_api.app_url())
 
         scheme = base.scheme
         netloc = base.netloc
         path = os.path.join(self.entity, self.project)
         params = ""
-        query = f"nw={internal._internal_name_to_url_query_str(self._internal_name)}"
+        query = f"nw={_view_names._internal_name_to_url_query_str(self._internal_name)}"
         fragment = ""
 
         return urlunparse((scheme, netloc, path, params, query, fragment))
@@ -1111,6 +1115,7 @@ class Workspace(Base):
         obj._internal_name = model.name
         obj._internal_id = model.id
         obj._internal_runset_id = runset_model.id
+        obj._internal_updated_at = model.updated_at
         obj._stashed_filters_v2 = stashed_v2
         obj._stashed_filter_string = filter_string
         panel_bank_config = model.spec.section.panel_bank_config
@@ -1272,6 +1277,7 @@ class Workspace(Base):
             display_name=self.name,
             name=self._internal_name,
             id=self._internal_id,
+            updated_at=self._internal_updated_at,
             spec=internal.WorkspaceViewspec(
                 section=internal.ViewspecSection(
                     panel_bank_config=internal.PanelBankConfig(
@@ -1348,11 +1354,11 @@ class Workspace(Base):
         parsed_url = urlparse(url)
         qp = parse_qs(parsed_url.query)
         qp_view_name = qp.get("nw", [""])[0]
-        internal_view_name = internal._url_query_str_to_internal_name(qp_view_name)
+        internal_view_name = _view_names._url_query_str_to_internal_name(qp_view_name)
 
         _, entity, project = parsed_url.path.split("/")
 
-        view = internal.View.from_name(entity, project, internal_view_name)
+        view = _api.fetch_view(entity, project, internal_view_name)
         return cls._from_model(view)
 
     def save(self):
@@ -1361,19 +1367,32 @@ class Workspace(Base):
 
         Returns:
             Workspace: The updated workspace with the saved internal name and ID.
+
+        Raises:
+            ViewSpecConflictError: The workspace changed on the server since it
+                was loaded. Reload it with `Workspace.from_url`, reapply your
+                edits, and save again.
         """
         view = self._to_model()
 
         # If creating a new view with `ws.Workspace(...)`
         if not view.name:
-            view.name = internal._generate_view_name()
+            view.name = _view_names._generate_view_name()
 
-        resp = internal.upsert_view2(view)
-        self._internal_name = resp["upsertView"]["view"]["name"]
-        self._internal_id = resp["upsertView"]["view"]["id"]
+        resp = _api.upsert_view2(view)
+        self._set_saved_view(resp["upsertView"]["view"])
 
         wandb.termlog(f"View saved: {self.url}")
         return self
+
+    def _set_saved_view(self, saved: Dict[str, Any]) -> None:
+        # Record what the server returned. After a create, name and id are new and
+        # needed for the next save and the URL; after an update they are unchanged.
+        self._internal_name = saved["name"]
+        self._internal_id = saved["id"]
+        # The new timestamp guards the next save, so saving twice in a row
+        # does not conflict with itself.
+        self._internal_updated_at = saved.get("updatedAt")
 
     def save_as_new_view(self):
         """
@@ -1385,12 +1404,11 @@ class Workspace(Base):
         view = self._to_model()
 
         # Generate a new view name and ID
-        view.name = internal._generate_view_name()
+        view.name = _view_names._generate_view_name()
         view.id = ""
 
-        resp = internal.upsert_view2(view)
-        self._internal_name = resp["upsertView"]["view"]["name"]
-        self._internal_id = resp["upsertView"]["view"]["id"]
+        resp = _api.upsert_view2(view)
+        self._set_saved_view(resp["upsertView"]["view"])
 
         wandb.termlog(f"View saved: {self.url}")
         return self
