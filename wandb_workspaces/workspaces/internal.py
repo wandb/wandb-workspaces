@@ -101,3 +101,4 @@ class View(WorkspaceAPIBaseModel):
     name: str
     id: str
     spec: WorkspaceViewspec
+    updated_at: Optional[str] = None

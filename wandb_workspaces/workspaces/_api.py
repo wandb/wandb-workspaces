@@ -1,16 +1,20 @@
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import wandb
 
 from wandb_workspaces._graphql import execute_graphql, get_app_url
 from wandb_workspaces.utils.validators import validate_spec_version
+from wandb_workspaces.workspaces.errors import ViewSpecConflictError
 
 from ._view_names import (
     _internal_name_to_url_query_str,
     _url_query_str_to_internal_name,
 )
 from .internal import CLIENT_SPEC_VERSION, View, WorkspaceViewspec
+
+VIEW_SPEC_CONFLICT_CODE = "VIEW_SPEC_CONFLICT"
+VIEW_SPEC_CONFLICT_MESSAGE = "workspace changed since you loaded it"
 
 
 def app_url() -> str:
@@ -38,24 +42,69 @@ def fetch_view(entity: str, project: str, view_name: str) -> View:
         name=view_name,
         id=id,
         spec=parsed_spec,
+        updated_at=view_dict.get("updatedAt"),
     )
 
 
-def upsert_view2(view: View) -> Dict[str, Any]:
-    query = """
-        mutation UpsertView2($id: ID, $entityName: String, $projectName: String, $type: String, $name: String, $displayName: String, $description: String, $spec: String) {
-        upsertView(
-            input: {id: $id, entityName: $entityName, projectName: $projectName, name: $name, displayName: $displayName, description: $description, type: $type, spec: $spec, createdUsing: WANDB_SDK}
-        ) {
-            view {
-                id
-                name
-            }
-            inserted
-        }
-        }
-        """
+def _is_view_spec_conflict(error: Exception) -> bool:
+    # The service transport keeps only the error message, not the code in the
+    # GraphQL extensions, so match either.
+    text = str(error)
+    return VIEW_SPEC_CONFLICT_CODE in text or VIEW_SPEC_CONFLICT_MESSAGE in text.lower()
 
+
+def _is_unknown_last_updated_at_field(error: Exception) -> bool:
+    # For backward compatibility: servers before 0.84 lack `lastUpdatedAt` and
+    # reject it during validation, before anything is written.
+    return 'In field "lastUpdatedAt": Unknown field' in str(error)
+
+
+# `%` formatting, so the GraphQL braces need no escaping.
+_UPSERT_VIEW_MUTATION = """
+    mutation UpsertView2($id: ID, $entityName: String, $projectName: String, $type: String, $name: String, $displayName: String, $description: String, $spec: String%(last_updated_at_var)s) {
+    upsertView(
+        input: {id: $id, entityName: $entityName, projectName: $projectName, name: $name, displayName: $displayName, description: $description, type: $type, spec: $spec, createdUsing: WANDB_SDK%(last_updated_at_input)s}
+    ) {
+        view {
+            id
+            name
+            updatedAt
+        }
+        inserted
+    }
+    }
+    """
+
+
+def _execute_upsert(
+    api: Any, view: View, variables: Dict[str, Any], last_updated_at: Optional[str]
+) -> Dict[str, Any]:
+    if last_updated_at is None:
+        query = _UPSERT_VIEW_MUTATION % {
+            "last_updated_at_var": "",
+            "last_updated_at_input": "",
+        }
+    else:
+        query = _UPSERT_VIEW_MUTATION % {
+            "last_updated_at_var": ", $lastUpdatedAt: DateTime",
+            "last_updated_at_input": ", lastUpdatedAt: $lastUpdatedAt",
+        }
+        variables = {**variables, "lastUpdatedAt": last_updated_at}
+
+    try:
+        return execute_graphql(api, query, variables)
+    except Exception as e:
+        if _is_view_spec_conflict(e):
+            raise ViewSpecConflictError(
+                f"Workspace `{view.display_name}` changed since it was loaded, so "
+                "the save was refused to avoid overwriting those changes. Reload it "
+                "with `Workspace.from_url`, reapply your edits, and save again, or "
+                "use `save_as_new_view()` to keep your version as a separate view."
+            ) from e
+        raise
+
+
+def upsert_view2(view: View) -> Dict[str, Any]:
     api = wandb.Api()
     spec_str = view.spec.model_dump_json(by_alias=True, exclude_none=True)
 
@@ -71,13 +120,37 @@ def upsert_view2(view: View) -> Dict[str, Any]:
         "locked": False,
     }
 
-    # If updating an existing view: `id` exists, so add it to variables
-    if view.id:
-        variables["id"] = view.id
+    # Creating a new view: no `id` yet, and no timestamp to guard the save with
+    if not view.id:
+        return _execute_upsert(api, view, variables, last_updated_at=None)
 
-    response = execute_graphql(api, query, variables)
+    # Updating an existing view: `id` exists, so add it to variables
+    variables["id"] = view.id
 
-    return response
+    # Loading or saving a view always returns its updatedAt, so a missing one
+    # means the workspace did not come from the server. Refuse rather than
+    # save without a conflict check.
+    if view.updated_at is None:
+        raise ValueError(
+            f"Can't save workspace `{view.display_name}`: it exists on the server "
+            "but its last update time is unknown, so the save can't be checked for "
+            "conflicts. Load it with `Workspace.from_url` and save that, or use "
+            "`save_as_new_view()`."
+        )
+
+    try:
+        return _execute_upsert(api, view, variables, view.updated_at)
+    except Exception as e:
+        # TODO: Remove this fallback once 0.83 is out of support (2027-07-22);
+        # every supported server will then accept `lastUpdatedAt` (added in 0.84).
+        if not _is_unknown_last_updated_at_field(e):
+            raise
+    wandb.termwarn(
+        "This W&B server does not support conflict checks on workspace saves. "
+        "Saving without one, so this save may overwrite changes made since the "
+        "workspace was loaded."
+    )
+    return _execute_upsert(api, view, variables, last_updated_at=None)
 
 
 def get_view_dict(entity: str, project: str, view_name: str) -> Dict[str, Any]:
@@ -91,6 +164,7 @@ def get_view_dict(entity: str, project: str, view_name: str) -> Dict[str, Any]:
                             id
                             displayName
                             spec
+                            updatedAt
                         }
                     }
                 }
