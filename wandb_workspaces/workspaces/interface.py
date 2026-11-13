@@ -39,13 +39,12 @@ from annotated_types import Annotated, Ge
 from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, model_validator
 from pydantic.dataclasses import dataclass
 
-from wandb_workspaces._graphql import get_app_url
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
 from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns, _generate_name
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
-from . import internal
+from . import _api, _view_names, internal
 from ._run_color_groups import (
     RUN_COLOR_GROUP_KEY_PREFIX,
     GroupPath,
@@ -940,13 +939,13 @@ class Workspace(Base):
                 "save workspace or explicitly pass `_internal_name` to get a url"
             )
 
-        base = urlparse(get_app_url(wandb.Api()))
+        base = urlparse(_api.app_url())
 
         scheme = base.scheme
         netloc = base.netloc
         path = os.path.join(self.entity, self.project)
         params = ""
-        query = f"nw={internal._internal_name_to_url_query_str(self._internal_name)}"
+        query = f"nw={_view_names._internal_name_to_url_query_str(self._internal_name)}"
         fragment = ""
 
         return urlunparse((scheme, netloc, path, params, query, fragment))
@@ -1348,11 +1347,11 @@ class Workspace(Base):
         parsed_url = urlparse(url)
         qp = parse_qs(parsed_url.query)
         qp_view_name = qp.get("nw", [""])[0]
-        internal_view_name = internal._url_query_str_to_internal_name(qp_view_name)
+        internal_view_name = _view_names._url_query_str_to_internal_name(qp_view_name)
 
         _, entity, project = parsed_url.path.split("/")
 
-        view = internal.View.from_name(entity, project, internal_view_name)
+        view = _api.fetch_view(entity, project, internal_view_name)
         return cls._from_model(view)
 
     def save(self):
@@ -1366,9 +1365,9 @@ class Workspace(Base):
 
         # If creating a new view with `ws.Workspace(...)`
         if not view.name:
-            view.name = internal._generate_view_name()
+            view.name = _view_names._generate_view_name()
 
-        resp = internal.upsert_view2(view)
+        resp = _api.upsert_view2(view)
         self._internal_name = resp["upsertView"]["view"]["name"]
         self._internal_id = resp["upsertView"]["view"]["id"]
 
@@ -1385,10 +1384,10 @@ class Workspace(Base):
         view = self._to_model()
 
         # Generate a new view name and ID
-        view.name = internal._generate_view_name()
+        view.name = _view_names._generate_view_name()
         view.id = ""
 
-        resp = internal.upsert_view2(view)
+        resp = _api.upsert_view2(view)
         self._internal_name = resp["upsertView"]["view"]["name"]
         self._internal_id = resp["upsertView"]["view"]["id"]
 
