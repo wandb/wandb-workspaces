@@ -19,6 +19,7 @@ from .fake_view_server import (
     capture_termwarns,
     load_workspace,
     sends_last_updated_at,
+    service_api_error,
     view_spec_conflict_error,
 )
 
@@ -124,11 +125,15 @@ def test_save_raises_conflict_error_when_view_changed_between_saves():
 @pytest.mark.parametrize(
     "error",
     [
-        Exception("VIEW_SPEC_CONFLICT: workspace changed since you loaded it"),
+        view_spec_conflict_error(),
+        # Still detected if the server rewords the message.
+        service_api_error("view was modified", 409),
+        # Or if the transport keeps no status.
         Exception("Workspace changed since you loaded it"),
     ],
+    ids=["as-sent", "status-only", "message-only"],
 )
-def test_conflict_detected_from_error_text(error):
+def test_conflict_detected_from_status_or_message(error):
     assert ws_api._is_view_spec_conflict(error)
 
 
@@ -146,6 +151,17 @@ def test_conflict_is_not_mistaken_for_an_old_server():
 
     assert len(server.upserts()) == 1
     assert server.updated_at == UPDATED_AT_EDITED_ELSEWHERE
+
+
+def test_409_on_create_is_not_a_conflict():
+    error = service_api_error("view already exists", 409)
+    server = FakeViewServer(upsert_error=error)
+
+    with patch("wandb.Api", return_value=server.api):
+        with pytest.raises(Exception) as e:
+            ws.Workspace(entity="ent", project="proj").save()
+
+    assert e.value is error
 
 
 def test_other_save_errors_are_raised_without_retry():

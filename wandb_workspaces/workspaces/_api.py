@@ -13,7 +13,7 @@ from ._view_names import (
 )
 from .internal import CLIENT_SPEC_VERSION, View, WorkspaceViewspec
 
-VIEW_SPEC_CONFLICT_CODE = "VIEW_SPEC_CONFLICT"
+VIEW_SPEC_CONFLICT_STATUS = 409
 VIEW_SPEC_CONFLICT_MESSAGE = "workspace changed since you loaded it"
 
 
@@ -46,11 +46,17 @@ def fetch_view(entity: str, project: str, view_name: str) -> View:
     )
 
 
+def _http_status(error: Exception) -> Optional[int]:
+    # The service transport attaches the response; 0 means no status was recorded.
+    response = getattr(error, "response", None)
+    return getattr(response, "http_status", None) or None
+
+
 def _is_view_spec_conflict(error: Exception) -> bool:
-    # The service transport keeps only the error message, not the code in the
-    # GraphQL extensions, so match either.
-    text = str(error)
-    return VIEW_SPEC_CONFLICT_CODE in text or VIEW_SPEC_CONFLICT_MESSAGE in text.lower()
+    return (
+        _http_status(error) == VIEW_SPEC_CONFLICT_STATUS
+        or VIEW_SPEC_CONFLICT_MESSAGE in str(error).lower()
+    )
 
 
 def _is_unknown_last_updated_at_field(error: Exception) -> bool:
@@ -94,7 +100,7 @@ def _execute_upsert(
     try:
         return execute_graphql(api, query, variables)
     except Exception as e:
-        if _is_view_spec_conflict(e):
+        if last_updated_at is not None and _is_view_spec_conflict(e):
             raise ViewSpecConflictError(
                 f"Workspace `{view.display_name}` changed since it was loaded, so "
                 "the save was refused to avoid overwriting those changes. Reload it "
