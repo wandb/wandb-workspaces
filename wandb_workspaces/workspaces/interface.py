@@ -1372,8 +1372,8 @@ class Workspace(Base):
             ViewSpecConflictError: The workspace changed on the server since it
                 was loaded. Reload it with `Workspace.from_url`, reapply your
                 edits, and save again. The server compares last-update times to
-                the second, so a change saved in the same second as the load
-                isn't detected.
+                the second, so a change saved in the same second as the version
+                you loaded, or as your own last save, isn't detected.
         """
         view = self._to_model()
 
