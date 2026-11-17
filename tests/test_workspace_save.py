@@ -132,6 +132,22 @@ def test_conflict_detected_from_error_text(error):
     assert ws_api._is_view_spec_conflict(error)
 
 
+def test_conflict_is_not_mistaken_for_an_old_server():
+    # The conflict message quotes the workspace name, which here matches the
+    # error an old server gives. The save must still be refused, not retried.
+    server = FakeViewServer()
+    workspace = load_workspace(server)
+    workspace.name = 'In field "lastUpdatedAt": Unknown field'
+    server.edit_elsewhere()
+
+    with patch("wandb.Api", return_value=server.api):
+        with pytest.raises(ws.ViewSpecConflictError):
+            workspace.save()
+
+    assert len(server.upserts()) == 1
+    assert server.updated_at == UPDATED_AT_EDITED_ELSEWHERE
+
+
 def test_other_save_errors_are_raised_without_retry():
     error = RuntimeError("permission denied")
     server = FakeViewServer(upsert_error=error)

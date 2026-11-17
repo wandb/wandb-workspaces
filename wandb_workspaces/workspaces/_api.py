@@ -140,17 +140,20 @@ def upsert_view2(view: View) -> Dict[str, Any]:
 
     try:
         return _execute_upsert(api, view, variables, view.updated_at)
+    except ViewSpecConflictError:
+        raise
     except Exception as e:
         # TODO: Remove this fallback once 0.83 is out of support (2027-07-22);
         # every supported server will then accept `lastUpdatedAt` (added in 0.84).
-        if not _is_unknown_last_updated_at_field(e):
+        if _is_unknown_last_updated_at_field(e):
+            wandb.termwarn(
+                "This W&B server does not support conflict checks on workspace saves. "
+                "Saving without one, so this save may overwrite changes made since the "
+                "workspace was loaded."
+            )
+            return _execute_upsert(api, view, variables, last_updated_at=None)
+        else:
             raise
-    wandb.termwarn(
-        "This W&B server does not support conflict checks on workspace saves. "
-        "Saving without one, so this save may overwrite changes made since the "
-        "workspace was loaded."
-    )
-    return _execute_upsert(api, view, variables, last_updated_at=None)
 
 
 def get_view_dict(entity: str, project: str, view_name: str) -> Dict[str, Any]:
