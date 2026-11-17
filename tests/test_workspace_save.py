@@ -213,16 +213,16 @@ def test_unknown_last_updated_at_field_not_matched_by_other_errors(error):
     assert not ws_api._is_unknown_last_updated_at_field(error)
 
 
-def test_save_existing_view_without_updated_at_is_refused():
-    # A server that returns a view without updatedAt, e.g. an old row whose
-    # updated_at is NULL: the next save can't be checked, so it is refused.
+def test_save_existing_view_without_updated_at_saves_unchecked():
+    # A server that returns a view without updatedAt, like a row whose
+    # updated_at is NULL: there is nothing to check, so save without it.
     server = FakeViewServer(saved_updated_ats=())
 
     with patch("wandb.Api", return_value=server.api):
         workspace = ws.Workspace(entity="ent", project="proj")
         workspace.save()
-        with pytest.raises(ValueError, match="last update time is unknown"):
-            workspace.save()
+        workspace.save()
 
-    # Only the create was sent, so nothing on the server can be overwritten.
-    assert len(server.upserts()) == 1
+    create, update = server.upserts()
+    assert update[1]["id"] == "view-id"
+    assert not sends_last_updated_at(update)

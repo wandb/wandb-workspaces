@@ -133,17 +133,6 @@ def upsert_view2(view: View) -> Dict[str, Any]:
     # Updating an existing view: `id` exists, so add it to variables
     variables["id"] = view.id
 
-    # Loading or saving a view always returns its updatedAt, so a missing one
-    # means the workspace did not come from the server. Refuse rather than
-    # save without a conflict check.
-    if view.updated_at is None:
-        raise ValueError(
-            f"Can't save workspace `{view.display_name}`: it exists on the server "
-            "but its last update time is unknown, so the save can't be checked for "
-            "conflicts. Load it with `Workspace.from_url` and save that, or use "
-            "`save_as_new_view()`."
-        )
-
     try:
         return _execute_upsert(api, view, variables, view.updated_at)
     except ViewSpecConflictError:
