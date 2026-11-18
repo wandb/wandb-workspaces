@@ -32,6 +32,8 @@ def test_report_and_workspace_imports_do_not_require_wandb_gql():
             "wandb_workspaces.reports.v1.mutations",
             "wandb_workspaces.reports.v2",
             "wandb_workspaces.workspaces.internal",
+            "wandb_workspaces.workspaces._api",
+            "wandb_workspaces.workspaces._view_names",
         ]:
             importlib.import_module(module_name)
 
