@@ -1,0 +1,212 @@
+{
+  "section": {
+    "name": "Original Wrapper",
+    "version": 9,
+    "panelBankConfig": {
+      "state": 1,
+      "settings": {
+        "autoOrganizePrefix": 1,
+        "showEmptySections": true,
+        "sortAlphabetically": true,
+        "searchQuery": "loss"
+      },
+      "panelPlacementOverrides": {
+        "loss": {
+          "sectionId": "section-1",
+          "orderKey": "a0"
+        }
+      },
+      "panelConfigOverrides": {
+        "loss": {
+          "config": {
+            "chartTitle": "Loss"
+          },
+          "layout": {
+            "w": 8
+          }
+        }
+      },
+      "sections": [
+        {
+          "__id__": "section-1",
+          "defaultName": "Charts",
+          "name": "Charts",
+          "isOpen": true,
+          "flowConfig": {
+            "snapToColumns": false,
+            "columnsPerPage": 4,
+            "rowsPerPage": 5,
+            "gutterWidth": 24,
+            "boxWidth": 500,
+            "boxHeight": 320,
+            "mobileColumnsPerPage": 1
+          },
+          "sorted": 1,
+          "sectionSettings": {
+            "linePlot": {
+              "showLegend": false
+            }
+          },
+          "panels": [
+            {
+              "__id__": "media-1",
+              "viewType": "Media Browser",
+              "config": {
+                "chartTitle": "Image Samples",
+                "columnCount": 5,
+                "mediaKeys": [
+                  "examples/image"
+                ],
+                "mode": "grid",
+                "gridSettings": {
+                  "xAxis": "step",
+                  "yAxis": "run"
+                },
+                "actualSize": true,
+                "fitToDimension": true,
+                "pixelated": true,
+                "stepIndex": 5,
+                "maxGalleryItems": 100,
+                "maxRuns": 20,
+                "videoPlaybackSyncEnabled": true
+              },
+              "layout": {
+                "x": 0,
+                "y": 0,
+                "w": 12,
+                "h": 8
+              }
+            }
+          ],
+          "pinned": true
+        }
+      ]
+    },
+    "panelBankSectionConfig": {
+      "__id__": "section-hidden",
+      "name": "Hidden Panels",
+      "isOpen": false,
+      "panels": [],
+      "pinned": false
+    },
+    "customRunColors": {
+      "run-a": "#ff0000"
+    },
+    "customRunNames": {
+      "run-a": "Best Run"
+    },
+    "workspaceSettings": {
+      "linePlot": {
+        "showLegend": false
+      },
+      "media": {
+        "maxRuns": 5
+      }
+    },
+    "semanticLegendSettings": {
+      "runColorOptions": "semantic-legend",
+      "excludedRunColor": "#cccccc"
+    },
+    "runSets": [
+      {
+        "id": "rs1",
+        "name": "Custom Run Set",
+        "enabled": false,
+        "runFeed": {
+          "version": 2,
+          "columnVisible": {
+            "run:name": true,
+            "config:lr": true
+          },
+          "columnPinned": {
+            "run:displayName": true,
+            "config:lr": true
+          },
+          "columnWidths": {
+            "run:name": 222
+          },
+          "columnOrder": [
+            "run:displayName",
+            "config:lr",
+            "summary:loss"
+          ],
+          "pageSize": 50,
+          "onlyShowSelected": true
+        },
+        "search": {
+          "query": "abc",
+          "isRegex": true
+        },
+        "filters": {
+          "op": "OR",
+          "filters": [
+            {
+              "op": "AND",
+              "filters": []
+            }
+          ]
+        },
+        "grouping": [
+          {
+            "section": "config",
+            "name": "epochs"
+          }
+        ],
+        "sort": {
+          "keys": [
+            {
+              "key": {
+                "section": "run",
+                "name": "createdAt"
+              },
+              "ascending": false
+            },
+            {
+              "key": {
+                "section": "config",
+                "name": "pbt.workspace.value"
+              },
+              "ascending": true
+            },
+            {
+              "key": {
+                "section": "config",
+                "name": "pbt.value.workspace"
+              },
+              "ascending": false
+            }
+          ]
+        },
+        "selections": {
+          "root": 1,
+          "bounds": [
+            {
+              "key": {
+                "section": "run",
+                "name": "createdAt"
+              },
+              "op": ">=",
+              "value": "2026-01-01T00:00:00Z"
+            }
+          ],
+          "tree": [
+            "run-b"
+          ]
+        },
+        "expandedRowAddresses": [
+          "0/run-b"
+        ]
+      }
+    ],
+    "settings": {
+      "xAxis": "_runtime",
+      "xAxisMin": 1,
+      "xAxisMax": 9,
+      "smoothingType": "gaussian",
+      "smoothingWeight": 4,
+      "excludeOutliers": "exclude-outliers"
+    },
+    "openRunSet": 3,
+    "openViz": false
+  }
+}
