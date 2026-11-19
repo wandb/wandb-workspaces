@@ -28,7 +28,6 @@ report.save()
 
 import base64
 import copy
-import os
 import warnings
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Tuple, Union
@@ -3661,7 +3660,10 @@ class Report(Base):
 
         scheme = base.scheme
         netloc = base.netloc
-        path = os.path.join(self.entity, self.project, "reports", f"{title}--{self.id}")
+        # The app URL can carry a path of its own, as in
+        # https://forge.coreweave.com/wandb. Report pages live under it.
+        app_path = base.path.rstrip("/")
+        path = f"{app_path}/{self.entity}/{self.project}/reports/{title}--{self.id}"
         params = ""
         query = ""
         fragment = ""
@@ -4020,7 +4022,13 @@ def _url_to_report_id(url):
     parse_result = urlparse(url)
     path = parse_result.path
 
-    _, entity, project, _, name = path.split("/")
+    # The report name is the last path segment. Segments before
+    # {entity}/{project}/reports belong to the app URL's own path, as in
+    # https://forge.coreweave.com/wandb/{entity}/{project}/reports/{name}.
+    segments = [segment for segment in path.split("/") if segment]
+    if len(segments) < 4:
+        raise ValueError(f"Attempted to parse invalid report URL: {url}")
+    name = segments[-1]
 
     # Use rfind to find the last occurrence of '--'
     separator_position = name.rfind("--")
