@@ -1,0 +1,246 @@
+{
+  "section": {
+    "name": "",
+    "version": 1,
+    "openRunSet": 0,
+    "openViz": true,
+    "runSets": [
+      {
+        "id": "ijc42mvj2",
+        "runFeed": {
+          "version": 2,
+          "columnVisible": {
+            "run:name": false
+          },
+          "columnPinned": {},
+          "columnWidths": {},
+          "columnOrder": [],
+          "pageSize": 20,
+          "onlyShowSelected": false,
+          "metricValences": {}
+        },
+        "search": {
+          "query": ""
+        },
+        "searchHistory": [],
+        "name": "Run set",
+        "enabled": true,
+        "runNameTruncationType": "Middle",
+        "filters": {
+          "filterFormat": "filterV2",
+          "filters": [
+            {
+              "key": {
+                "section": "run",
+                "name": ""
+              },
+              "op": "=",
+              "value": "",
+              "disabled": true
+            },
+            {
+              "key": {
+                "section": "run",
+                "name": ""
+              },
+              "op": "=",
+              "value": "",
+              "disabled": true
+            }
+          ]
+        },
+        "grouping": [],
+        "sort": {
+          "keys": [
+            {
+              "key": {
+                "section": "run",
+                "name": "createdAt"
+              },
+              "ascending": false
+            }
+          ]
+        },
+        "selections": {
+          "root": 1,
+          "bounds": [],
+          "tree": []
+        },
+        "expandedRowAddresses": []
+      }
+    ],
+    "panelBankConfig": {
+      "state": 1,
+      "settings": {
+        "showEmptySections": false,
+        "sortAlphabetically": false
+      },
+      "sections": [
+        {
+          "__id__": "8lbdajj96",
+          "name": "Charts",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "Charts",
+          "panels": []
+        },
+        {
+          "__id__": "87tze9sqj",
+          "name": "custom",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "custom",
+          "panels": []
+        },
+        {
+          "__id__": "a7enxwzcz",
+          "name": "eval",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "eval",
+          "panels": []
+        },
+        {
+          "__id__": "rxncmtzu7",
+          "name": "figures",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "figures",
+          "panels": []
+        },
+        {
+          "__id__": "kv62tanlj",
+          "name": "gradients",
+          "isOpen": false,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "gradients",
+          "panels": []
+        },
+        {
+          "__id__": "2cbzlv3oz",
+          "name": "loss_components",
+          "isOpen": false,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "loss_components",
+          "panels": []
+        },
+        {
+          "__id__": "kmyysbbkf",
+          "name": "media",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "media",
+          "panels": []
+        },
+        {
+          "__id__": "7n4nnm8by",
+          "name": "optim",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "optim",
+          "panels": []
+        },
+        {
+          "__id__": "72t2wrmz5",
+          "name": "system_sim",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "system_sim",
+          "panels": []
+        },
+        {
+          "__id__": "g40q4271u",
+          "name": "Tables",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "Tables",
+          "panels": []
+        },
+        {
+          "__id__": "7kz9in5yx",
+          "name": "train",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "train",
+          "panels": []
+        },
+        {
+          "__id__": "gk3aiw3mv",
+          "name": "val",
+          "isOpen": false,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "val",
+          "panels": []
+        },
+        {
+          "__id__": "qip2x26eh",
+          "name": "weights",
+          "isOpen": false,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "weights",
+          "panels": []
+        },
+        {
+          "__id__": "pex03eqh0",
+          "name": "System",
+          "isOpen": true,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": true,
+          "defaultName": "System",
+          "panels": []
+        },
+        {
+          "__id__": "gfs1v0ex4",
+          "name": "Hidden Panels",
+          "isOpen": false,
+          "sorted": 0,
+          "pinned": false,
+          "isPanelsAuto": false,
+          "panels": []
+        }
+      ]
+    },
+    "panelBankSectionConfig": {
+      "__id__": "o44k6e3d0",
+      "name": "Report Panels",
+      "isOpen": false,
+      "sorted": 0,
+      "pinned": false,
+      "panels": []
+    },
+    "customRunColors": {},
+    "customRunNames": {},
+    "workspaceSettings": {
+      "linePlot": {},
+      "scatterDefaultByWorkspaceType": true
+    },
+    "semanticLegendSettings": {}
+  }
+}
