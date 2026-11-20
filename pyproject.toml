@@ -49,6 +49,7 @@ dev = [
     "coverage>=7.5.3,<8",
     "deepdiff>=9.1.0",
     "jsonschema>=4.26.0",
+    "datamodel-code-generator==0.99.0 ; python_full_version >= '3.11'",
 ]
 
 [build-system]
