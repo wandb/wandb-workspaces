@@ -108,10 +108,11 @@ def write_errors(
 
 def load_spec(path: pathlib.Path) -> Dict[str, Any]:
     """Read a spec file: either the spec itself, or a stored view row whose
-    `spec` field holds the spec as a JSON string."""
+    `spec` field holds the spec, as a JSON string or an object."""
     data = json.loads(path.read_text())
-    if isinstance(data.get("spec"), str):
-        return json.loads(data["spec"])
+    if "section" not in data and "spec" in data:
+        spec = data["spec"]
+        return json.loads(spec) if isinstance(spec, str) else spec
     return data
 
 
@@ -120,8 +121,16 @@ def committed_specs() -> List[pathlib.Path]:
 
 
 def corpus_root() -> Optional[pathlib.Path]:
+    """The directory `SPEC_CORPUS` names, or None when it is unset. A path
+    that is not a directory raises, so a typo does not pass as an empty
+    corpus."""
     root = os.environ.get(CORPUS_ENV)
-    return pathlib.Path(root).expanduser() if root else None
+    if not root:
+        return None
+    path = pathlib.Path(root).expanduser()
+    if not path.is_dir():
+        raise NotADirectoryError(f"{CORPUS_ENV}={root} is not a directory")
+    return path
 
 
 def corpus_specs() -> List[pathlib.Path]:

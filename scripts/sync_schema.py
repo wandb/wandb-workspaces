@@ -43,7 +43,9 @@ def main():
     commit = gh_api(f"repos/{REPO}/commits/{args.ref}")
     sha = commit["sha"]
 
-    DEST.mkdir(parents=True, exist_ok=True)
+    # Download and parse every file before writing any, so a failed download
+    # cannot leave files from different core commits on disk.
+    downloaded = {}
     for name in FILES:
         blob = gh_api(f"repos/{REPO}/contents/{SOURCE_DIR}/{name}?ref={sha}")
         if blob.get("encoding") == "base64" and blob.get("content"):
@@ -51,8 +53,11 @@ def main():
         else:
             # Files over 1 MB come back without content; fetch the blob.
             data = base64.b64decode(gh_api(blob["git_url"])["content"])
-        # Parse to fail loudly on a bad download, and write it unchanged.
         json.loads(data)
+        downloaded[name] = data
+
+    DEST.mkdir(parents=True, exist_ok=True)
+    for name, data in downloaded.items():
         (DEST / name).write_bytes(data)
 
     source = {

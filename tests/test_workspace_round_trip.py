@@ -5,8 +5,10 @@ it through the public API, saves it, and checks the spec the save sent. They
 only touch JSON in and JSON out, so they hold across a change of the internal
 models.
 
-The main fixture, tests/specs/ported-156.json, passes the view spec schema's
-write contract (packages/wandb-schemas in wandb/core, pinned in
+The main fixture, tests/specs/unmodeled-fields.json, is hand-built from
+#156's: at each level (section, panel bank, a Media Browser panel, run set and
+run feed) it sets fields the SDK has no attribute for. It passes the view spec
+schema's write contract (packages/wandb-schemas in wandb/core, pinned in
 schema/viewspec/), so it is a spec the app would save today. Against #156's
 version, it drops the legacy `localPanelSettings` and `settings.ignoreOutliers`,
 which load migrates, and fills in a selection bound's `op` and the hidden
@@ -18,10 +20,13 @@ under the legacy `settings`) were not ported: the write contract rejects
 them, so keeping them is not frontend behavior.
 
 `xfail(strict=True)` marks a field main drops or rewrites today. When a fix
-makes one pass, strict xfail fails the run until its mark is removed.
+makes one pass, strict xfail fails the run until its mark is removed. Only an
+AssertionError counts as the expected failure, so a crash while loading,
+editing or saving still shows as an error.
 """
 
 import copy
+import json
 
 import pytest
 
@@ -31,8 +36,13 @@ from .fake_view_server import fetch_then_save
 from .spec_harness import SPECS_DIR, load_spec
 
 DROPPED_ON_MAIN = pytest.mark.xfail(
-    strict=True, reason="main drops or rewrites this field on save"
+    strict=True,
+    raises=AssertionError,
+    reason="main drops or rewrites this field on save",
 )
+
+# What `_get` returns for a path the spec does not have.
+MISSING = "<missing>"
 
 
 def _empty_section(**overrides):
@@ -47,15 +57,25 @@ def _empty_section(**overrides):
 
 
 def _get(spec, path):
+    """The value at `path`, or MISSING, so a dropped field fails the
+    assertion rather than raising KeyError."""
     node = spec
     for part in path:
-        node = node[part]
+        try:
+            node = node[part]
+        except (KeyError, IndexError, TypeError):
+            return MISSING
     return node
 
 
-# A workspace as the app stores it, carrying fields the SDK has no attribute
-# for. It is also in the spec corpus that test_spec_corpus.py runs.
-LOADED_SPEC = load_spec(SPECS_DIR / "ported-156.json")
+def _as_json(value):
+    """Compare as JSON so `true` and `1`, or `1` and `1.0`, differ."""
+    return json.dumps(value, sort_keys=True)
+
+
+# A workspace that sets fields the SDK has no attribute for. It is also in
+# the spec corpus that test_spec_corpus.py runs.
+LOADED_SPEC = load_spec(SPECS_DIR / "unmodeled-fields.json")
 
 
 def _case(path, *, dropped):
@@ -121,7 +141,7 @@ def unedited_save():
 
 @pytest.mark.parametrize("path", PRESERVED_PATHS)
 def test_unedited_save_keeps_field(unedited_save, path):
-    assert _get(unedited_save, path) == _get(LOADED_SPEC, path)
+    assert _as_json(_get(unedited_save, path)) == _as_json(_get(LOADED_SPEC, path))
 
 
 ADDITIVE_TREE = [{"value": "group-a", "children": ["run-a", "run-b"], "skip": False}]

@@ -2,7 +2,9 @@
 
 The committed specs in tests/specs/ stand for workspaces the app authored
 today: each must itself pass the write contract, so a fixture cannot carry a
-key the app would not save. Each is loaded, saved without edits, and checked
+key the app would not save. app-panel-sandbox.json is a workspace the app
+saved on Forge, with the root `vizExpanded` and `libraryExpanded` removed:
+the app still writes them, but the schema calls them stray. Each is loaded, saved without edits, and checked
 three ways: the save drops or changes nothing, adds nothing, and passes the
 write contract.
 
@@ -30,20 +32,21 @@ from .spec_harness import (
     write_errors,
 )
 
-# Committed specs main does not round-trip, by file stem. Strict, so a spec
-# that starts passing must come off the list.
-LOSSY_ON_MAIN = {"ported-156"}
+# Committed specs that fail a check on main, by file stem, one set per check.
+# Strict, so a spec that starts passing a check must come off that set. Only
+# an AssertionError counts, so a crash while loading or saving still shows.
+LOSES_FIELDS_ON_MAIN = {"app-panel-sandbox", "unmodeled-fields"}
+ADDS_FIELDS_ON_MAIN = {"app-panel-sandbox", "unmodeled-fields"}
+BREAKS_WRITE_CONTRACT_ON_MAIN = {"app-panel-sandbox", "unmodeled-fields"}
 
 
-def _committed(lossy_on_main):
-    marks = []
-    if lossy_on_main:
-        marks = [pytest.mark.xfail(strict=True, reason="main drops fields on save")]
+def _committed(failing_on_main=frozenset(), reason=""):
+    mark = pytest.mark.xfail(strict=True, raises=AssertionError, reason=reason)
     return [
         pytest.param(
             p,
             id=p.stem,
-            marks=marks if p.stem in LOSSY_ON_MAIN else [],
+            marks=[mark] if p.stem in failing_on_main else [],
         )
         for p in committed_specs()
     ]
@@ -66,27 +69,43 @@ def _format_errors(errors):
     return "\n".join(f"{path}: {message}" for path, message in errors)
 
 
-@pytest.mark.parametrize("path", _committed(lossy_on_main=False))
+@pytest.mark.parametrize("path", _committed())
 def test_committed_spec_is_one_the_app_would_save(path):
     errors = write_errors(load_spec(path))
     assert not errors, _format_errors(errors)
 
 
-@pytest.mark.parametrize("path", _committed(lossy_on_main=True) + _corpus())
+@pytest.mark.parametrize(
+    "path",
+    _committed(LOSES_FIELDS_ON_MAIN, reason="main drops or rewrites fields on save")
+    + _corpus(),
+)
 def test_unedited_save_loses_nothing(path):
     spec, saved = _saved(path)
     diff = diff_specs(spec, saved)
     assert diff.is_lossless, diff.summary()
 
 
-@pytest.mark.parametrize("path", _committed(lossy_on_main=True))
+@pytest.mark.parametrize(
+    "path",
+    _committed(ADDS_FIELDS_ON_MAIN, reason="main adds default keys on save"),
+)
 def test_unedited_save_adds_nothing(path):
     spec, saved = _saved(path)
     diff = diff_specs(spec, saved)
     assert not diff.added, diff.summary()
 
 
-@pytest.mark.parametrize("path", _committed(lossy_on_main=True))
+@pytest.mark.parametrize(
+    "path",
+    _committed(
+        BREAKS_WRITE_CONTRACT_ON_MAIN,
+        reason=(
+            "main writes keys the write contract rejects, such as the root"
+            " vizExpanded and libraryExpanded"
+        ),
+    ),
+)
 def test_unedited_save_passes_the_write_contract(path):
     _, saved = _saved(path)
     errors = write_errors(saved)
