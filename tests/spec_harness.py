@@ -1,6 +1,6 @@
 """Compare a workspace spec before and after a fetch-then-save.
 
-`diff_specs` reports every JSON path a save dropped, added or changed, and
+`diff_specs` lists every JSON path a save dropped, added or changed, and
 `write_errors` checks a spec against the view spec schema's write contract,
 the only shape a client may save. The schema is the copy pinned in
 schema/viewspec/ (see scripts/sync_schema.py).
@@ -18,7 +18,6 @@ import pathlib
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import jsonschema
-from deepdiff import DeepDiff
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA_DIR = REPO_ROOT / "schema" / "viewspec"
@@ -26,10 +25,6 @@ SPECS_DIR = pathlib.Path(__file__).resolve().parent / "specs"
 CORPUS_ENV = "SPEC_CORPUS"
 
 Path = Tuple[Any, ...]
-
-_DROPPED = ("dictionary_item_removed", "iterable_item_removed")
-_ADDED = ("dictionary_item_added", "iterable_item_added")
-_CHANGED = ("values_changed", "type_changes")
 
 
 def format_path(path: Path) -> str:
@@ -64,28 +59,42 @@ def diff_specs(loaded: Dict[str, Any], saved: Dict[str, Any]) -> SpecDiff:
     """The paths `saved` dropped, added or changed relative to `loaded`.
 
     A dropped or added object counts once, at its own path, not once per key
-    inside it. A number that changes only its type (`0` to `0.0`) is not a
-    change: the spec is JSON read by the app, where both are the same value.
+    inside it. Lists are compared position by position. A number that changes
+    only its type (`0` to `0.0`) is not a change: the spec is JSON read by the
+    app, where both are the same value. A boolean and a number (`true` and
+    `1`) are different values, as they are in JSON.
     """
-    tree = DeepDiff(
-        loaded,
-        saved,
-        view="tree",
-        verbose_level=2,
-        ignore_numeric_type_changes=True,
-    )
+    diff = SpecDiff(dropped=[], added=[], changed=[])
+    _walk(loaded, saved, (), diff)
+    for paths in (diff.dropped, diff.added, diff.changed):
+        paths.sort(key=lambda p: [str(x) for x in p])
+    return diff
 
-    def paths(kinds):
-        found = [
-            tuple(level.path(output_format="list"))
-            for kind in kinds
-            for level in tree.get(kind, [])
-        ]
-        return sorted(found, key=lambda p: [str(x) for x in p])
 
-    return SpecDiff(
-        dropped=paths(_DROPPED), added=paths(_ADDED), changed=paths(_CHANGED)
-    )
+def _walk(loaded: Any, saved: Any, path: Path, diff: SpecDiff) -> None:
+    if isinstance(loaded, dict) and isinstance(saved, dict):
+        for key, value in loaded.items():
+            if key in saved:
+                _walk(value, saved[key], path + (key,), diff)
+            else:
+                diff.dropped.append(path + (key,))
+        diff.added += [path + (key,) for key in saved if key not in loaded]
+    elif isinstance(loaded, list) and isinstance(saved, list):
+        for i, (a, b) in enumerate(zip(loaded, saved)):
+            _walk(a, b, path + (i,), diff)
+        diff.dropped += [path + (i,) for i in range(len(saved), len(loaded))]
+        diff.added += [path + (i,) for i in range(len(loaded), len(saved))]
+    elif not _same_value(loaded, saved):
+        diff.changed.append(path)
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    """Equal as JSON values: `0 == 0.0`, but `true != 1` and `1 != "1"`."""
+    if isinstance(a, bool) or isinstance(b, bool):
+        return isinstance(a, bool) and isinstance(b, bool) and a == b
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return a == b
+    return type(a) is type(b) and a == b
 
 
 @functools.lru_cache(maxsize=None)

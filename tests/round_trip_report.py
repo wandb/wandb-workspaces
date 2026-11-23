@@ -1,4 +1,8 @@
-"""Report what a no-edit fetch-then-save does to each spec in a corpus.
+"""Check the SDK against a real workspace without writing to one.
+
+For each spec it reports what a fetch-then-save without edits would drop,
+change or add, for finding regressions in what a save keeps, during the model
+migration and after it.
 
     uv run python -m tests.round_trip_report [SOURCE ...] [--paths N]
 
