@@ -4,9 +4,9 @@ The committed specs in tests/specs/ stand for workspaces the app authored
 today: each must itself pass the write contract, so a fixture cannot carry a
 key the app would not save. app-panel-sandbox.json is a workspace the app
 saved on Forge, with the root `vizExpanded` and `libraryExpanded` removed:
-the app still writes them, but the schema calls them stray. Each is loaded, saved without edits, and checked
-three ways: the save drops or changes nothing, adds nothing, and passes the
-write contract.
+the app still writes them, but the schema calls them stray. Each spec is
+loaded, saved without edits, and checked three ways: the save drops or
+changes nothing, adds nothing, and passes the write contract.
 
 Specs under `SPEC_CORPUS` (outside the repo) are marked `corpus` and only
 checked for loss: stored workspaces still carry legacy keys that load

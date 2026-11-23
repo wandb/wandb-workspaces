@@ -64,9 +64,16 @@ def diff_specs(loaded: Dict[str, Any], saved: Dict[str, Any]) -> SpecDiff:
     """The paths `saved` dropped, added or changed relative to `loaded`.
 
     A dropped or added object counts once, at its own path, not once per key
-    inside it.
+    inside it. A number that changes only its type (`0` to `0.0`) is not a
+    change: the spec is JSON read by the app, where both are the same value.
     """
-    tree = DeepDiff(loaded, saved, view="tree", verbose_level=2)
+    tree = DeepDiff(
+        loaded,
+        saved,
+        view="tree",
+        verbose_level=2,
+        ignore_numeric_type_changes=True,
+    )
 
     def paths(kinds):
         found = [

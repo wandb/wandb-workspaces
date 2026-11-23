@@ -45,12 +45,29 @@ DROPPED_ON_MAIN = pytest.mark.xfail(
 MISSING = "<missing>"
 
 
+def _run_set(**overrides):
+    """A run set with every field the read contract requires, so the spec
+    loads whether the SDK fills in defaults or validates against the schema."""
+    run_set = {
+        "id": "rs1",
+        "filters": {"op": "OR", "filters": [{"op": "AND", "filters": []}]},
+        "grouping": [],
+        "selections": {"root": 1, "bounds": [], "tree": []},
+    }
+    run_set.update(overrides)
+    return run_set
+
+
 def _empty_section(**overrides):
     section = {
         "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
-        "panelBankSectionConfig": {},
+        "panelBankSectionConfig": {
+            "name": "Hidden Panels",
+            "isOpen": False,
+            "panels": [],
+        },
         "customRunColors": {},
-        "runSets": [{"id": "rs1"}],
+        "runSets": [_run_set()],
     }
     section.update(overrides)
     return {"section": section}
@@ -155,10 +172,7 @@ def test_unedited_save_keeps_additive_selection_tree():
         _empty_section(
             customRunColors={"run-color": "#00ff00"},
             runSets=[
-                {
-                    "id": "rs1",
-                    "selections": {"root": 0, "bounds": [], "tree": ADDITIVE_TREE},
-                }
+                _run_set(selections={"root": 0, "bounds": [], "tree": ADDITIVE_TREE})
             ],
         )
     )
@@ -178,12 +192,7 @@ def test_enabling_a_run_adds_it_to_an_additive_selection_tree():
 
     saved = fetch_then_save(
         _empty_section(
-            runSets=[
-                {
-                    "id": "rs1",
-                    "selections": {"root": 0, "bounds": [], "tree": ["run-a"]},
-                }
-            ]
+            runSets=[_run_set(selections={"root": 0, "bounds": [], "tree": ["run-a"]})]
         ),
         edit=enable_run_b,
     )
@@ -212,14 +221,13 @@ def test_changing_pinned_columns_replaces_the_pinned_order():
     saved = fetch_then_save(
         _empty_section(
             runSets=[
-                {
-                    "id": "rs1",
-                    "runFeed": {
+                _run_set(
+                    runFeed={
                         "columnVisible": {"run:displayName": True, "summary:old": True},
                         "columnPinned": {"run:displayName": True, "summary:old": True},
                         "columnOrder": ["run:displayName", "summary:old"],
-                    },
-                }
+                    }
+                )
             ]
         ),
         edit=repin,

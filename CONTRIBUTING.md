@@ -12,6 +12,7 @@ This guide will help you set up your development environment for the `wandb-work
 - [Manual testing](#manual-testing)
 - [Automated testing](#automated-testing)
   - [Running tests](#running-tests)
+  - [Round-trip tests against stored workspaces](#round-trip-tests-against-stored-workspaces)
 
 ## Setting up your dev environment
 
@@ -138,3 +139,24 @@ uv run pytest tests/test_workspaces.py::test_save_workspace
 # Run tests with coverage report
 uv run pytest --cov=wandb_workspaces --cov-report=html
 ```
+
+### Round-trip tests against stored workspaces
+
+The SDK must be able to load a workspace the app saved, save it back, and lose nothing. The tests in `tests/test_workspace_round_trip.py`, `tests/test_spec_corpus.py` and `tests/test_workspace_new_content.py` check this by serving a stored spec from a fake server, loading it with `Workspace.from_url`, saving it (untouched or after an edit), and comparing the JSON the save sent with the JSON it loaded. They also check the saved spec against the view spec schema's write contract, pinned in `schema/viewspec/`.
+
+A check that main fails today is marked `xfail(strict=True)`. When a change fixes it, the test fails until its mark is removed, so each fix shows up in the diff.
+
+**Committed specs** live in `tests/specs/`. Each one must pass the write contract itself and must not identify a customer: build it by hand, or from a workspace of your own. Run `uv run pytest tests/test_spec_corpus.py` after adding one; the first test tells you if the write contract rejects it.
+
+**Checking a real workspace** is a read-only, in-memory operation. The report fetches the stored spec with your `wandb login` credentials for the URL's host, loads and saves it against a fake server, and prints what the save dropped, changed and added, plus any write-contract errors. Nothing is written back, and nothing is saved to disk:
+
+```bash
+uv run python -m tests.round_trip_report "https://wandb.ai/<entity>/<project>?nw=<id>"
+
+# Several at once, listing up to 5 paths of each kind per workspace
+uv run python -m tests.round_trip_report <url> <url> --paths 5
+```
+
+Hosts that prefix the path (such as `/wandb/<entity>/<project>`) and personal workspaces (stored as `nw-<id>-w`) both work. Set `WANDB_BASE_URL` to use another API host.
+
+The report also takes spec files and directories, and `SPEC_CORPUS=<dir> uv run pytest tests/test_spec_corpus.py -m corpus` runs one loss check per spec in a directory. Both only read specs you already have; the repo has no tool for saving them, and stored workspaces can hold customer data, so don't keep them in the repo. Corpus specs are only checked for loss, not against the write contract: stored workspaces still carry legacy keys that load migrates. Without `SPEC_CORPUS` the corpus tests are deselected, so the normal `uv run pytest` run doesn't need one.

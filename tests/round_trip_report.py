@@ -1,6 +1,6 @@
 """Report what a no-edit fetch-then-save does to each spec in a corpus.
 
-    uv run python -m tests.round_trip_report [SOURCE ...] [--paths N] [--save-to DIR]
+    uv run python -m tests.round_trip_report [SOURCE ...] [--paths N]
 
 SOURCE is a spec file, a directory of them, or a workspace URL. With none, it
 reads tests/specs/ and `SPEC_CORPUS`. For each spec it prints how many paths
@@ -10,10 +10,9 @@ saved spec has; `--paths N` also lists up to N paths of each kind.
 A URL is fetched read-only with your `wandb login` credentials for its host
 (`wandb.ai` reads from api.wandb.ai, `forge.coreweave.com` and
 `app.forge.coreweave.com` from api.forge.coreweave.com); set `WANDB_BASE_URL`
-to use another API host. The save still goes to a fake server, so nothing is
-written back. `--save-to DIR` keeps each fetched view row, which this report
-and the corpus tests read like any other spec file. DIR must be outside the
-repo: stored workspaces can hold customer data.
+to use another API host. The save goes to a fake server and the spec stays in
+memory, so nothing is written back or saved to disk: stored workspaces can
+hold customer data.
 """
 
 import argparse
@@ -24,7 +23,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 from urllib.parse import parse_qs, urlparse
 
 import wandb
@@ -33,7 +32,6 @@ from wandb_workspaces._graphql import execute_graphql
 
 from .fake_view_server import fetch_then_save
 from .spec_harness import (
-    REPO_ROOT,
     all_specs,
     diff_specs,
     format_path,
@@ -99,13 +97,9 @@ def _url_label(url: str) -> str:
     return "/".join(segments[-2:] + [nw])
 
 
-def _url_source(url: str, save_to: Optional[pathlib.Path]) -> Source:
+def _url_source(url: str) -> Source:
     def load():
         row = fetch_view_row(url)
-        if save_to is not None:
-            save_to.mkdir(parents=True, exist_ok=True)
-            name = _url_label(url).replace("/", "__") + ".json"
-            (save_to / name).write_text(json.dumps(row, indent=2) + "\n")
         return json.loads(row["spec"]), len(row["spec"]) / 1024
 
     return _url_label(url), load
@@ -115,13 +109,13 @@ def _file_source(path: pathlib.Path) -> Source:
     return path.name, lambda: (load_spec(path), path.stat().st_size / 1024)
 
 
-def _sources(args: List[str], save_to: Optional[pathlib.Path]) -> List[Source]:
+def _sources(args: List[str]) -> List[Source]:
     if not args:
         return [_file_source(p) for p in all_specs()]
     sources = []
     for arg in args:
         if arg.startswith(("http://", "https://")):
-            sources.append(_url_source(arg, save_to))
+            sources.append(_url_source(arg))
             continue
         p = pathlib.Path(arg).expanduser()
         files = sorted(p.rglob("*.json")) if p.is_dir() else [p]
@@ -129,20 +123,10 @@ def _sources(args: List[str], save_to: Optional[pathlib.Path]) -> List[Source]:
     return sources
 
 
-def _outside_repo(arg: str) -> pathlib.Path:
-    path = pathlib.Path(arg).expanduser().resolve()
-    if path == REPO_ROOT or REPO_ROOT in path.parents:
-        raise argparse.ArgumentTypeError(
-            f"{path} is inside the repo; fetched specs can hold customer data"
-        )
-    return path
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("sources", nargs="*", metavar="SOURCE")
     parser.add_argument("--paths", type=int, default=0, metavar="N")
-    parser.add_argument("--save-to", type=_outside_repo, metavar="DIR")
     args = parser.parse_args(argv)
 
     # The SDK prints a line per save and warns about panel order; keep the
@@ -150,7 +134,7 @@ def main(argv=None):
     wandb.termlog = wandb.termwarn = lambda *a, **k: None
     logging.disable(logging.WARNING)
 
-    sources = _sources(args.sources, args.save_to)
+    sources = _sources(args.sources)
     if not sources:
         sys.exit("No specs found. Pass paths or URLs, or set SPEC_CORPUS.")
 
