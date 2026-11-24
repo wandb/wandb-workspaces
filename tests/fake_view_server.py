@@ -1,5 +1,6 @@
 """A fake W&B server for testing how workspaces are loaded and saved."""
 
+import json
 from unittest.mock import Mock, patch
 
 import wandb_workspaces.workspaces as ws
@@ -39,6 +40,9 @@ class FakeViewServer:
     Like gorilla, it refuses a save whose `lastUpdatedAt` is not the view's
     current `updated_at`, and moves `updated_at` on with each save.
 
+    `spec`, when set, is the stored spec the view loads with, as a dict;
+    otherwise it is the spec of a new, empty workspace.
+
     `unknown_field_message`, when set, makes the server reject any upsert that
     sends `lastUpdatedAt`, like a server before 0.84. `upsert_error` is raised
     by every upsert instead of saving.
@@ -47,10 +51,12 @@ class FakeViewServer:
     def __init__(
         self,
         *,
+        spec=None,
         unknown_field_message=None,
         saved_updated_ats=(UPDATED_AT_SAVED, UPDATED_AT_SAVED_AGAIN),
         upsert_error=None,
     ):
+        self.spec = spec
         self.updated_at = UPDATED_AT_LOADED
         self.unknown_field_message = unknown_field_message
         self.saved_updated_ats = list(saved_updated_ats)
@@ -63,7 +69,14 @@ class FakeViewServer:
 
     def _execute(self, query, variables=None):
         if "query View" in query:
-            spec = ws.Workspace(entity="ent", project="proj")._to_model().spec
+            if self.spec is not None:
+                spec_json = json.dumps(self.spec)
+            else:
+                spec_json = (
+                    ws.Workspace(entity="ent", project="proj")
+                    ._to_model()
+                    .spec.model_dump_json(by_alias=True, exclude_none=True)
+                )
             return {
                 "project": {
                     "allViews": {
@@ -72,9 +85,7 @@ class FakeViewServer:
                                 "node": {
                                     "id": "view-id",
                                     "displayName": "Loaded",
-                                    "spec": spec.model_dump_json(
-                                        by_alias=True, exclude_none=True
-                                    ),
+                                    "spec": spec_json,
                                     "updatedAt": self.updated_at,
                                 }
                             }
@@ -113,10 +124,31 @@ class FakeViewServer:
     def upserts(self):
         return self.queries("upsertView")
 
+    def saved_specs(self):
+        """The spec each save sent, as a dict, oldest first."""
+        return [json.loads(variables["spec"]) for _, variables in self.upserts()]
+
 
 def load_workspace(server):
     with patch("wandb.Api", return_value=server.api):
         return ws.Workspace.from_url("https://app.wandb.test/ent/proj?nw=abc123")
+
+
+def save_workspace(server, workspace):
+    with patch("wandb.Api", return_value=server.api):
+        workspace.save()
+
+
+def fetch_then_save(spec, edit=None):
+    """Load a workspace stored as `spec`, apply `edit` to it, save it, and
+    return the spec the save sent."""
+    server = FakeViewServer(spec=spec)
+    workspace = load_workspace(server)
+    if edit is not None:
+        edit(workspace)
+    save_workspace(server, workspace)
+    [saved] = server.saved_specs()
+    return saved
 
 
 def sends_last_updated_at(upsert):

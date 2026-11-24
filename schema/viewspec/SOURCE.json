@@ -1,0 +1,10 @@
+{
+  "repo": "wandb/core",
+  "path": "packages/wandb-schemas/viewspec/generated",
+  "commit": "895f2a61219ea7b377be8f650bb480999538f80f",
+  "committedAt": "2026-11-24T21:42:26Z",
+  "files": {
+    "viewspec.schema.json": "read",
+    "viewspec.lean.schema.json": "write"
+  }
+}

@@ -1,0 +1,7275 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wandb.ai/schemas/viewspec/0.1.0/viewspec.lean.schema.json",
+  "title": "ViewSpec",
+  "description": "The write contract for views.spec: what a client may write. Objects reject undeclared keys.",
+  "x-view-types": {
+    "project-view": "MultiRunWorkspaceViewSpec",
+    "group-view": "MultiRunWorkspaceViewSpec",
+    "sweep-view": "MultiRunWorkspaceViewSpec",
+    "runs": "ReportViewSpec",
+    "runs/draft": "ReportViewSpec",
+    "collection-overview": "ReportViewSpec",
+    "collection-overview/draft": "ReportViewSpec"
+  },
+  "anyOf": [
+    {
+      "$ref": "#/definitions/MultiRunWorkspaceViewSpec"
+    },
+    {
+      "$ref": "#/definitions/ReportViewSpec"
+    }
+  ],
+  "definitions": {
+    "ArtifactVersionMetricGridPanel": {
+      "additionalProperties": false,
+      "description": "A panel inside an artifact versions grid block on a collection overview: one metric charted across the versions the grid selects.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/ArtifactVersionMetricGridPanelConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "viewType": {
+          "const": "Artifacts panel grid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "__id__",
+        "config",
+        "viewType"
+      ],
+      "title": "ArtifactVersionMetricGridPanel",
+      "type": "object"
+    },
+    "ArtifactVersionMetricGridPanelConfig": {
+      "additionalProperties": false,
+      "description": "Settings of an artifact version metrics panel: the metric charted across the versions of an artifact collection, the chart type and its axes.",
+      "properties": {
+        "barVertical": {
+          "type": "boolean"
+        },
+        "chartTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chartType": {
+          "enum": [
+            "bar",
+            "line",
+            "scatter"
+          ],
+          "type": "string"
+        },
+        "metricName": {
+          "type": "string"
+        },
+        "xAxisMax": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "xAxisMin": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "xAxisMode": {
+          "const": "selectionIndex",
+          "type": "string"
+        },
+        "xLogScale": {
+          "type": "boolean"
+        },
+        "xMetricName": {
+          "type": "string"
+        },
+        "yAxisMax": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "yAxisMin": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "yLogScale": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "xAxisMode"
+      ],
+      "title": "ArtifactVersionMetricGridPanelConfig",
+      "type": "object"
+    },
+    "ArtifactVersionsGridBlock": {
+      "additionalProperties": false,
+      "description": "A grid of artifact versions and their metrics in a report's Slate tree, used on artifact collection overview pages.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "properties": {
+            "gridId": {
+              "type": "string"
+            },
+            "membershipIds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "panels": {
+              "items": {
+                "$ref": "#/definitions/Panel"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "membershipIds",
+            "panels"
+          ],
+          "type": "object"
+        },
+        "type": {
+          "const": "artifact-versions-grid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "metadata",
+        "type"
+      ],
+      "title": "ArtifactVersionsGridBlock",
+      "type": "object"
+    },
+    "BarChartConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a bar chart panel: the metrics plotted, grouping and aggregation, legend and series styling.",
+      "properties": {
+        "aggregate": {
+          "type": "boolean"
+        },
+        "aggregateMetrics": {
+          "type": "boolean"
+        },
+        "barLimit": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "chartTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "colorEachMetricDifferently": {
+          "type": "boolean"
+        },
+        "expressions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fontSize": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "large",
+                "medium",
+                "small",
+                "xsmall"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupAgg": {
+          "anyOf": [
+            {
+              "enum": [
+                "last",
+                "max",
+                "mean",
+                "median",
+                "min",
+                "samples",
+                "sum"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupArea": {
+          "anyOf": [
+            {
+              "enum": [
+                "minmax",
+                "none",
+                "samples",
+                "stddev",
+                "stderr"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "groupRunsLimit": {
+          "type": "number"
+        },
+        "legendFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "legendTemplate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "metrics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "overrideColors": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "color": {
+                    "type": "string"
+                  },
+                  "transparentColor": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "color",
+                  "transparentColor"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "overrideSeriesTitles": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plotStyle": {
+          "enum": [
+            "bar",
+            "boxplot",
+            "violin"
+          ],
+          "type": "string"
+        },
+        "useRunsTableGroupingInPanels": {
+          "type": "boolean"
+        },
+        "vertical": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "xAxisMax": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "xAxisMin": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "xAxisTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yAxisTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "BarChartConfig",
+      "type": "object"
+    },
+    "BarChartPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a bar chart of run metrics, optionally grouped and aggregated.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/BarChartConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Bar Chart",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "BarChartPanel",
+      "type": "object"
+    },
+    "Block": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "artifact-versions-grid"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ArtifactVersionsGridBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "block-quote"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/BlockQuoteBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "callout-block"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CalloutBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "callout-line"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CalloutLineBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "captivate"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CaptivateBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "code-block"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CodeBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "code-line"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CodeLineBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "craiyon"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CraiyonBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "cta-banner"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CtaBannerBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "cta-button"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CtaButtonBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "default"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/DefaultBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "gallery"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/GalleryBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "heading"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/HeadingBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "horizontal-rule"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/HorizontalRuleBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "image"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ImageBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "latex"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/LatexBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "link"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/LinkBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ListBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list-item"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ListItemBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "markdown-block"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/MarkdownBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "panel-grid"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/PanelGridBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "paragraph"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ParagraphBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "replit"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ReplitBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "soundcloud"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/SoundcloudBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "spotify"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/SpotifyBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "table-of-contents"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/TableOfContentsBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "twitter"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/TwitterBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "video"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/VideoBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "weave-panel"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/WeavePanelBlock"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "weave-python-panel"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/WeavePythonPanelBlock"
+          }
+        }
+      ],
+      "description": "An element in a report's Slate tree, discriminated by `type`. An unknown `type` fails validation.",
+      "properties": {
+        "type": {
+          "enum": [
+            "artifact-versions-grid",
+            "block-quote",
+            "callout-block",
+            "callout-line",
+            "captivate",
+            "code-block",
+            "code-line",
+            "craiyon",
+            "cta-banner",
+            "cta-button",
+            "default",
+            "gallery",
+            "heading",
+            "horizontal-rule",
+            "image",
+            "latex",
+            "link",
+            "list",
+            "list-item",
+            "markdown-block",
+            "panel-grid",
+            "paragraph",
+            "replit",
+            "soundcloud",
+            "spotify",
+            "table-of-contents",
+            "twitter",
+            "video",
+            "weave-panel",
+            "weave-python-panel"
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Block",
+      "type": "object"
+    },
+    "BlockQuoteBlock": {
+      "additionalProperties": false,
+      "description": "A block quote in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "type": {
+          "const": "block-quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "BlockQuoteBlock",
+      "type": "object"
+    },
+    "CalloutBlock": {
+      "additionalProperties": false,
+      "description": "A callout box in a report's Slate tree; its children are callout lines.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "emoji": {
+          "type": "string"
+        },
+        "type": {
+          "const": "callout-block",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "CalloutBlock",
+      "type": "object"
+    },
+    "CalloutLineBlock": {
+      "additionalProperties": false,
+      "description": "One line of text inside a callout box in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "type": {
+          "const": "callout-line",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "CalloutLineBlock",
+      "type": "object"
+    },
+    "CaptivateBlock": {
+      "additionalProperties": false,
+      "description": "An embedded Captivate player in a report's Slate tree.",
+      "properties": {
+        "captivateID": {
+          "type": "string"
+        },
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "type": {
+          "const": "captivate",
+          "type": "string"
+        }
+      },
+      "required": [
+        "captivateID",
+        "children",
+        "type"
+      ],
+      "title": "CaptivateBlock",
+      "type": "object"
+    },
+    "CodeBlock": {
+      "additionalProperties": false,
+      "description": "A code listing in a report's Slate tree, with its language; its children are code lines.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "language": {
+          "type": "string"
+        },
+        "type": {
+          "const": "code-block",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "CodeBlock",
+      "type": "object"
+    },
+    "CodeComparerConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a code comparer panel: split or unified diff.",
+      "properties": {
+        "diff": {
+          "enum": [
+            "split",
+            "unified"
+          ],
+          "type": "string"
+        }
+      },
+      "title": "CodeComparerConfig",
+      "type": "object"
+    },
+    "CodeComparerPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a diff of the code saved with two runs.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/CodeComparerConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Code Comparer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "CodeComparerPanel",
+      "type": "object"
+    },
+    "CodeLineBlock": {
+      "additionalProperties": false,
+      "description": "One line inside a code listing in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "language": {
+          "type": "string"
+        },
+        "type": {
+          "const": "code-line",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "CodeLineBlock",
+      "type": "object"
+    },
+    "CraiyonBlock": {
+      "additionalProperties": false,
+      "description": "A Craiyon image generator embed in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "type": {
+          "const": "craiyon",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "CraiyonBlock",
+      "type": "object"
+    },
+    "CtaBannerBlock": {
+      "additionalProperties": false,
+      "description": "A call-to-action banner in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "tagID": {
+          "type": "string"
+        },
+        "type": {
+          "const": "cta-banner",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "CtaBannerBlock",
+      "type": "object"
+    },
+    "CtaButtonBlock": {
+      "additionalProperties": false,
+      "description": "A call-to-action button in a report's Slate tree, with its label and link.",
+      "properties": {
+        "buttonText": {
+          "type": "string"
+        },
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "link": {
+          "type": "string"
+        },
+        "type": {
+          "const": "cta-button",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "CtaButtonBlock",
+      "type": "object"
+    },
+    "DefaultBlock": {
+      "additionalProperties": false,
+      "description": "The block the editor inserts on Enter in a paragraph (`withMarkdownShortcuts`). It renders as a paragraph.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "type": {
+          "const": "default",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "DefaultBlock",
+      "type": "object"
+    },
+    "DiscussionComment": {
+      "additionalProperties": false,
+      "description": "A comment in a discussion thread.",
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "poster": {
+          "additionalProperties": false,
+          "properties": {
+            "admin": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "photoUrl": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "admin",
+            "id",
+            "name",
+            "username"
+          ],
+          "type": "object"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "body",
+        "createdAt",
+        "id"
+      ],
+      "title": "DiscussionComment",
+      "type": "object"
+    },
+    "DiscussionThread": {
+      "additionalProperties": false,
+      "description": "A comment thread on a report.",
+      "properties": {
+        "comments": {
+          "items": {
+            "$ref": "#/definitions/DiscussionComment"
+          },
+          "type": "array"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "poster": {
+          "additionalProperties": false,
+          "properties": {
+            "admin": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "photoUrl": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "admin",
+            "id",
+            "name",
+            "username"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "comments",
+        "createdAt",
+        "id"
+      ],
+      "title": "DiscussionThread",
+      "type": "object"
+    },
+    "EvaluationTablesConfig": {
+      "additionalProperties": false,
+      "description": "Settings of an evaluation tables panel: the evaluation shown, the runs compared and the step to show, and the comparison table's filters, sort, columns and row size.",
+      "properties": {
+        "aggregatedScoresCollapsed": {
+          "type": "boolean"
+        },
+        "columnImageControls": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "boxSliders": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "comparator": {
+                      "enum": [
+                        "gte",
+                        "lte"
+                      ],
+                      "type": "string"
+                    },
+                    "disabled": {
+                      "type": "boolean"
+                    },
+                    "value": {
+                      "type": "number"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              "hideImage": {
+                "type": "boolean"
+              },
+              "overlayControls": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "classOverlayStates": {
+                      "additionalProperties": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "disabled": {
+                            "type": "boolean"
+                          },
+                          "opacity": {
+                            "type": "number"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "object"
+                    },
+                    "disabled": {
+                      "type": "boolean"
+                    },
+                    "hideImage": {
+                      "type": "boolean"
+                    },
+                    "hideLabels": {
+                      "type": "boolean"
+                    },
+                    "lineStyle": {
+                      "enum": [
+                        "dashed",
+                        "dotted",
+                        "line"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              "tileLayout": {
+                "enum": [
+                  "ALL_SPLIT",
+                  "ALL_STACKED",
+                  "MASKS_NEXT_TO_IMAGE"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "columnViewModes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "columnVisibility": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "columnWidths": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        "comparedEvals": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "runId": {
+                "type": "string"
+              },
+              "step": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "runId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "evalFilters": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "enum": [
+                  "inputs",
+                  "outputs",
+                  "scores"
+                ],
+                "type": "string"
+              },
+              "fieldPath": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            },
+            "required": [
+              "category",
+              "fieldPath",
+              "id",
+              "operator",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "evalName": {
+          "type": "string"
+        },
+        "evalTableType": {
+          "enum": [
+            "eval-table",
+            "eval-table-ces"
+          ],
+          "type": "string"
+        },
+        "globalStep": {
+          "type": "number"
+        },
+        "pageSize": {
+          "type": "number"
+        },
+        "referenceRunId": {
+          "type": "string"
+        },
+        "rowSize": {
+          "enum": [
+            "small",
+            "medium",
+            "large",
+            "xlarge"
+          ],
+          "type": "string"
+        },
+        "runSteps": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        "sorting": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              },
+              "evaluation_call_id": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "value",
+                  "difference"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "direction",
+              "field"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "syncStep": {
+          "type": "boolean"
+        }
+      },
+      "title": "EvaluationTablesConfig",
+      "type": "object"
+    },
+    "EvaluationTablesPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: evaluation results compared across runs.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/EvaluationTablesConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "viewType": {
+          "const": "Evaluation Tables",
+          "type": "string"
+        }
+      },
+      "required": [
+        "__id__",
+        "config",
+        "viewType"
+      ],
+      "title": "EvaluationTablesPanel",
+      "type": "object"
+    },
+    "Filter": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/IndividualFilter"
+        },
+        {
+          "$ref": "#/definitions/GroupFilter"
+        }
+      ],
+      "description": "A node in the legacy filter tree: a condition or a group.",
+      "title": "Filter"
+    },
+    "FilterV2Group": {
+      "additionalProperties": false,
+      "description": "A parenthesized group of V2 filter items.",
+      "properties": {
+        "connector": {
+          "enum": [
+            "AND",
+            "OR"
+          ],
+          "type": "string"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "filters": {
+          "items": {
+            "$ref": "#/definitions/FilterV2Item"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "filters"
+      ],
+      "title": "FilterV2Group",
+      "type": "object"
+    },
+    "FilterV2Item": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FlatIndividualItem"
+        },
+        {
+          "$ref": "#/definitions/FilterV2Group"
+        }
+      ],
+      "description": "An item in a V2 filter list: a condition or a group.",
+      "title": "FilterV2Item"
+    },
+    "FilterV2Root": {
+      "additionalProperties": false,
+      "description": "Flat V2 filter list. Each item after the first has a connector to the previous item; AND binds tighter than OR, and a group adds parentheses.",
+      "properties": {
+        "filterFormat": {
+          "const": "filterV2",
+          "type": "string"
+        },
+        "filters": {
+          "items": {
+            "$ref": "#/definitions/FilterV2Item"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "filterFormat",
+        "filters"
+      ],
+      "title": "FilterV2Root",
+      "type": "object"
+    },
+    "FlatIndividualItem": {
+      "additionalProperties": false,
+      "description": "A V2 filter condition and its connector to the previous item.",
+      "properties": {
+        "connector": {
+          "enum": [
+            "AND",
+            "OR"
+          ],
+          "type": "string"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "key": {
+          "$ref": "#/definitions/RunKey"
+        },
+        "meta": {
+          "additionalProperties": false,
+          "properties": {
+            "unit": {
+              "enum": [
+                "days",
+                "hours",
+                "minutes",
+                "seconds"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "unit"
+          ],
+          "type": "object"
+        },
+        "op": {
+          "enum": [
+            "=",
+            "!=",
+            "<",
+            ">",
+            "<=",
+            ">=",
+            "REGEX",
+            "EXISTS",
+            "CONTAINS",
+            "CONTAINS_WILDCARD",
+            "WITHINSECONDS",
+            "IN",
+            "NIN"
+          ],
+          "type": "string"
+        },
+        "value": {}
+      },
+      "required": [
+        "key",
+        "op"
+      ],
+      "title": "FlatIndividualItem",
+      "type": "object"
+    },
+    "GalleryBlock": {
+      "additionalProperties": false,
+      "description": "A gallery of reports in a report's Slate tree, listed by report id or link.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "links": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "imageURL": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "gallery",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "GalleryBlock",
+      "type": "object"
+    },
+    "GroupFilter": {
+      "additionalProperties": false,
+      "description": "A group of legacy filters joined by one operator.",
+      "properties": {
+        "disabled": {
+          "type": "boolean"
+        },
+        "filters": {
+          "items": {
+            "$ref": "#/definitions/Filter"
+          },
+          "type": "array"
+        },
+        "op": {
+          "enum": [
+            "AND",
+            "OR"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "filters"
+      ],
+      "title": "GroupFilter",
+      "type": "object"
+    },
+    "GroupPageViewSpec": {
+      "additionalProperties": false,
+      "description": "Read root for `group-view`. The app reads only `section`; the other root fields are stray.",
+      "properties": {
+        "section": {
+          "$ref": "#/definitions/SectionConfig"
+        }
+      },
+      "required": [
+        "section"
+      ],
+      "title": "GroupPageViewSpec",
+      "type": "object"
+    },
+    "HeadingBlock": {
+      "additionalProperties": false,
+      "description": "A heading in a report's Slate tree. A collapsed heading keeps the elements it hides in `collapsedChildren`. The editor writes levels 1 to 3; the markdown importer copies a heading's depth through unclamped and the renderer draws every level past 3 in one style, so levels 4 to 6 are declared too.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "collapsedChildren": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "level": {
+          "enum": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "type": "number"
+        },
+        "type": {
+          "const": "heading",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "level",
+        "type"
+      ],
+      "title": "HeadingBlock",
+      "type": "object"
+    },
+    "HorizontalRuleBlock": {
+      "additionalProperties": false,
+      "description": "A horizontal divider in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "type": {
+          "const": "horizontal-rule",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "HorizontalRuleBlock",
+      "type": "object"
+    },
+    "ImageBlock": {
+      "additionalProperties": false,
+      "description": "An image in a report's Slate tree, uploaded or linked by URL, with an optional caption.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "file": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "hasCaption": {
+          "type": "boolean"
+        },
+        "href": {
+          "type": "string"
+        },
+        "type": {
+          "const": "image",
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "width": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "ImageBlock",
+      "type": "object"
+    },
+    "IndividualFilter": {
+      "additionalProperties": false,
+      "description": "A single condition on a run field.",
+      "properties": {
+        "disabled": {
+          "type": "boolean"
+        },
+        "key": {
+          "$ref": "#/definitions/RunKey"
+        },
+        "meta": {
+          "additionalProperties": false,
+          "properties": {
+            "unit": {
+              "enum": [
+                "days",
+                "hours",
+                "minutes",
+                "seconds"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "unit"
+          ],
+          "type": "object"
+        },
+        "op": {
+          "enum": [
+            "=",
+            "!=",
+            "<",
+            ">",
+            "<=",
+            ">=",
+            "REGEX",
+            "EXISTS",
+            "CONTAINS",
+            "CONTAINS_WILDCARD",
+            "WITHINSECONDS",
+            "IN",
+            "NIN"
+          ],
+          "type": "string"
+        },
+        "value": {}
+      },
+      "required": [
+        "key",
+        "op"
+      ],
+      "title": "IndividualFilter",
+      "type": "object"
+    },
+    "LatexBlock": {
+      "additionalProperties": false,
+      "description": "A LaTeX formula in a report's Slate tree, inline or as a block.",
+      "properties": {
+        "block": {
+          "type": "boolean"
+        },
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "content": {
+          "type": "string"
+        },
+        "type": {
+          "const": "latex",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "content",
+        "type"
+      ],
+      "title": "LatexBlock",
+      "type": "object"
+    },
+    "LayoutParameters": {
+      "additionalProperties": false,
+      "description": "Where a panel sits on a grid section and how large it is, in grid units.",
+      "properties": {
+        "h": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "w": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "y"
+      ],
+      "title": "LayoutParameters",
+      "type": "object"
+    },
+    "LinePlotSettings": {
+      "additionalProperties": {},
+      "description": "A report's `panelSettings`: line plot defaults shared by the report's panel grids, stored as an open record.",
+      "title": "LinePlotSettings",
+      "type": "object"
+    },
+    "LinkBlock": {
+      "additionalProperties": false,
+      "description": "A hyperlink in a report's Slate tree, wrapping the text it links.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "type": {
+          "const": "link",
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type",
+        "url"
+      ],
+      "title": "LinkBlock",
+      "type": "object"
+    },
+    "ListBlock": {
+      "additionalProperties": false,
+      "description": "An ordered or unordered list in a report's Slate tree; its children are list items.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "ordered": {
+          "type": "boolean"
+        },
+        "spread": {
+          "type": "boolean"
+        },
+        "start": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "type": {
+          "const": "list",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "ListBlock",
+      "type": "object"
+    },
+    "ListItemBlock": {
+      "additionalProperties": false,
+      "description": "One item of a list in a report's Slate tree.",
+      "properties": {
+        "checked": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "ordered": {
+          "type": "boolean"
+        },
+        "spread": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "list-item",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "ListItemBlock",
+      "type": "object"
+    },
+    "MarimoConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a Marimo panel: the notebook embedded and its title.",
+      "properties": {
+        "notebookId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "title": "MarimoConfig",
+      "type": "object"
+    },
+    "MarimoPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: an embedded Marimo notebook.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/MarimoConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Marimo",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "MarimoPanel",
+      "type": "object"
+    },
+    "MarkdownBlock": {
+      "additionalProperties": false,
+      "description": "A block of raw Markdown in a report's Slate tree, rendered rather than edited as rich text.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "collapsedChildren": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "content": {
+          "type": "string"
+        },
+        "type": {
+          "const": "markdown-block",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "type"
+      ],
+      "title": "MarkdownBlock",
+      "type": "object"
+    },
+    "MarkdownConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a Markdown panel: its source text.",
+      "properties": {
+        "value": {
+          "type": "string"
+        }
+      },
+      "title": "MarkdownConfig",
+      "type": "object"
+    },
+    "MarkdownPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: Markdown text the user wrote.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/MarkdownConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Markdown Panel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "MarkdownPanel",
+      "type": "object"
+    },
+    "MediaBrowserPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: images, video, audio and other logged media, browsed by step, run or index.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/MediaBrowserPanelConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Media Browser",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "MediaBrowserPanel",
+      "type": "object"
+    },
+    "MediaBrowserPanelConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a media browser panel: which media key is shown, gallery or grid layout, and the axes and tile controls used to compare media across runs and steps.",
+      "properties": {
+        "actualSize": {
+          "type": "boolean"
+        },
+        "alwaysOriginal": {
+          "type": "boolean"
+        },
+        "boundingBoxConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "sliders": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "comparator": {
+                    "enum": [
+                      "gte",
+                      "lte"
+                    ],
+                    "type": "string"
+                  },
+                  "disabled": {
+                    "type": "boolean"
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "styles": {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lineStyle": {
+                      "enum": [
+                        "dashed",
+                        "dotted",
+                        "line"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lineStyle"
+                  ],
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "toggles": {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "color": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "disabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "chartTitle": {
+          "type": "string"
+        },
+        "columnCount": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "compareSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "columns": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "index": {
+                    "type": "number"
+                  },
+                  "mediaKey": {
+                    "type": "string"
+                  },
+                  "run": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "fanOutVariable": {
+              "enum": [
+                "index",
+                "run",
+                "step"
+              ],
+              "type": "string"
+            },
+            "runName": {
+              "type": "string"
+            },
+            "tileControls": {
+              "additionalProperties": false,
+              "properties": {
+                "index": {
+                  "enum": [
+                    "linked",
+                    "individual",
+                    "hidden"
+                  ],
+                  "type": "string"
+                },
+                "mediaKey": {
+                  "enum": [
+                    "linked",
+                    "individual",
+                    "hidden"
+                  ],
+                  "type": "string"
+                },
+                "run": {
+                  "enum": [
+                    "linked",
+                    "individual",
+                    "hidden"
+                  ],
+                  "type": "string"
+                },
+                "step": {
+                  "enum": [
+                    "linked",
+                    "individual",
+                    "hidden"
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "disableVideoStream": {
+          "type": "boolean"
+        },
+        "fitToDimension": {
+          "type": "boolean"
+        },
+        "gallerySettings": {
+          "additionalProperties": false,
+          "properties": {
+            "axis": {
+              "enum": [
+                "index",
+                "run",
+                "step",
+                "camera"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "axis"
+          ],
+          "type": "object"
+        },
+        "gridSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "xAxis": {
+              "enum": [
+                "index",
+                "run",
+                "step",
+                "camera"
+              ],
+              "type": "string"
+            },
+            "yAxis": {
+              "enum": [
+                "index",
+                "run",
+                "step",
+                "camera"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "xAxis"
+          ],
+          "type": "object"
+        },
+        "maxGalleryItems": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "maxRuns": {
+          "type": "number"
+        },
+        "maxYAxisCount": {
+          "type": "number"
+        },
+        "mediaIndex": {
+          "type": "number"
+        },
+        "mediaKeys": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mediaSliderKey": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "compare",
+            "gallery",
+            "grid"
+          ],
+          "type": "string"
+        },
+        "moleculeConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "representation": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "object3DBackgroundColor": {
+          "additionalProperties": false,
+          "properties": {
+            "a": {
+              "type": "number"
+            },
+            "b": {
+              "type": "number"
+            },
+            "g": {
+              "type": "number"
+            },
+            "r": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "g",
+            "r"
+          ],
+          "type": "object"
+        },
+        "page": {
+          "additionalProperties": false,
+          "properties": {
+            "start": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "pixelated": {
+          "type": "boolean"
+        },
+        "pointColor": {
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "color",
+            "type"
+          ],
+          "type": "object"
+        },
+        "segmentationMaskConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "toggles": {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "disabled": {
+                        "type": "boolean"
+                      },
+                      "opacity": {
+                        "type": "number"
+                      },
+                      "rgb": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "opacity"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "selection": {
+          "additionalProperties": false,
+          "properties": {
+            "xAxis": {
+              "items": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "type": "array"
+            },
+            "yAxis": {
+              "items": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "sliderSync": {
+          "type": "boolean"
+        },
+        "snapToExistingStep": {
+          "type": "boolean"
+        },
+        "stepIndex": {
+          "type": "number"
+        },
+        "stepStrideLength": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tileLayout": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "maskOptions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "maskKeys": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "showImage": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "maskKeys"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "type": {
+                "enum": [
+                  "ALL_SPLIT",
+                  "ALL_STACKED",
+                  "MASKS_NEXT_TO_IMAGE"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "maskOptions",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "useRightHandedSystem": {
+          "type": "boolean"
+        },
+        "videoActualSize": {
+          "type": "boolean"
+        },
+        "videoPlaybackSync": {
+          "type": "boolean"
+        },
+        "videoPlaybackSyncAutoplay": {
+          "type": "boolean"
+        },
+        "videoPlaybackSyncCurrentTime": {
+          "type": "number"
+        },
+        "videoPlaybackSyncEnabled": {
+          "type": "boolean"
+        },
+        "videoPlaybackSyncLoop": {
+          "type": "boolean"
+        },
+        "videoPlayerTimeStep": {
+          "type": "number"
+        }
+      },
+      "title": "MediaBrowserPanelConfig",
+      "type": "object"
+    },
+    "MultiRunTableConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a multi-run table panel: the table key, row and cell columns, and page size.",
+      "properties": {
+        "cellColumnKey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "items": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "pageSize": {
+          "type": "number"
+        },
+        "rowColumnKeys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tableKey": {
+          "type": "string"
+        }
+      },
+      "title": "MultiRunTableConfig",
+      "type": "object"
+    },
+    "MultiRunTablePanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a logged table compared across runs.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/MultiRunTableConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Multi Run Table",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "MultiRunTablePanel",
+      "type": "object"
+    },
+    "MultiRunWorkspaceViewSpec": {
+      "additionalProperties": false,
+      "description": "Write root for `project-view`, `group-view` and `sweep-view`.",
+      "properties": {
+        "section": {
+          "$ref": "#/definitions/WorkspaceSectionConfig"
+        }
+      },
+      "required": [
+        "section"
+      ],
+      "title": "MultiRunWorkspaceViewSpec",
+      "type": "object"
+    },
+    "OrganizedSettings": {
+      "additionalProperties": false,
+      "description": "Settings that apply to a whole workspace: how panels are generated and organized, defaults for line plots and media, and color palette.",
+      "properties": {
+        "autoExpandSearchResults": {
+          "type": "boolean"
+        },
+        "autoOrganizePrefix": {
+          "enum": [
+            1,
+            2
+          ],
+          "type": "number"
+        },
+        "colorPaletteOption": {
+          "type": "number"
+        },
+        "defaultMoveToSectionName": {
+          "type": "string"
+        },
+        "linePlot": {
+          "$ref": "#/definitions/LinePlotSettings"
+        },
+        "media": {
+          "additionalProperties": false,
+          "properties": {
+            "actualSize": {
+              "type": "boolean"
+            },
+            "alwaysOriginal": {
+              "type": "boolean"
+            },
+            "boundingBoxConfig": {
+              "additionalProperties": false,
+              "properties": {
+                "sliders": {
+                  "additionalProperties": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "comparator": {
+                        "enum": [
+                          "gte",
+                          "lte"
+                        ],
+                        "type": "string"
+                      },
+                      "disabled": {
+                        "type": "boolean"
+                      },
+                      "value": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                },
+                "styles": {
+                  "additionalProperties": {
+                    "additionalProperties": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "lineStyle": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "lineStyle"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                },
+                "toggles": {
+                  "additionalProperties": {
+                    "additionalProperties": {
+                      "additionalProperties": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "color": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "disabled": {
+                            "type": "boolean"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "object"
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "chartTitle": {
+              "type": "string"
+            },
+            "columnCount": {
+              "type": "number"
+            },
+            "compareSettings": {
+              "additionalProperties": false,
+              "properties": {
+                "columns": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "index": {
+                        "type": "number"
+                      },
+                      "mediaKey": {
+                        "type": "string"
+                      },
+                      "run": {
+                        "type": "string"
+                      },
+                      "step": {
+                        "type": "number"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "fanOutVariable": {
+                  "enum": [
+                    "index",
+                    "run",
+                    "step"
+                  ],
+                  "type": "string"
+                },
+                "runName": {
+                  "type": "string"
+                },
+                "tileControls": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "enum": [
+                        "linked",
+                        "individual",
+                        "hidden"
+                      ],
+                      "type": "string"
+                    },
+                    "mediaKey": {
+                      "enum": [
+                        "linked",
+                        "individual",
+                        "hidden"
+                      ],
+                      "type": "string"
+                    },
+                    "run": {
+                      "enum": [
+                        "linked",
+                        "individual",
+                        "hidden"
+                      ],
+                      "type": "string"
+                    },
+                    "step": {
+                      "enum": [
+                        "linked",
+                        "individual",
+                        "hidden"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "disableVideoStream": {
+              "type": "boolean"
+            },
+            "fitToDimension": {
+              "type": "boolean"
+            },
+            "gallerySettings": {
+              "additionalProperties": false,
+              "properties": {
+                "axis": {
+                  "enum": [
+                    "camera",
+                    "index",
+                    "run",
+                    "step"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "axis"
+              ],
+              "type": "object"
+            },
+            "gridSettings": {
+              "additionalProperties": false,
+              "properties": {
+                "xAxis": {
+                  "type": "string"
+                },
+                "yAxis": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "xAxis",
+                "yAxis"
+              ],
+              "type": "object"
+            },
+            "maxGalleryItems": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "maxRuns": {
+              "type": "number"
+            },
+            "maxYAxisCount": {
+              "type": "number"
+            },
+            "mediaIndex": {
+              "type": "number"
+            },
+            "mediaKeys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "mediaSliderKey": {
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "compare",
+                "gallery",
+                "grid"
+              ],
+              "type": "string"
+            },
+            "moleculeConfig": {
+              "additionalProperties": false,
+              "properties": {
+                "representation": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "object3DBackgroundColor": {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "type": "number"
+                },
+                "b": {
+                  "type": "number"
+                },
+                "g": {
+                  "type": "number"
+                },
+                "r": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "a",
+                "b",
+                "g",
+                "r"
+              ],
+              "type": "object"
+            },
+            "page": {
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "pixelated": {
+              "type": "boolean"
+            },
+            "pointColor": {
+              "additionalProperties": false,
+              "properties": {
+                "color": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "color",
+                "type"
+              ],
+              "type": "object"
+            },
+            "segmentationMaskConfig": {
+              "additionalProperties": false,
+              "properties": {
+                "toggles": {
+                  "additionalProperties": {
+                    "additionalProperties": {
+                      "additionalProperties": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "disabled": {
+                            "type": "boolean"
+                          },
+                          "opacity": {
+                            "type": "number"
+                          },
+                          "rgb": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "opacity"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "object"
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "selection": {
+              "additionalProperties": false,
+              "properties": {
+                "xAxis": {
+                  "items": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "type": "array"
+                },
+                "yAxis": {
+                  "items": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            },
+            "sliderSync": {
+              "type": "boolean"
+            },
+            "snapToExistingStep": {
+              "type": "boolean"
+            },
+            "stepIndex": {
+              "type": "number"
+            },
+            "stepStrideLength": {
+              "type": "number"
+            },
+            "tileLayout": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "maskOptions": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "maskKeys": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "showImage": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "maskKeys"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "maskOptions",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "useRightHandedSystem": {
+              "type": "boolean"
+            },
+            "videoActualSize": {
+              "type": "boolean"
+            },
+            "videoPlaybackSync": {
+              "type": "boolean"
+            },
+            "videoPlaybackSyncAutoplay": {
+              "type": "boolean"
+            },
+            "videoPlaybackSyncCurrentTime": {
+              "type": "number"
+            },
+            "videoPlaybackSyncEnabled": {
+              "type": "boolean"
+            },
+            "videoPlaybackSyncLoop": {
+              "type": "boolean"
+            },
+            "videoPlayerTimeStep": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "scatterDefaultByWorkspaceType": {
+          "type": "boolean"
+        },
+        "searchHistory": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "query": {}
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "searchQuery": {
+          "type": "string"
+        },
+        "searchSectionsOpen": {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "enum": [
+                "auto-expand",
+                "collapse-all",
+                "default",
+                "expand-all"
+              ],
+              "type": "string"
+            },
+            "overrides": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        "semanticLegendPalette": {
+          "type": "number"
+        },
+        "semanticLegendRunColorOptions": {
+          "enum": [
+            "default",
+            "semantic-legend"
+          ],
+          "type": "string"
+        },
+        "shouldAutoGeneratePanels": {
+          "type": [
+            "string",
+            "boolean"
+          ]
+        },
+        "showEmptySections": {
+          "type": "boolean"
+        },
+        "sortAlphabetically": {
+          "type": "boolean"
+        }
+      },
+      "title": "OrganizedSettings",
+      "type": "object"
+    },
+    "PCConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a parallel coordinates panel: its columns and color gradient.",
+      "properties": {
+        "aggregate": {
+          "type": "boolean"
+        },
+        "aggregateMetrics": {
+          "type": "boolean"
+        },
+        "chartTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "columns": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "accessor": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "displayName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inverted": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "log": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "params": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "customGradient": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "color": {
+                "type": "string"
+              },
+              "offset": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "color",
+              "offset"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "dimensions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "fontSize": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gradientColor": {
+          "type": "boolean"
+        },
+        "groupAgg": {
+          "enum": [
+            "last",
+            "max",
+            "mean",
+            "median",
+            "min",
+            "samples",
+            "sum"
+          ],
+          "type": "string"
+        },
+        "groupArea": {
+          "enum": [
+            "minmax",
+            "none",
+            "samples",
+            "stddev",
+            "stderr"
+          ],
+          "type": "string"
+        },
+        "groupBy": {
+          "type": "string"
+        },
+        "groupRunsLimit": {
+          "type": "number"
+        },
+        "isGrouped": {
+          "type": "boolean"
+        },
+        "legendFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "useRunsTableGroupingInPanels": {
+          "type": "boolean"
+        }
+      },
+      "title": "PCConfig",
+      "type": "object"
+    },
+    "Panel": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Artifacts panel grid"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ArtifactVersionMetricGridPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Bar Chart"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/BarChartPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Code Comparer"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/CodeComparerPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Evaluation Tables"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/EvaluationTablesPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Marimo"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/MarimoPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Markdown Panel"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/MarkdownPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Media Browser"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/MediaBrowserPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Multi Run Table"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/MultiRunTablePanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Parallel Coordinates Plot"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ParallelCoordinatesPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Parameter Importance"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ParameterImportancePanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Run Comparer"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/RunComparerPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Run History Line Plot"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/RunsLinePlotPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Scalar Chart"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ScalarChartPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Scatter Plot"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/ScatterPlotPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Vega"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/VegaPanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Vega2"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/Vega2Panel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Vega3"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/Vega3Panel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Weave"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/WeavePanel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "viewType": {
+                "const": "Weave Trace"
+              }
+            },
+            "required": [
+              "viewType"
+            ]
+          },
+          "then": {
+            "$ref": "#/definitions/WeaveTracePanel"
+          }
+        }
+      ],
+      "description": "A panel in a workspace or report, discriminated by `viewType`. An unknown `viewType` fails validation.",
+      "properties": {
+        "viewType": {
+          "enum": [
+            "Artifacts panel grid",
+            "Bar Chart",
+            "Code Comparer",
+            "Evaluation Tables",
+            "Marimo",
+            "Markdown Panel",
+            "Media Browser",
+            "Multi Run Table",
+            "Parallel Coordinates Plot",
+            "Parameter Importance",
+            "Run Comparer",
+            "Run History Line Plot",
+            "Scalar Chart",
+            "Scatter Plot",
+            "Vega",
+            "Vega2",
+            "Vega3",
+            "Weave",
+            "Weave Trace"
+          ]
+        }
+      },
+      "required": [
+        "viewType"
+      ],
+      "title": "Panel",
+      "type": "object"
+    },
+    "PanelBankConfig": {
+      "additionalProperties": false,
+      "description": "The panels of a workspace section, organized into panel bank sections, with sparse overrides of individual panels' config and placement.",
+      "properties": {
+        "panelConfigOverrides": {
+          "additionalProperties": {
+            "$ref": "#/definitions/PanelConfigOverride"
+          },
+          "type": "object"
+        },
+        "panelPlacementOverrides": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "orderKey": {
+                "type": "string"
+              },
+              "sectionId": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/definitions/PanelBankSectionConfig"
+          },
+          "type": "array"
+        },
+        "settings": {
+          "$ref": "#/definitions/PanelBankSettings"
+        },
+        "state": {
+          "enum": [
+            0,
+            1
+          ],
+          "type": "number"
+        }
+      },
+      "required": [
+        "sections",
+        "settings",
+        "state"
+      ],
+      "title": "PanelBankConfig",
+      "type": "object"
+    },
+    "PanelBankFlowSectionConfig": {
+      "additionalProperties": false,
+      "description": "The layout of a section in flow mode, where panels fill fixed-size boxes in rows and pages: columns and rows per page, box size and gutter.",
+      "properties": {
+        "boxHeight": {
+          "type": "number"
+        },
+        "boxWidth": {
+          "type": "number"
+        },
+        "columnsPerPage": {
+          "type": "number"
+        },
+        "gutterWidth": {
+          "type": "number"
+        },
+        "mobileColumnsPerPage": {
+          "type": "number"
+        },
+        "mobileRowsPerPage": {
+          "type": "number"
+        },
+        "rowsPerPage": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "snapToColumns": {
+          "type": "boolean"
+        }
+      },
+      "title": "PanelBankFlowSectionConfig",
+      "type": "object"
+    },
+    "PanelBankSectionConfig": {
+      "additionalProperties": false,
+      "description": "A named, collapsible section of panels in the panel bank, laid out as a grid or in flow mode.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "defaultName": {
+          "type": "string"
+        },
+        "flowConfig": {
+          "$ref": "#/definitions/PanelBankFlowSectionConfig"
+        },
+        "isOpen": {
+          "type": "boolean"
+        },
+        "isPanelsAuto": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "panels": {
+          "items": {
+            "$ref": "#/definitions/Panel"
+          },
+          "type": "array"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "sectionSettings": {
+          "$ref": "#/definitions/OrganizedSettings"
+        },
+        "sorted": {
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "type": "number"
+        }
+      },
+      "required": [
+        "isOpen",
+        "name",
+        "panels"
+      ],
+      "title": "PanelBankSectionConfig",
+      "type": "object"
+    },
+    "PanelBankSettings": {
+      "additionalProperties": false,
+      "description": "Settings that apply to the panel bank as a whole, such as how sections are organized and how panels are sorted within them.",
+      "properties": {
+        "autoExpandSearchResults": {
+          "type": "boolean"
+        },
+        "autoOrganizePrefix": {
+          "enum": [
+            1,
+            2
+          ],
+          "type": "number"
+        },
+        "defaultMoveToSectionName": {
+          "type": "string"
+        },
+        "highlightedCompanionRunOnly": {
+          "type": "boolean"
+        },
+        "isHidingSearchMatches": {
+          "type": "boolean"
+        },
+        "searchHistory": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "query": {}
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "searchQuery": {
+          "type": "string"
+        },
+        "searchSectionsOpen": {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "enum": [
+                "auto-expand",
+                "collapse-all",
+                "default",
+                "expand-all"
+              ],
+              "type": "string"
+            },
+            "overrides": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        "showEmptySections": {
+          "type": "boolean"
+        },
+        "sortAlphabetically": {
+          "type": "boolean"
+        }
+      },
+      "title": "PanelBankSettings",
+      "type": "object"
+    },
+    "PanelConfigOverride": {
+      "additionalProperties": false,
+      "description": "A sparse override of one auto-generated panel's settings and size, keyed by the panel's metric key, so a customized panel persists without persisting every panel. The override does not record the panel type: the app learns it when it regenerates the panel from run history. So `config` is opaque here, and is checked against that type's config definition once the type is known.",
+      "properties": {
+        "config": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "layout": {
+          "additionalProperties": false,
+          "properties": {
+            "h": {
+              "type": "number"
+            },
+            "w": {
+              "type": "number"
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "title": "PanelConfigOverride",
+      "type": "object"
+    },
+    "PanelGridBlock": {
+      "additionalProperties": false,
+      "description": "A grid of panels in a report's Slate tree. Its metadata holds a section with its own run sets and panel bank, the same shape a workspace stores.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "metadata": {
+          "$ref": "#/definitions/SectionConfig"
+        },
+        "type": {
+          "const": "panel-grid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "metadata",
+        "type"
+      ],
+      "title": "PanelGridBlock",
+      "type": "object"
+    },
+    "Panels": {
+      "additionalProperties": false,
+      "description": "The panel layout used before the panel bank: named views, each a list of panels placed on a grid. Run workspaces and legacy report sections still store it.",
+      "properties": {
+        "tabs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "views": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "config": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Panel"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key"
+                          ],
+                          "type": "object"
+                        },
+                        "layout": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "h": {
+                              "type": "number"
+                            },
+                            "w": {
+                              "type": "number"
+                            },
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "h",
+                            "w",
+                            "x",
+                            "y"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "config",
+                        "layout"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "defaults": {
+                "items": {},
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "config"
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "tabs",
+        "views"
+      ],
+      "title": "Panels",
+      "type": "object"
+    },
+    "ParagraphBlock": {
+      "additionalProperties": false,
+      "description": "A paragraph in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "textAlign": {
+          "type": "string"
+        },
+        "type": {
+          "const": "paragraph",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "ParagraphBlock",
+      "type": "object"
+    },
+    "ParallelCoordinatesPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a parallel coordinates plot of config and summary values across runs.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/PCConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Parallel Coordinates Plot",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "ParallelCoordinatesPanel",
+      "type": "object"
+    },
+    "ParameterImportanceConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a parameter importance panel: the target metric and the parameter table's columns.",
+      "properties": {
+        "parameterConf": {
+          "$ref": "#/definitions/RunFeed"
+        },
+        "targetKey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        }
+      },
+      "title": "ParameterImportanceConfig",
+      "type": "object"
+    },
+    "ParameterImportancePanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: how strongly each config parameter correlates with a target metric.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/ParameterImportanceConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Parameter Importance",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "ParameterImportancePanel",
+      "type": "object"
+    },
+    "ProjectPageViewSpec": {
+      "additionalProperties": false,
+      "description": "Read root for `project-view`. The app reads only `section`; the other root fields are stray.",
+      "properties": {
+        "section": {
+          "$ref": "#/definitions/SectionConfig"
+        }
+      },
+      "required": [
+        "section"
+      ],
+      "title": "ProjectPageViewSpec",
+      "type": "object"
+    },
+    "ReplitBlock": {
+      "additionalProperties": false,
+      "description": "An embedded Replit project in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "replName": {
+          "type": "string"
+        },
+        "replitUser": {
+          "type": "string"
+        },
+        "type": {
+          "const": "replit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "replName",
+        "replitUser",
+        "type"
+      ],
+      "title": "ReplitBlock",
+      "type": "object"
+    },
+    "ReportAuthor": {
+      "additionalProperties": false,
+      "description": "An author of a report.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "photoUrl": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "username"
+      ],
+      "title": "ReportAuthor",
+      "type": "object"
+    },
+    "ReportViewSpec": {
+      "additionalProperties": false,
+      "description": "Write root for `runs`, `runs/draft`, `collection-overview` and `collection- overview/draft`.",
+      "properties": {
+        "authors": {
+          "items": {
+            "$ref": "#/definitions/ReportAuthor"
+          },
+          "type": "array"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/definitions/SlateNode"
+          },
+          "type": "array"
+        },
+        "discussionThreads": {
+          "items": {
+            "$ref": "#/definitions/DiscussionThread"
+          },
+          "type": "array"
+        },
+        "panelSettings": {
+          "$ref": "#/definitions/LinePlotSettings"
+        },
+        "version": {
+          "enum": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "type": "number"
+        },
+        "width": {
+          "enum": [
+            "fixed",
+            "fluid",
+            "profile",
+            "readable"
+          ],
+          "type": "string"
+        }
+      },
+      "title": "ReportViewSpec",
+      "type": "object"
+    },
+    "RootFilter": {
+      "additionalProperties": false,
+      "description": "The legacy filter tree, migrated to the V2 format on load.",
+      "properties": {
+        "filters": {
+          "items": {
+            "$ref": "#/definitions/Filter"
+          },
+          "type": "array"
+        },
+        "op": {
+          "enum": [
+            "AND",
+            "OR"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "filters"
+      ],
+      "title": "RootFilter",
+      "type": "object"
+    },
+    "RunComparerConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a run comparer panel: diff-only mode, collapsed rows and sizing.",
+      "properties": {
+        "collapsedTree": {},
+        "customColumnWidth": {
+          "type": "number"
+        },
+        "customRowHeight": {
+          "type": "number"
+        },
+        "diffOnly": {
+          "type": [
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        "searchStringHistory": {
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "useRunsTableGroupingInPanels": {
+          "type": "boolean"
+        }
+      },
+      "title": "RunComparerConfig",
+      "type": "object"
+    },
+    "RunComparerPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: the config and summary of several runs side by side.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/RunComparerConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Run Comparer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "RunComparerPanel",
+      "type": "object"
+    },
+    "RunFeed": {
+      "additionalProperties": false,
+      "description": "The runs table of a run set: its columns, their order, pinning, visibility and widths, and its page size.",
+      "properties": {
+        "aggregationVisible": {
+          "additionalProperties": {
+            "enum": [
+              "run",
+              "tags",
+              "config",
+              "summary",
+              "keys_info",
+              "aggregations_min",
+              "aggregations_max"
+            ],
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "columnOrder": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/RunKey"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "columnPinned": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "columnVisible": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "columnWidths": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        "lockColumns": {
+          "type": "boolean"
+        },
+        "metricValences": {
+          "additionalProperties": {
+            "enum": [
+              "higher-is-better",
+              "lower-is-better",
+              "neutral"
+            ],
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "onlyShowSelected": {
+          "type": "boolean"
+        },
+        "pageSize": {
+          "type": "number"
+        },
+        "pinnedColumnsShown": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "showMetricDeltas": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "number"
+        }
+      },
+      "title": "RunFeed",
+      "type": "object"
+    },
+    "RunKey": {
+      "additionalProperties": false,
+      "description": "A run field, named by the part of the run it lives in (`config`, `summary`, `run`, `tags`, ...) and a name within that part. Filters, sorts, groupings and table columns all address runs this way.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "section": {
+          "enum": [
+            "aggregations_max",
+            "aggregations_min",
+            "config",
+            "keys_info",
+            "run",
+            "summary",
+            "tags"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "section"
+      ],
+      "title": "RunKey",
+      "type": "object"
+    },
+    "RunPageViewSpec": {
+      "additionalProperties": false,
+      "description": "Read root for `run-view`, which the app no longer creates. The app read these four fields.",
+      "properties": {
+        "panelBankConfig": {
+          "$ref": "#/definitions/PanelBankConfig"
+        },
+        "panels": {
+          "$ref": "#/definitions/Panels"
+        },
+        "settings": {
+          "$ref": "#/definitions/Settings"
+        },
+        "workspaceSettings": {
+          "$ref": "#/definitions/OrganizedSettings"
+        }
+      },
+      "required": [
+        "panels",
+        "settings"
+      ],
+      "title": "RunPageViewSpec",
+      "type": "object"
+    },
+    "RunSetConfig": {
+      "additionalProperties": false,
+      "description": "A run set: which runs a section shows, and how they are filtered, sorted and grouped.",
+      "properties": {
+        "baselineRunId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "expandedRowAddresses": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "filters": {
+          "$ref": "#/definitions/StoredFilter"
+        },
+        "grouping": {
+          "items": {
+            "$ref": "#/definitions/RunKey"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pinnedRunIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "project": {
+          "additionalProperties": false,
+          "properties": {
+            "entityName": {
+              "type": "string"
+            },
+            "id": {
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "entityName",
+            "name"
+          ],
+          "type": "object"
+        },
+        "runFeed": {
+          "$ref": "#/definitions/RunFeed"
+        },
+        "runNameTruncationType": {
+          "enum": [
+            "Beginning",
+            "End",
+            "Middle"
+          ],
+          "type": "string"
+        },
+        "search": {
+          "additionalProperties": false,
+          "properties": {
+            "isRegex": {
+              "type": "boolean"
+            },
+            "query": {}
+          },
+          "type": "object"
+        },
+        "searchHistory": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "isRegex": {
+                "type": "boolean"
+              },
+              "query": {}
+            },
+            "required": [
+              "isRegex"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "selections": {
+          "$ref": "#/definitions/Selections"
+        },
+        "sort": {
+          "$ref": "#/definitions/Sort"
+        }
+      },
+      "required": [
+        "filters",
+        "grouping",
+        "selections"
+      ],
+      "title": "RunSetConfig",
+      "type": "object"
+    },
+    "RunsLinePlotConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a run line plot: the metrics and x-axis plotted, smoothing, grouping, outlier handling, axis ranges and legend.",
+      "properties": {
+        "aggregate": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "aggregateMetrics": {
+          "type": "boolean"
+        },
+        "chartTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "colorEachMetricDifferently": {
+          "type": "boolean"
+        },
+        "colorRunNames": {
+          "type": "boolean"
+        },
+        "coordinateZooming": {
+          "type": "boolean"
+        },
+        "deltaQueryTypeOverride": {
+          "enum": [
+            "backendLines",
+            "bucketed",
+            "columnar"
+          ],
+          "type": "string"
+        },
+        "displayFullRunName": {
+          "type": "boolean"
+        },
+        "excludeOutliers": {
+          "enum": [
+            "exclude-outliers",
+            "include-outliers"
+          ],
+          "type": "string"
+        },
+        "expressions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fontSize": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "large",
+                "medium",
+                "small",
+                "xsmall"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forceReactVis": {
+          "type": "boolean"
+        },
+        "fullFidelityMode": {
+          "enum": [
+            "min-max-last",
+            "standard"
+          ],
+          "type": "string"
+        },
+        "groupAgg": {
+          "anyOf": [
+            {
+              "enum": [
+                "last",
+                "max",
+                "mean",
+                "median",
+                "min",
+                "samples",
+                "sum"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupArea": {
+          "anyOf": [
+            {
+              "enum": [
+                "minmax",
+                "none",
+                "samples",
+                "stddev",
+                "stderr"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "groupRunsLimit": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "groupedFullFidelityMode": {
+          "enum": [
+            "min-max-last",
+            "standard"
+          ],
+          "type": "string"
+        },
+        "groupingDepth": {
+          "type": "number"
+        },
+        "highlightedCompanionRunOnly": {
+          "type": "boolean"
+        },
+        "isGrouped": {
+          "type": "boolean"
+        },
+        "isMergedPanel": {
+          "type": "boolean"
+        },
+        "legendFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "legendPosition": {
+          "anyOf": [
+            {
+              "enum": [
+                "east",
+                "north",
+                "south",
+                "west"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "legendTemplate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "metricLimit": {
+          "type": "number"
+        },
+        "metricRegex": {
+          "type": "string"
+        },
+        "metricRegexMaxNumMatches": {
+          "type": "number"
+        },
+        "metrics": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "overrideColors": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "color": {
+                        "type": "string"
+                      },
+                      "transparentColor": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "color",
+                      "transparentColor"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "overrideLineWidths": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "overrideMarks": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "enum": [
+                  "dashed",
+                  "dotdash",
+                  "dotdotdash",
+                  "dotted",
+                  "points",
+                  "solid"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "overrideSeriesTitles": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plotType": {
+          "anyOf": [
+            {
+              "enum": [
+                "bar",
+                "line",
+                "pct-area",
+                "stacked-area"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pointVisualizationMethod": {
+          "enum": [
+            "bucketing-gorilla",
+            "sampling",
+            "sampling-by-default"
+          ],
+          "type": "string"
+        },
+        "showLegend": {
+          "type": "boolean"
+        },
+        "showOriginalAfterSmoothing": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "showXRange": {
+          "type": "boolean"
+        },
+        "singlePointRenderMode": {
+          "enum": [
+            "bar",
+            "scatter"
+          ],
+          "type": "string"
+        },
+        "singleRun": {
+          "type": "boolean"
+        },
+        "smoothingType": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "average",
+                    "exponential",
+                    "exponentialTimeWeighted",
+                    "gaussian",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "smoothingWeight": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "stabilizeRunGroups": {
+          "type": "boolean"
+        },
+        "startingXAxis": {
+          "type": "string"
+        },
+        "tooltipNumberOfRuns": {
+          "type": "string"
+        },
+        "useGlobalSmoothingWeight": {
+          "type": "boolean"
+        },
+        "useLocalSmoothing": {
+          "type": "boolean"
+        },
+        "useMetricRegex": {
+          "type": "boolean"
+        },
+        "useRunsTableGroupingInPanels": {
+          "type": "boolean"
+        },
+        "windowing": {
+          "type": "boolean"
+        },
+        "xAxis": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xAxisFormat": {
+          "enum": [
+            "datetime",
+            "number"
+          ],
+          "type": "string"
+        },
+        "xAxisMax": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "xAxisMin": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "xAxisTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xExpression": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xLogScale": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "yAxisAutoRange": {
+          "type": "boolean"
+        },
+        "yAxisMax": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "yAxisMin": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "yAxisTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yLogScale": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "title": "RunsLinePlotConfig",
+      "type": "object"
+    },
+    "RunsLinePlotPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: the run line plot, the most common panel type, plotting metrics against step, time or another metric.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/RunsLinePlotConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "query": {},
+        "viewType": {
+          "const": "Run History Line Plot",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "RunsLinePlotPanel",
+      "type": "object"
+    },
+    "ScalarChartConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a scalar chart panel: the metric and how it is aggregated across runs.",
+      "properties": {
+        "aggregate": {
+          "type": "boolean"
+        },
+        "aggregateMetrics": {
+          "type": "boolean"
+        },
+        "chartTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expressions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fontSize": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "large",
+                "medium",
+                "small",
+                "xsmall"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupAgg": {
+          "anyOf": [
+            {
+              "enum": [
+                "last",
+                "max",
+                "mean",
+                "median",
+                "min",
+                "samples",
+                "sum"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupArea": {
+          "anyOf": [
+            {
+              "enum": [
+                "minmax",
+                "none",
+                "samples",
+                "stddev",
+                "stderr"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupBy": {
+          "type": "string"
+        },
+        "groupRunsLimit": {
+          "type": "number"
+        },
+        "legendFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "legendTemplate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metrics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "showLegend": {
+          "type": "boolean"
+        }
+      },
+      "title": "ScalarChartConfig",
+      "type": "object"
+    },
+    "ScalarChartPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a single summary number for a metric across runs.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/ScalarChartConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Scalar Chart",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "ScalarChartPanel",
+      "type": "object"
+    },
+    "ScatterPlotConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a scatter plot panel: its axes, color gradient, reference lines and regression.",
+      "properties": {
+        "chartTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "color": {
+          "type": "string"
+        },
+        "customGradient": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "color": {
+                    "type": "string"
+                  },
+                  "offset": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "color",
+                  "offset"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extremePoints": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "scope": {
+              "enum": [
+                "per-bucket",
+                "per-plot"
+              ],
+              "type": "string"
+            },
+            "xCount": {
+              "type": "number"
+            },
+            "xDirection": {
+              "enum": [
+                "maximize",
+                "minimize"
+              ],
+              "type": "string"
+            },
+            "yCount": {
+              "type": "number"
+            },
+            "yDirection": {
+              "enum": [
+                "maximize",
+                "minimize"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "fontSize": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "frontierOverlay": {
+          "additionalProperties": false,
+          "properties": {
+            "computePer": {
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "mode": {
+                        "const": "all-buckets"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ]
+                  },
+                  "then": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "mode": {
+                        "const": "all-buckets",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "type": "object"
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "mode": {
+                        "const": "each-bucket"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ]
+                  },
+                  "then": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "mode": {
+                        "const": "each-bucket",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "type": "object"
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "mode": {
+                        "const": "single-bucket"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ]
+                  },
+                  "then": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bucket": {
+                        "allOf": [
+                          {
+                            "if": {
+                              "properties": {
+                                "kind": {
+                                  "const": "categorical"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            "then": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "categorical",
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "kind": {
+                                  "const": "excluded"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            "then": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "excluded",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "kind": {
+                                  "const": "numeric-range"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            "then": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "numeric-range",
+                                  "type": "string"
+                                },
+                                "max": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                },
+                                "min": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "max",
+                                "min"
+                              ],
+                              "type": "object"
+                            }
+                          }
+                        ],
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "categorical",
+                              "excluded",
+                              "numeric-range"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      "mode": {
+                        "const": "single-bucket",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "bucket",
+                      "mode"
+                    ],
+                    "type": "object"
+                  }
+                }
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "all-buckets",
+                    "each-bucket",
+                    "single-bucket"
+                  ]
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            },
+            "pareto": {
+              "additionalProperties": false,
+              "properties": {
+                "display": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "dimDominatedPoints": {
+                      "type": "boolean"
+                    },
+                    "labelField": {
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "kind": {
+                                "const": "display-name"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ]
+                          },
+                          "then": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "display-name",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        {
+                          "if": {
+                            "properties": {
+                              "kind": {
+                                "const": "run-key"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ]
+                          },
+                          "then": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "run-key",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        {
+                          "if": {
+                            "properties": {
+                              "kind": {
+                                "const": "run-name"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ]
+                          },
+                          "then": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "run-name",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          }
+                        }
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "display-name",
+                            "run-key",
+                            "run-name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    "showLabels": {
+                      "type": "boolean"
+                    },
+                    "showLine": {
+                      "type": "boolean"
+                    },
+                    "showPointMarkers": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "extendTailToXAxis": {
+                  "type": "boolean"
+                },
+                "steppedLine": {
+                  "type": "boolean"
+                },
+                "xDirection": {
+                  "enum": [
+                    "maximize",
+                    "minimize"
+                  ],
+                  "type": "string"
+                },
+                "yDirection": {
+                  "enum": [
+                    "maximize",
+                    "minimize"
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "sequencing": {
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "sequenceBy": {
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "kind": {
+                            "const": "run-created-at"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      "then": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "run-created-at",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "kind": {
+                            "const": "run-index"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      "then": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "run-index",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "kind": {
+                            "const": "run-key"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      "then": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "run-key",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "key"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  ],
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "run-created-at",
+                        "run-index",
+                        "run-key"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "showLine": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "gradientPalette": {
+          "type": "number"
+        },
+        "legendFields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maxColor": {
+          "type": "string"
+        },
+        "maxYAxisLineSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "dimPoints": {
+              "type": "boolean"
+            },
+            "showLabels": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "minColor": {
+          "type": "string"
+        },
+        "minYAxisLineSettings": {
+          "additionalProperties": false,
+          "properties": {
+            "dimPoints": {
+              "type": "boolean"
+            },
+            "showLabels": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "randomizeRuns": {
+          "type": "boolean"
+        },
+        "referenceLines": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "axis": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "axis"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "semanticLegendPalette": {
+          "type": "number"
+        },
+        "semanticLegendSettings": {
+          "$ref": "#/definitions/SemanticLegendSettingsWithCategoricalConfig"
+        },
+        "showAvgYAxisLine": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "showLinearRegression": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "showMaxYAxisLine": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "showMinYAxisLine": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "xAxis": {
+          "type": "string"
+        },
+        "xAxisLabel": {
+          "type": "string"
+        },
+        "xAxisLogScale": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "xAxisMax": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "xAxisMin": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "yAxis": {
+          "type": "string"
+        },
+        "yAxisLabel": {
+          "type": "string"
+        },
+        "yAxisLineSmoothingWeight": {
+          "type": "number"
+        },
+        "yAxisLogScale": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "yAxisMax": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "yAxisMin": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "zAxis": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "zAxisLabel": {
+          "type": "string"
+        },
+        "zAxisLogScale": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "zAxisMax": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "zAxisMin": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "title": "ScatterPlotConfig",
+      "type": "object"
+    },
+    "ScatterPlotPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: runs plotted by two metrics, optionally colored by a third.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/ScatterPlotConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Scatter Plot",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "ScatterPlotPanel",
+      "type": "object"
+    },
+    "SectionConfig": {
+      "additionalProperties": false,
+      "description": "A section: its run sets, panels and settings (the app type `Config` in `util/section`). Multi-run workspaces store one under `section`; legacy reports store them under `global` and `panelGroups`.",
+      "properties": {
+        "customRunColors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "customRunNames": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "hideRunSets": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "openRunSet": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "openViz": {
+          "type": "boolean"
+        },
+        "panelBankConfig": {
+          "$ref": "#/definitions/PanelBankConfig"
+        },
+        "panelBankSectionConfig": {
+          "$ref": "#/definitions/PanelBankSectionConfig"
+        },
+        "panels": {
+          "$ref": "#/definitions/Panels"
+        },
+        "runSets": {
+          "items": {
+            "$ref": "#/definitions/RunSetConfig"
+          },
+          "type": "array"
+        },
+        "semanticLegendSettings": {
+          "$ref": "#/definitions/SemanticLegendSettingsWithCategoricalConfig"
+        },
+        "settings": {
+          "$ref": "#/definitions/Settings"
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "number"
+        },
+        "workspaceSettings": {
+          "$ref": "#/definitions/OrganizedSettings"
+        }
+      },
+      "title": "SectionConfig",
+      "type": "object"
+    },
+    "SelectionBound": {
+      "additionalProperties": false,
+      "description": "A bound on a run field that limits which runs are selected, such as `summary.loss < 0.5`.",
+      "properties": {
+        "key": {
+          "$ref": "#/definitions/RunKey"
+        },
+        "op": {
+          "enum": [
+            "<=",
+            ">=",
+            "IN"
+          ],
+          "type": "string"
+        },
+        "value": {}
+      },
+      "required": [
+        "key",
+        "op"
+      ],
+      "title": "SelectionBound",
+      "type": "object"
+    },
+    "Selections": {
+      "additionalProperties": false,
+      "description": "Which runs a run set's visualizations include: the selection tree, bounds on run fields, and runs and groups added or removed by hand.",
+      "properties": {
+        "bounds": {
+          "items": {
+            "$ref": "#/definitions/SelectionBound"
+          },
+          "type": "array"
+        },
+        "root": {
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "type": "number"
+        },
+        "tree": {}
+      },
+      "required": [
+        "bounds",
+        "root"
+      ],
+      "title": "Selections",
+      "type": "object"
+    },
+    "SemanticLegendSettingsWithCategoricalConfig": {
+      "additionalProperties": false,
+      "description": "Settings for coloring runs by the value of a metric or config field, in numeric buckets or by category.",
+      "properties": {
+        "allCategories": {
+          "items": {},
+          "type": "array"
+        },
+        "bucketCustomizations": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "bucketMax": {
+                "type": "number"
+              },
+              "bucketMin": {
+                "type": "number"
+              },
+              "color": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "buckets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "bucketMax": {
+                "type": "number"
+              },
+              "bucketMin": {
+                "type": "number"
+              },
+              "color": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "categoryRunColorMap": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "configValuesForRun": {
+          "items": {},
+          "type": "array"
+        },
+        "configValuesForRunCategories": {
+          "items": {},
+          "type": "array"
+        },
+        "configValuesNumberAggregation": {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "max",
+            "min"
+          ],
+          "type": "object"
+        },
+        "excludedRunColor": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "metricStatistics": {
+          "additionalProperties": false,
+          "properties": {
+            "config_number": {
+              "additionalProperties": false,
+              "properties": {
+                "max": {
+                  "type": "number"
+                },
+                "min": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max",
+                "min"
+              ],
+              "type": "object"
+            },
+            "last": {
+              "additionalProperties": false,
+              "properties": {
+                "max": {
+                  "type": "number"
+                },
+                "min": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max",
+                "min"
+              ],
+              "type": "object"
+            },
+            "max": {
+              "additionalProperties": false,
+              "properties": {
+                "max": {
+                  "type": "number"
+                },
+                "min": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "max",
+                "min"
+              ],
+              "type": "object"
+            },
+            "min": {
+              "additionalProperties": false,
+              "properties": {
+                "max": {
+                  "type": "number"
+                },
+                "min": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "metricStatisticsForRun": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "last": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              },
+              "min": {
+                "type": "number"
+              },
+              "run_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "last",
+              "max",
+              "min",
+              "run_name"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "numberOfBuckets": {
+          "type": "number"
+        },
+        "runColorOptions": {
+          "type": "string"
+        },
+        "selectedCategories": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "shouldRecalculateBuckets": {
+          "type": "boolean"
+        },
+        "viewID": {
+          "type": "string"
+        },
+        "yAxisValue": {
+          "enum": [
+            "config_categories",
+            "config_number",
+            "last",
+            "max",
+            "min"
+          ],
+          "type": "string"
+        }
+      },
+      "title": "SemanticLegendSettingsWithCategoricalConfig",
+      "type": "object"
+    },
+    "Settings": {
+      "additionalProperties": false,
+      "description": "Line plot defaults for a section's panels: x-axis, smoothing, outlier handling, point sampling and run name display. A panel's own config overrides them.",
+      "properties": {
+        "colorRunNames": {
+          "type": "boolean"
+        },
+        "displayFullRunName": {
+          "type": "boolean"
+        },
+        "excludeOutliers": {
+          "enum": [
+            "exclude-outliers",
+            "include-outliers"
+          ],
+          "type": "string"
+        },
+        "fullFidelityMode": {
+          "enum": [
+            "min-max-last",
+            "standard"
+          ],
+          "type": "string"
+        },
+        "localSmoothingSettingsActive": {
+          "type": "number"
+        },
+        "localxAxisSettingsActive": {
+          "type": "number"
+        },
+        "maxRuns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "pointVisualizationMethod": {
+          "enum": [
+            "bucketing-gorilla",
+            "sampling",
+            "sampling-by-default"
+          ],
+          "type": "string"
+        },
+        "showLegend": {
+          "type": "boolean"
+        },
+        "smoothingActive": {
+          "type": "boolean"
+        },
+        "smoothingType": {
+          "enum": [
+            "average",
+            "exponential",
+            "exponentialTimeWeighted",
+            "gaussian",
+            "none"
+          ],
+          "type": "string"
+        },
+        "smoothingWeight": {
+          "type": "number"
+        },
+        "tooltipNumberOfRuns": {
+          "enum": [
+            "all_runs",
+            "default",
+            "single"
+          ],
+          "type": "string"
+        },
+        "useRunsTableGroupingInPanels": {
+          "type": "boolean"
+        },
+        "xAxis": {
+          "type": "string"
+        },
+        "xAxisActive": {
+          "type": "boolean"
+        },
+        "xAxisFormat": {
+          "enum": [
+            "datetime",
+            "number"
+          ],
+          "type": "string"
+        },
+        "xAxisMax": {
+          "type": "number"
+        },
+        "xAxisMin": {
+          "type": "number"
+        }
+      },
+      "title": "Settings",
+      "type": "object"
+    },
+    "SlateChildren": {
+      "description": "The children of a Slate element in a report body: the elements and text leaves inside it.",
+      "items": {
+        "$ref": "#/definitions/SlateNode"
+      },
+      "title": "SlateChildren",
+      "type": "array"
+    },
+    "SlateNode": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Block"
+        },
+        {
+          "$ref": "#/definitions/TextLeaf"
+        }
+      ],
+      "description": "A node in a report's Slate tree: an element, or a text leaf, which has no `type`.",
+      "title": "SlateNode"
+    },
+    "SlateReport": {
+      "additionalProperties": false,
+      "description": "Read root for reports, report drafts and collection overviews (the app type `SlateReport`). About 2% of stored reports still use the legacy `global` and `panelGroups` layout.",
+      "properties": {
+        "authors": {
+          "items": {
+            "$ref": "#/definitions/ReportAuthor"
+          },
+          "type": "array"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/definitions/SlateNode"
+          },
+          "type": "array"
+        },
+        "discussionThreads": {
+          "items": {
+            "$ref": "#/definitions/DiscussionThread"
+          },
+          "type": "array"
+        },
+        "global": {
+          "$ref": "#/definitions/SectionConfig"
+        },
+        "panelGroups": {
+          "items": {
+            "$ref": "#/definitions/SectionConfig"
+          },
+          "type": "array"
+        },
+        "panelSettings": {
+          "$ref": "#/definitions/LinePlotSettings"
+        },
+        "version": {
+          "enum": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "type": "number"
+        },
+        "width": {
+          "enum": [
+            "fixed",
+            "fluid",
+            "profile",
+            "readable"
+          ],
+          "type": "string"
+        }
+      },
+      "title": "SlateReport",
+      "type": "object"
+    },
+    "Sort": {
+      "additionalProperties": false,
+      "description": "The order of runs in a run set: the run fields sorted on and their directions.",
+      "properties": {
+        "keys": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ascending": {
+                "type": "boolean"
+              },
+              "key": {
+                "$ref": "#/definitions/RunKey"
+              }
+            },
+            "required": [
+              "ascending",
+              "key"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "title": "Sort",
+      "type": "object"
+    },
+    "SoundcloudBlock": {
+      "additionalProperties": false,
+      "description": "An embedded SoundCloud track in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "html": {
+          "type": "string"
+        },
+        "type": {
+          "const": "soundcloud",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "html",
+        "type"
+      ],
+      "title": "SoundcloudBlock",
+      "type": "object"
+    },
+    "SpotifyBlock": {
+      "additionalProperties": false,
+      "description": "An embedded Spotify item in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "spotifyID": {
+          "type": "string"
+        },
+        "spotifyType": {
+          "enum": [
+            "album",
+            "episode",
+            "playlist",
+            "show",
+            "track"
+          ],
+          "type": "string"
+        },
+        "type": {
+          "const": "spotify",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "spotifyID",
+        "spotifyType",
+        "type"
+      ],
+      "title": "SpotifyBlock",
+      "type": "object"
+    },
+    "StoredFilter": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FilterV2Root"
+        },
+        {
+          "$ref": "#/definitions/RootFilter"
+        }
+      ],
+      "description": "Run-set filters as stored: the flat V2 format, or the legacy tree the app migrates on load.",
+      "title": "StoredFilter"
+    },
+    "SweepPageViewSpec": {
+      "additionalProperties": false,
+      "description": "Read root for `sweep-view`. The app reads only `section`; the other root fields are stray.",
+      "properties": {
+        "section": {
+          "$ref": "#/definitions/SectionConfig"
+        }
+      },
+      "required": [
+        "section"
+      ],
+      "title": "SweepPageViewSpec",
+      "type": "object"
+    },
+    "TableOfContentsBlock": {
+      "additionalProperties": false,
+      "description": "A table of contents in a report's Slate tree, built from the report's headings.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "displayLevel": {
+          "type": "number"
+        },
+        "type": {
+          "const": "table-of-contents",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "TableOfContentsBlock",
+      "type": "object"
+    },
+    "TextLeaf": {
+      "additionalProperties": false,
+      "description": "A run of text in a report's Slate tree, with the formatting marks applied to it.",
+      "properties": {
+        "bold": {
+          "type": "boolean"
+        },
+        "checked": {
+          "type": "boolean"
+        },
+        "code": {
+          "type": "boolean"
+        },
+        "delete": {
+          "type": "boolean"
+        },
+        "emphasis": {
+          "type": "boolean"
+        },
+        "inlineCode": {
+          "type": "boolean"
+        },
+        "inlineComments": {
+          "items": {},
+          "type": "array"
+        },
+        "inline_code": {
+          "type": "null"
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "strong": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        },
+        "underline": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TextLeaf",
+      "type": "object"
+    },
+    "TwitterBlock": {
+      "additionalProperties": false,
+      "description": "An embedded tweet in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "html": {
+          "type": "string"
+        },
+        "type": {
+          "const": "twitter",
+          "type": "string"
+        }
+      },
+      "required": [
+        "html",
+        "type"
+      ],
+      "title": "TwitterBlock",
+      "type": "object"
+    },
+    "Vega2Panel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a custom chart built on a Vega spec, with the query that feeds it.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/VegaPanel2Config"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Vega2",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "Vega2Panel",
+      "type": "object"
+    },
+    "Vega3Config": {
+      "additionalProperties": false,
+      "description": "Settings of a third-format custom chart: the field mapping, and the query and Vega spec the panel editor writes while the panel is behind the Vega3 beta flag. Both are opaque until the panel leaves beta.",
+      "properties": {
+        "mapping": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "query": {},
+        "vegaSpec": {}
+      },
+      "title": "Vega3Config",
+      "type": "object"
+    },
+    "Vega3Panel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a custom chart in the third Vega format.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/Vega3Config"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Vega3",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "Vega3Panel",
+      "type": "object"
+    },
+    "VegaPanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a custom chart built on a Vega spec, in its first format.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/VegaPanelConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Vega",
+          "type": "string"
+        }
+      },
+      "required": [
+        "config",
+        "viewType"
+      ],
+      "title": "VegaPanel",
+      "type": "object"
+    },
+    "VegaPanel2Config": {
+      "additionalProperties": false,
+      "description": "Settings of a custom chart: the chart definition, the user's query (opaque) and the field bindings.",
+      "properties": {
+        "customPanelDef": {},
+        "defaultViewedRun": {
+          "type": "string"
+        },
+        "defaultViewedStepIndex": {
+          "type": "number"
+        },
+        "fieldSettings": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "items": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "additionalProperties": {},
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "panelDefId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "$schema": {
+                  "type": "string"
+                },
+                "data": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "encoding": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "type"
+                      ],
+                      "type": "object"
+                    },
+                    "y": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "showRunSelector": {
+          "type": "boolean"
+        },
+        "showStepSelector": {
+          "type": "boolean"
+        },
+        "stringSettings": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "additionalProperties": {},
+                    "type": "object"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        "transform": {},
+        "userQuery": {}
+      },
+      "title": "VegaPanel2Config",
+      "type": "object"
+    },
+    "VegaPanelConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a first-format custom chart: the chart definition and the run fields bound to it.",
+      "properties": {
+        "customPanelDef": {},
+        "fieldSettings": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "historyFieldSettings": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "panelDefId": {
+          "type": "string"
+        },
+        "runFieldListSettings": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "runFieldSettings": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "title": "VegaPanelConfig",
+      "type": "object"
+    },
+    "VideoBlock": {
+      "additionalProperties": false,
+      "description": "An embedded video in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "type": {
+          "const": "video",
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type",
+        "url"
+      ],
+      "title": "VideoBlock",
+      "type": "object"
+    },
+    "WeaveConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a Weave panel. The panel state is an opaque Weave graph.",
+      "properties": {
+        "defaultWorkspaceState": {},
+        "panel2Config": {}
+      },
+      "title": "WeaveConfig",
+      "type": "object"
+    },
+    "WeavePanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: a Weave expression panel, whose config holds an opaque Weave graph.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/WeaveConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Weave",
+          "type": "string"
+        }
+      },
+      "required": [
+        "__id__",
+        "config",
+        "viewType"
+      ],
+      "title": "WeavePanel",
+      "type": "object"
+    },
+    "WeavePanelBlock": {
+      "additionalProperties": false,
+      "description": "A Weave expression panel embedded directly in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "config": {},
+        "type": {
+          "const": "weave-panel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "WeavePanelBlock",
+      "type": "object"
+    },
+    "WeavePythonPanelBlock": {
+      "additionalProperties": false,
+      "description": "A panel defined in Weave Python and embedded in a report's Slate tree.",
+      "properties": {
+        "children": {
+          "$ref": "#/definitions/SlateChildren"
+        },
+        "config": {},
+        "type": {
+          "const": "weave-python-panel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "children",
+        "type"
+      ],
+      "title": "WeavePythonPanelBlock",
+      "type": "object"
+    },
+    "WeaveTraceConfig": {
+      "additionalProperties": false,
+      "description": "Settings of a Weave trace panel: the saved trace view it shows (opaque).",
+      "properties": {
+        "currentStep": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "savedViewDefinition": {}
+      },
+      "title": "WeaveTraceConfig",
+      "type": "object"
+    },
+    "WeaveTracePanel": {
+      "additionalProperties": false,
+      "description": "A panel in a workspace section or a report panel grid: Weave traces logged alongside the runs.",
+      "properties": {
+        "__id__": {
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/definitions/WeaveTraceConfig"
+        },
+        "isAuto": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "layout": {
+          "$ref": "#/definitions/LayoutParameters"
+        },
+        "viewType": {
+          "const": "Weave Trace",
+          "type": "string"
+        }
+      },
+      "required": [
+        "__id__",
+        "config",
+        "viewType"
+      ],
+      "title": "WeaveTracePanel",
+      "type": "object"
+    },
+    "WorkspaceSectionConfig": {
+      "additionalProperties": false,
+      "description": "The `section` of a multi-run workspace in the write contract.",
+      "properties": {
+        "customRunColors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "customRunNames": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "hideRunSets": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "openRunSet": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "openViz": {
+          "type": "boolean"
+        },
+        "panelBankConfig": {
+          "$ref": "#/definitions/PanelBankConfig"
+        },
+        "panelBankSectionConfig": {
+          "$ref": "#/definitions/PanelBankSectionConfig"
+        },
+        "panels": {
+          "$ref": "#/definitions/Panels"
+        },
+        "runSets": {
+          "items": {
+            "$ref": "#/definitions/RunSetConfig"
+          },
+          "type": "array"
+        },
+        "semanticLegendSettings": {
+          "$ref": "#/definitions/SemanticLegendSettingsWithCategoricalConfig"
+        },
+        "settings": {
+          "$ref": "#/definitions/Settings"
+        },
+        "type": {
+          "type": "null"
+        },
+        "version": {
+          "type": "number"
+        },
+        "workspaceSettings": {
+          "$ref": "#/definitions/OrganizedSettings"
+        }
+      },
+      "title": "WorkspaceSectionConfig",
+      "type": "object"
+    }
+  }
+}

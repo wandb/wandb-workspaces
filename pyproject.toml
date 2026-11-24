@@ -47,6 +47,7 @@ dev = [
     "pandas>=2.2.2,<3",
     "numpy>=1.26.4,<2",
     "coverage>=7.5.3,<8",
+    "jsonschema>=4.26.0,<5",
 ]
 
 [build-system]
@@ -58,6 +59,9 @@ minversion = "6.0"
 console_output_style = "count"
 addopts = "-vvv --cov-config=pyproject.toml --cov=wandb-workspaces --cov-report=xml --cov-report=term"
 log_format = "%(asctime)s %(levelname)s %(message)s"
+markers = [
+    "corpus: round-trip a spec from SPEC_CORPUS, outside the repo",
+]
 log_date_format = "%Y-%m-%d %H:%M:%S"
 testpaths = "tests"
 filterwarnings = ["ignore::DeprecationWarning", "error:ResourceWarning"]

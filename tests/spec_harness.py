@@ -1,0 +1,160 @@
+"""Compare a workspace spec before and after a fetch-then-save.
+
+`diff_specs` lists every JSON path a save dropped, added or changed, and
+`write_errors` checks a spec against the view spec schema's write contract,
+the only shape a client may save. The schema is the copy pinned in
+schema/viewspec/ (see scripts/sync_schema.py).
+
+Specs come from `tests/specs/*.json`, which are committed and hold no customer
+data, and from the directory named by `SPEC_CORPUS`, which stays outside the
+repo.
+"""
+
+import dataclasses
+import functools
+import json
+import os
+import pathlib
+from typing import Any, Dict, Iterator, List, Optional, Tuple
+
+import jsonschema
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+SCHEMA_DIR = REPO_ROOT / "schema" / "viewspec"
+SPECS_DIR = pathlib.Path(__file__).resolve().parent / "specs"
+CORPUS_ENV = "SPEC_CORPUS"
+
+Path = Tuple[Any, ...]
+
+
+def format_path(path: Path) -> str:
+    return "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in path)
+
+
+@dataclasses.dataclass
+class SpecDiff:
+    dropped: List[Path]
+    added: List[Path]
+    changed: List[Path]
+
+    @property
+    def is_lossless(self) -> bool:
+        """Nothing was dropped or changed. Additions are reported separately."""
+        return not self.dropped and not self.changed
+
+    def summary(self, limit: int = 20) -> str:
+        lines = []
+        for name in ("dropped", "changed", "added"):
+            paths = getattr(self, name)
+            if not paths:
+                continue
+            lines.append(f"{len(paths)} {name}:")
+            lines += [f"  {format_path(p)}" for p in paths[:limit]]
+            if len(paths) > limit:
+                lines.append(f"  ... and {len(paths) - limit} more")
+        return "\n".join(lines) or "no differences"
+
+
+def diff_specs(loaded: Dict[str, Any], saved: Dict[str, Any]) -> SpecDiff:
+    """The paths `saved` dropped, added or changed relative to `loaded`.
+
+    A dropped or added object counts once, at its own path, not once per key
+    inside it. Lists are compared position by position. A number that changes
+    only its type (`0` to `0.0`) is not a change: the spec is JSON read by the
+    app, where both are the same value. A boolean and a number (`true` and
+    `1`) are different values, as they are in JSON.
+    """
+    diff = SpecDiff(dropped=[], added=[], changed=[])
+    _walk(loaded, saved, (), diff)
+    for paths in (diff.dropped, diff.added, diff.changed):
+        paths.sort(key=lambda p: [str(x) for x in p])
+    return diff
+
+
+def _walk(loaded: Any, saved: Any, path: Path, diff: SpecDiff) -> None:
+    if isinstance(loaded, dict) and isinstance(saved, dict):
+        for key, value in loaded.items():
+            if key in saved:
+                _walk(value, saved[key], path + (key,), diff)
+            else:
+                diff.dropped.append(path + (key,))
+        diff.added += [path + (key,) for key in saved if key not in loaded]
+    elif isinstance(loaded, list) and isinstance(saved, list):
+        for i, (a, b) in enumerate(zip(loaded, saved)):
+            _walk(a, b, path + (i,), diff)
+        diff.dropped += [path + (i,) for i in range(len(saved), len(loaded))]
+        diff.added += [path + (i,) for i in range(len(loaded), len(saved))]
+    elif not _same_value(loaded, saved):
+        diff.changed.append(path)
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    """Equal as JSON values: `0 == 0.0`, but `true != 1` and `1 != "1"`."""
+    if isinstance(a, bool) or isinstance(b, bool):
+        return isinstance(a, bool) and isinstance(b, bool) and a == b
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return a == b
+    return type(a) is type(b) and a == b
+
+
+@functools.lru_cache(maxsize=None)
+def _schema(name: str) -> Dict[str, Any]:
+    return json.loads((SCHEMA_DIR / name).read_text())
+
+
+@functools.lru_cache(maxsize=None)
+def _write_validator(view_type: str) -> jsonschema.Draft7Validator:
+    schema = _schema("viewspec.lean.schema.json")
+    root = schema["x-view-types"][view_type]
+    return jsonschema.Draft7Validator(
+        {"$ref": f"#/definitions/{root}", "definitions": schema["definitions"]}
+    )
+
+
+def write_errors(
+    spec: Dict[str, Any], view_type: str = "project-view"
+) -> List[Tuple[str, str]]:
+    """Where `spec` breaks the write contract for `view_type`, as
+    (path, message) pairs. Empty when the spec may be saved."""
+    errors = _write_validator(view_type).iter_errors(spec)
+    return sorted(
+        (format_path(tuple(e.absolute_path)) or "$", e.message) for e in errors
+    )
+
+
+def load_spec(path: pathlib.Path) -> Dict[str, Any]:
+    """Read a spec file: either the spec itself, or a stored view row whose
+    `spec` field holds the spec, as a JSON string or an object."""
+    data = json.loads(path.read_text())
+    if "section" not in data and "spec" in data:
+        spec = data["spec"]
+        return json.loads(spec) if isinstance(spec, str) else spec
+    return data
+
+
+def committed_specs() -> List[pathlib.Path]:
+    return sorted(SPECS_DIR.glob("*.json"))
+
+
+def corpus_root() -> Optional[pathlib.Path]:
+    """The directory `SPEC_CORPUS` names, or None when it is unset. A path
+    that is not a directory raises, so a typo does not pass as an empty
+    corpus."""
+    root = os.environ.get(CORPUS_ENV)
+    if not root:
+        return None
+    path = pathlib.Path(root).expanduser()
+    if not path.is_dir():
+        raise NotADirectoryError(f"{CORPUS_ENV}={root} is not a directory")
+    return path
+
+
+def corpus_specs() -> List[pathlib.Path]:
+    """The spec files under `SPEC_CORPUS`, or none when it is unset."""
+    root = corpus_root()
+    return sorted(root.rglob("*.json")) if root else []
+
+
+def all_specs() -> Iterator[pathlib.Path]:
+    yield from committed_specs()
+    yield from corpus_specs()
