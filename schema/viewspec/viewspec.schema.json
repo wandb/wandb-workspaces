@@ -4040,9 +4040,14 @@
           "type": "string"
         },
         "hideSearchQuery": {
+          "deprecated": true,
+          "description": "Replaced by `searchQuery` with `isHidingSearchMatches`. When `searchQuery` is empty, load moves a non-empty value there and sets `isHidingSearchMatches`; either way it drops this key.",
           "type": "string"
         },
         "highlightedCompanionRunOnly": {
+          "type": "boolean"
+        },
+        "isHidingSearchMatches": {
           "type": "boolean"
         },
         "maxRuns": {

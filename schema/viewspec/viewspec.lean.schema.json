@@ -3885,10 +3885,10 @@
         "defaultMoveToSectionName": {
           "type": "string"
         },
-        "hideSearchQuery": {
-          "type": "string"
-        },
         "highlightedCompanionRunOnly": {
+          "type": "boolean"
+        },
+        "isHidingSearchMatches": {
           "type": "boolean"
         },
         "searchHistory": {
