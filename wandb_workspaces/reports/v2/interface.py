@@ -48,6 +48,7 @@ from pydantic import ConfigDict, Field, model_validator, validator
 from pydantic.dataclasses import dataclass
 
 from wandb_workspaces._graphql import execute_graphql, get_app_url
+from wandb_workspaces.utils.colors import is_valid_color, transparent_color
 
 from . import gql, internal
 from ... import expr
@@ -715,9 +716,7 @@ class Image(Block):
             Caption appears underneath the image.
     """
 
-    url: str = (
-        "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
-    )
+    url: str = "https://raw.githubusercontent.com/wandb/assets/main/wandb-logo-yellow-dots-black-wb.svg"
     caption: TextLikeField = ""
 
     def _to_model(self):
@@ -1369,6 +1368,7 @@ class PanelGrid(Block):
             # Colors from custom_run_colors (existing, may have RunsetGroup keys)
             merged_colors.update(rs.custom_run_colors)
         merged_colors.update(self.custom_run_colors)
+        merged_colors = _drop_invalid_run_colors(merged_colors)
 
         return internal.PanelGrid(
             metadata=internal.PanelGridMetadata(
@@ -4335,6 +4335,16 @@ def _collides(p1: Panel, p2: Panel) -> bool:
     return True
 
 
+def _drop_invalid_run_colors(colors: Dict[Any, Any]) -> Dict[Any, Any]:
+    valid = {}
+    for key, color in colors.items():
+        if not isinstance(color, str) or is_valid_color(color):
+            valid[key] = color
+        else:
+            wandb.termwarn(f"Omitting run color for {key!r}; {color!r} is not a color.")
+    return valid
+
+
 def _normalize_color_overrides(
     colors: Optional[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
@@ -4349,7 +4359,15 @@ def _normalize_color_overrides(
     result = {}
     for key, val in colors.items():
         if isinstance(val, str):
-            result[key] = {"color": val, "transparentColor": val + "19"}
+            if not is_valid_color(val):
+                wandb.termwarn(
+                    f"Omitting line color for {key!r}; {val!r} is not a color."
+                )
+                continue
+            result[key] = {
+                "color": val,
+                "transparentColor": transparent_color(val) or val,
+            }
         else:
             result[key] = val
     return result
