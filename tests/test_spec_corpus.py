@@ -32,24 +32,9 @@ from .spec_harness import (
     write_errors,
 )
 
-# Committed specs that fail a check on main, by file stem, one set per check.
-# Strict, so a spec that starts passing a check must come off that set. Only
-# an AssertionError counts, so a crash while loading or saving still shows.
-LOSES_FIELDS_ON_MAIN = {"app-panel-sandbox", "unmodeled-fields"}
-ADDS_FIELDS_ON_MAIN = {"app-panel-sandbox", "unmodeled-fields"}
-BREAKS_WRITE_CONTRACT_ON_MAIN = {"app-panel-sandbox", "unmodeled-fields"}
 
-
-def _committed(failing_on_main=frozenset(), reason=""):
-    mark = pytest.mark.xfail(strict=True, raises=AssertionError, reason=reason)
-    return [
-        pytest.param(
-            p,
-            id=p.stem,
-            marks=[mark] if p.stem in failing_on_main else [],
-        )
-        for p in committed_specs()
-    ]
+def _committed():
+    return [pytest.param(p, id=p.stem) for p in committed_specs()]
 
 
 def _corpus():
@@ -75,37 +60,21 @@ def test_committed_spec_is_one_the_app_would_save(path):
     assert not errors, _format_errors(errors)
 
 
-@pytest.mark.parametrize(
-    "path",
-    _committed(LOSES_FIELDS_ON_MAIN, reason="main drops or rewrites fields on save")
-    + _corpus(),
-)
+@pytest.mark.parametrize("path", _committed() + _corpus())
 def test_unedited_save_loses_nothing(path):
     spec, saved = _saved(path)
     diff = diff_specs(spec, saved)
     assert diff.is_lossless, diff.summary()
 
 
-@pytest.mark.parametrize(
-    "path",
-    _committed(ADDS_FIELDS_ON_MAIN, reason="main adds default keys on save"),
-)
+@pytest.mark.parametrize("path", _committed())
 def test_unedited_save_adds_nothing(path):
     spec, saved = _saved(path)
     diff = diff_specs(spec, saved)
     assert not diff.added, diff.summary()
 
 
-@pytest.mark.parametrize(
-    "path",
-    _committed(
-        BREAKS_WRITE_CONTRACT_ON_MAIN,
-        reason=(
-            "main writes keys the write contract rejects, such as the root"
-            " vizExpanded and libraryExpanded"
-        ),
-    ),
-)
+@pytest.mark.parametrize("path", _committed())
 def test_unedited_save_passes_the_write_contract(path):
     _, saved = _saved(path)
     errors = write_errors(saved)

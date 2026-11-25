@@ -122,6 +122,37 @@ def write_errors(
     )
 
 
+def run_set(**overrides: Any) -> Dict[str, Any]:
+    """A run set with every field the read contract requires, so a hand-built
+    spec loads whether the SDK fills in defaults or validates against the
+    schema."""
+    config: Dict[str, Any] = {
+        "id": "rs1",
+        "filters": {"op": "OR", "filters": [{"op": "AND", "filters": []}]},
+        "grouping": [],
+        "selections": {"root": 1, "bounds": [], "tree": []},
+    }
+    config.update(overrides)
+    return config
+
+
+def minimal_spec(**section_overrides: Any) -> Dict[str, Any]:
+    """The smallest workspace spec the read contract accepts, with
+    `section_overrides` set on its section."""
+    section: Dict[str, Any] = {
+        "panelBankConfig": {"state": 1, "settings": {}, "sections": []},
+        "panelBankSectionConfig": {
+            "name": "Hidden Panels",
+            "isOpen": False,
+            "panels": [],
+        },
+        "customRunColors": {},
+        "runSets": [run_set()],
+    }
+    section.update(section_overrides)
+    return {"section": section}
+
+
 def load_spec(path: pathlib.Path) -> Dict[str, Any]:
     """Read a spec file: either the spec itself, or a stored view row whose
     `spec` field holds the spec, as a JSON string or an object."""

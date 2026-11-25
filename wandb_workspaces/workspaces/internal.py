@@ -102,3 +102,6 @@ class View(WorkspaceAPIBaseModel):
     id: str
     spec: WorkspaceViewspec
     updated_at: Optional[str] = None
+    # The spec as JSON: what the server stored, on load, and what to send, on
+    # save. `spec` above only covers the fields the SDK models.
+    raw_spec: Optional[Dict[str, Any]] = None

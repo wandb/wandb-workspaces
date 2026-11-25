@@ -326,8 +326,9 @@ def _representative_panels() -> list:
     return panels
 
 
-def test_section_id_roundtrips_and_fresh_section_omits_it():
-    """A loaded section keeps its ``__id__``; a from-scratch section emits none."""
+def test_section_id_roundtrips_and_fresh_section_gets_one():
+    """A loaded section keeps its ``__id__``; a from-scratch section gets one
+    on its first save and keeps it, as a section made in the UI has."""
     view = _view_with_custom_panels(
         [{"__id__": "sec-1", "name": "Charts", "panels": []}]
     )
@@ -338,10 +339,11 @@ def test_section_id_roundtrips_and_fresh_section_omits_it():
     )
     assert section.id == "sec-1"
 
-    dumped = (
-        ws.Section(name="New")._to_model().model_dump(by_alias=True, exclude_none=True)
-    )
-    assert "__id__" not in dumped
+    fresh = ws.Section(name="New")
+    first = fresh._to_model().model_dump(by_alias=True, exclude_none=True)
+    second = fresh._to_model().model_dump(by_alias=True, exclude_none=True)
+    assert first["__id__"]
+    assert first["__id__"] == second["__id__"]
 
 
 def test_section_flags_roundtrip_and_fresh_section_omits_them():

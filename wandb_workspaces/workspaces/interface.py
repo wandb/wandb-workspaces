@@ -30,13 +30,32 @@ import base64
 import copy
 import dataclasses
 import os
-from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union, cast
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 from typing import List as LList
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 import wandb
 from annotated_types import Annotated, Ge
-from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    ValidationError,
+    model_validator,
+)
 from pydantic.dataclasses import dataclass
 
 from wandb_workspaces.reports.v2.interface import PanelTypes, _lookup_panel
@@ -44,7 +63,7 @@ from wandb_workspaces.reports.v2.internal import TooltipNumberOfRuns, _generate_
 from wandb_workspaces.utils.validators import validate_no_emoji, validate_url
 
 from .. import expr
-from . import _api, _view_names, internal
+from . import _api, _contract, _modern_settings, _spec_edits, _view_names, internal
 from .errors import ViewSpecConflictError
 from ._run_color_groups import (
     RUN_COLOR_GROUP_KEY_PREFIX,
@@ -127,6 +146,34 @@ __all__ = [
 ]
 
 dataclass_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+# The app keeps the section that holds hidden panels last in every workspace.
+HIDDEN_PANELS = "Hidden Panels"
+
+# What a panel's `layout` dumps as when nobody set one. The app strips layout
+# from workspace panels on load, so a save does not write this default.
+DEFAULT_PANEL_LAYOUT = internal.Layout().model_dump(by_alias=True)
+
+SettingsModel = TypeVar("SettingsModel", bound=BaseModel)
+
+
+def _read_settings(
+    model_cls: Type[SettingsModel], legacy: dict, fallback: SettingsModel
+) -> SettingsModel:
+    """`legacy`, a settings block in the legacy shape, as `model_cls`. A value
+    the model cannot read (a setting the SDK has no attribute for, stored in
+    a shape it does not expect) keeps the SDK from showing the settings, not
+    from loading the workspace: the save leaves them as stored anyway."""
+    try:
+        return model_cls.model_validate(legacy)
+    except ValidationError as e:
+        paths = [tuple(err["loc"]) for err in e.errors()]
+        wandb.termwarn(
+            f"Could not read {len(paths)} workspace setting(s) "
+            f"({_spec_edits.format_paths(paths)}); showing defaults for them. "
+            "They are kept as stored on save."
+        )
+        return fallback
 
 
 def _key_to_string(key: expr.Key) -> str:
@@ -529,9 +576,9 @@ class Section(Base):
     )
     panel_settings: SectionPanelSettings = Field(default_factory=SectionPanelSettings)
 
-    # Set from a loaded spec's `__id__`, never generated (unlike Panel._id). A
-    # fresh section then omits `__id__`; a loaded one keeps its id so placement
-    # overrides resolve.
+    # The section's `__id__`: from the spec for a loaded section, generated on
+    # the first save for one made in the SDK, as the app does for a section
+    # made in the UI. Placement overrides refer to it.
     _id: Optional[str] = Field(default=None, init=False, repr=False)
 
     # App-managed section flags loaded from the spec and round-tripped verbatim
@@ -543,14 +590,33 @@ class Section(Base):
     _default_name: Optional[str] = Field(default=None, init=False, repr=False)
 
     @classmethod
-    def _from_model(cls, model: internal.PanelBankConfigSectionsItem):
+    def _from_model(
+        cls, model: internal.PanelBankConfigSectionsItem, raw: Optional[dict] = None
+    ):
+        # `raw` is the section as stored. The app keeps section settings in
+        # `sectionSettings`, which the internal model does not carry; the
+        # legacy `localPanelSettings` is the fallback, as in the app.
+        organized = (raw or {}).get("sectionSettings")
+        if organized:
+            legacy = _modern_settings.legacy_from_organized(organized)
+        elif raw and raw.get("localPanelSettings"):
+            # The legacy block may hold the app's current keys too.
+            legacy = _modern_settings.normalized_legacy(raw["localPanelSettings"])
+        else:
+            legacy = None
+        if legacy is not None:
+            local_panel_settings = _read_settings(
+                internal.LocalPanelSettings, legacy, model.local_panel_settings
+            )
+        else:
+            local_panel_settings = model.local_panel_settings
         obj = cls(
             name=model.name,
             panels=[_lookup_panel(p) for p in model.panels],
             is_open=model.is_open,
             pinned=model.pinned if model.pinned is not None else False,
             layout_settings=SectionLayoutSettings._from_model(model.flow_config),
-            panel_settings=SectionPanelSettings._from_model(model.local_panel_settings),
+            panel_settings=SectionPanelSettings._from_model(local_panel_settings),
         )
         obj._id = model.id
         obj._is_panels_auto = model.is_panels_auto
@@ -576,10 +642,13 @@ class Section(Base):
         flow_config = self.layout_settings._to_model()
         local_panel_settings = self.panel_settings._to_model()
 
+        if not self._id:
+            object.__setattr__(self, "_id", _generate_name())
+
         # Add warning that panel layout only works if they set section settings layout = "custom"
 
         return internal.PanelBankConfigSectionsItem(
-            id=self._id or None,
+            id=self._id,
             name=self.name,
             panels=panel_models,
             is_open=self.is_open,
@@ -678,11 +747,11 @@ class RunSettings(Base):
 
     Attributes:
         color (str): The color of the run in the UI.  Can be hex (#ff0000), css color (red), or rgb (rgb(255, 0, 0))
-        disabled (bool): Whether the run is deactivated (eye closed in the UI). Default is set to `False`.
+        disabled (Optional[bool]): Whether the run is deactivated (eye closed in the UI). Left unset, the run's visibility stays as stored, so an entry made to set a color changes nothing else.
     """
 
     color: str = ""  # hex, css color, or rgb
-    disabled: bool = False
+    disabled: Optional[bool] = None
 
 
 @dataclass(config=dataclass_config, repr=False)
@@ -932,6 +1001,23 @@ class Workspace(Base):
         default=None, init=False, repr=False
     )
 
+    # A save starts from the spec as loaded and applies the user's edits onto
+    # it (see _spec_edits). `_loaded_spec` is that spec; `_loaded_rebuild` is
+    # what `_rebuilt_spec` returned right after loading, so a save can tell an
+    # edit from a default. Both are None for a workspace made in the SDK until
+    # its first save.
+    _loaded_spec: Optional[dict] = Field(default=None, init=False, repr=False)
+    _loaded_rebuild: Optional[dict] = Field(default=None, init=False, repr=False)
+    # The run set's `selections` as loaded. With `root: 0` the tree lists the
+    # visible runs, so a save edits that list instead of writing hidden runs.
+    _stashed_selections: Optional[dict] = Field(default=None, init=False, repr=False)
+    # Which runs were hidden when loaded, so a save knows which the user changed.
+    _loaded_run_disabled: Dict[str, Optional[bool]] = Field(
+        default_factory=dict, init=False, repr=False
+    )
+    # The `__id__` of the Hidden Panels section a new workspace gets on save.
+    _hidden_panels_id: Optional[str] = Field(default=None, init=False, repr=False)
+
     @property
     def auto_generate_panels(self) -> Optional[bool]:
         return self._auto_generate_panels
@@ -963,13 +1049,16 @@ class Workspace(Base):
         custom_run_colors_passthrough: Dict[str, object] = {}
         runset_model = model.spec.section.run_sets[0]
 
-        disabled_runs = runset_model.selections.tree
-        for item in disabled_runs:
+        # With `root: 1` the tree lists the hidden runs; with `root: 0` it
+        # lists the visible ones.
+        selections = runset_model.selections
+        listed_runs_disabled = selections.root != 0
+        for item in selections.tree:
             if isinstance(item, str):
-                run_settings[item] = RunSettings(disabled=True)
+                run_settings[item] = RunSettings(disabled=listed_runs_disabled)
             else:
                 for child_id in item.children:
-                    run_settings[child_id] = RunSettings(disabled=True)
+                    run_settings[child_id] = RunSettings(disabled=listed_runs_disabled)
 
         custom_run_colors = model.spec.section.custom_run_colors
         for k, v in custom_run_colors.items():
@@ -998,20 +1087,41 @@ class Workspace(Base):
 
         regex_query = True if model.spec.section.run_sets[0].search.is_regex else False
 
-        section_settings = model.spec.section.settings
         panel_bank_settings = model.spec.section.panel_bank_config.settings
+        if model.raw_spec is not None:
+            raw_section = model.raw_spec.get("section") or {}
+        else:
+            # A view built without the stored JSON: the internal model has
+            # the modern block as a dict, which is enough for the settings.
+            raw_section = {"workspaceSettings": model.spec.section.workspace_settings}
 
-        # shouldAutoGeneratePanels moved from legacy `section.settings` to modern
-        # `section.workspaceSettings`, so prefer a populated modern block (more
-        # than just `ref`) and fall back to legacy, matching the app. Guard for a
-        # bool because the app can store a transient 'pending'.
-        workspace_settings_raw = model.spec.section.workspace_settings or {}
-        if any(key != "ref" for key in workspace_settings_raw):
-            raw_auto_generate = workspace_settings_raw.get("shouldAutoGeneratePanels")
+        # Workspace settings moved from the legacy `section.settings` to
+        # `section.workspaceSettings`. Like the app, read the modern block
+        # when it has anything beyond `ref`, else the legacy one.
+        workspace_settings_raw = {
+            key: value
+            for key, value in (raw_section.get("workspaceSettings") or {}).items()
+            if key != "ref"
+        }
+        if workspace_settings_raw:
+            legacy = _modern_settings.legacy_from_organized(workspace_settings_raw)
+            # Read below, with a guard: the app can store a transient 'pending'.
+            raw_auto_generate = legacy.pop("shouldAutoGeneratePanels", None)
             auto_generate_panels = (
                 raw_auto_generate if isinstance(raw_auto_generate, bool) else None
             )
+            section_settings = _read_settings(
+                internal.ViewspecSectionSettings, legacy, model.spec.section.settings
+            )
+        elif raw_section.get("settings"):
+            # The legacy block may hold the app's current keys too.
+            legacy = _modern_settings.normalized_legacy(raw_section["settings"])
+            section_settings = _read_settings(
+                internal.ViewspecSectionSettings, legacy, model.spec.section.settings
+            )
+            auto_generate_panels = section_settings.should_auto_generate_panels
         else:
+            section_settings = model.spec.section.settings
             auto_generate_panels = section_settings.should_auto_generate_panels
         x_axis = expr._convert_be_to_fe_metric_name(section_settings.x_axis)
         point_viz_method: Literal["bucketing", "downsampling"]
@@ -1078,6 +1188,8 @@ class Workspace(Base):
             )
             filter_string = expr.filters_v2_to_string(stashed_v2)
 
+        raw_sections = (raw_section.get("panelBankConfig") or {}).get("sections") or []
+
         # then construct the Workspace object
         obj = cls(
             entity=model.entity,
@@ -1085,8 +1197,10 @@ class Workspace(Base):
             name=model.display_name,
             auto_generate_panels=auto_generate_panels,
             sections=[
-                Section._from_model(s)
-                for s in model.spec.section.panel_bank_config.sections
+                Section._from_model(
+                    s, raw_sections[i] if i < len(raw_sections) else None
+                )
+                for i, s in enumerate(model.spec.section.panel_bank_config.sections)
             ],
             settings=workspace_settings,
             runset_settings=RunsetSettings(
@@ -1126,6 +1240,15 @@ class Workspace(Base):
         obj._stashed_custom_panel_dumps = {
             key: dump for key, (_, dump) in obj._custom_panel_index().items()
         } or None
+        obj._stashed_selections = selections.model_dump(by_alias=True)
+        obj._loaded_run_disabled = {
+            run_id: settings.disabled for run_id, settings in run_settings.items()
+        }
+        if model.raw_spec is not None:
+            obj._loaded_spec = model.raw_spec
+        else:
+            obj._loaded_spec = model.spec.model_dump(by_alias=True, exclude_none=True)
+        obj._loaded_rebuild = obj._rebuilt_spec()
         return obj
 
     def _custom_panel_index(self) -> Dict[str, Tuple[Optional[str], dict]]:
@@ -1194,17 +1317,69 @@ class Workspace(Base):
 
         return config_overrides, placement_overrides
 
-    def _to_model(self) -> internal.View:
+    def _sections_to_model(self) -> LList[internal.PanelBankConfigSectionsItem]:
+        """The sections as the app orders them: Hidden Panels last. A new
+        workspace gets a Hidden Panels section, as one made in the UI has."""
         sections = [s._to_model() for s in self.sections]
+        hidden = [s for s in sections if s.name == HIDDEN_PANELS]
+        shown = [s for s in sections if s.name != HIDDEN_PANELS]
+        # A workspace made in the SDK gets one on its first save and keeps it
+        # on every save after, as the saved spec holds it but `sections` does
+        # not; a loaded workspace without one is left as it is.
+        if not hidden and (self._loaded_spec is None or self._hidden_panels_id):
+            if not self._hidden_panels_id:
+                object.__setattr__(self, "_hidden_panels_id", _generate_name())
+            hidden = [
+                internal.PanelBankConfigSectionsItem(
+                    id=self._hidden_panels_id,
+                    name=HIDDEN_PANELS,
+                    is_open=False,
+                    pinned=False,
+                    is_panels_auto=False,
+                    panels=[],
+                )
+            ]
+        return shown + hidden
+
+    def _selections_to_model(self) -> internal.RunsetSelections:
+        """The run set's `selections`. With `root: 1`, the default, the tree
+        lists the hidden runs. With `root: 0`, loaded from a workspace the app
+        saved that way, it lists the visible runs, and a save keeps the loaded
+        tree and applies only the visibility changes the user made."""
+        run_settings = self.runset_settings.run_settings
+        stashed = self._stashed_selections
+        if not stashed or stashed.get("root") != 0:
+            return internal.RunsetSelections(
+                tree=[run_id for run_id, s in run_settings.items() if s.disabled]
+            )
+
+        tree = list(stashed.get("tree") or [])
+        changed = {
+            run_id
+            for run_id, s in run_settings.items()
+            if s.disabled is not None
+            and s.disabled != self._loaded_run_disabled.get(run_id, True)
+        }
+        if changed and not all(isinstance(item, str) for item in tree):
+            wandb.termwarn(
+                "This workspace lists its visible runs by group, which the SDK "
+                "cannot edit; the run visibility changes were not saved."
+            )
+        elif changed:
+            tree = [run_id for run_id in tree if run_id not in changed]
+            tree += sorted(
+                run_id for run_id in changed if not run_settings[run_id].disabled
+            )
+        return internal.RunsetSelections(
+            root=0, bounds=stashed.get("bounds") or [], tree=tree
+        )
+
+    def _to_model(self) -> internal.View:
+        sections = self._sections_to_model()
         config_overrides, placement_overrides = self._reconciled_overrides()
 
         is_regex = True if self.runset_settings.regex_query else None
         auto_organize_prefix = 2 if self.settings.group_by_prefix == "last" else 1
-
-        if self.settings.sort_panels_alphabetically:
-            wandb.termwarn(
-                "settings.sort_panels_alphabetically=True; this may change panel order from what is currently defined in sections!"
-            )
 
         x_axis = expr._convert_fe_to_be_metric_name(self.settings.x_axis)
         point_viz_method = (
@@ -1253,11 +1428,14 @@ class Workspace(Base):
                 expr.expr_to_filters(self.runset_settings.filters)  # type: ignore[arg-type] # validator ensures this is always str
             )
 
+        # A run set made in the SDK gets an id on its first save, as one made
+        # in the UI has; group colors are keyed by it.
         runset_id = self._internal_runset_id
-        if self.runset_settings.group_colors and not runset_id:
+        if not runset_id:
             runset_id = _generate_name()
             object.__setattr__(self, "_internal_runset_id", runset_id)
 
+        # A run whose color the user cleared leaves the map, as in the app.
         custom_run_colors = {
             **self.runset_settings._custom_run_colors_passthrough,
             **_serialize_group_colors(
@@ -1268,6 +1446,7 @@ class Workspace(Base):
             **{
                 id: config.color
                 for id, config in self.runset_settings.run_settings.items()
+                if config.color
             },
         }
 
@@ -1314,13 +1493,7 @@ class Workspace(Base):
                             sort=internal.Sort(
                                 keys=[o.to_key() for o in self.runset_settings.order]
                             ),
-                            selections=internal.RunsetSelections(
-                                tree=[
-                                    id
-                                    for id, config in self.runset_settings.run_settings.items()
-                                    if config.disabled
-                                ],
-                            ),
+                            selections=self._selections_to_model(),
                             baseline_run_id=(
                                 _encode_pin(
                                     self.runset_settings.baseline_run,
@@ -1375,19 +1548,153 @@ class Workspace(Base):
                 the second, so a change saved in the same second as the version
                 you loaded, or as your own last save, isn't detected.
         """
+        self._warn_before_save()
         view = self._to_model()
 
         # If creating a new view with `ws.Workspace(...)`
         if not view.name:
             view.name = _view_names._generate_view_name()
 
+        rebuilt, view.raw_spec = self._spec_to_save(view)
         resp = _api.upsert_view2(view)
-        self._set_saved_view(resp["upsertView"]["view"])
+        self._set_saved_view(resp["upsertView"]["view"], view.raw_spec, rebuilt)
 
         wandb.termlog(f"View saved: {self.url}")
         return self
 
-    def _set_saved_view(self, saved: Dict[str, Any]) -> None:
+    def _warn_before_save(self) -> None:
+        if self.settings.sort_panels_alphabetically:
+            wandb.termwarn(
+                "settings.sort_panels_alphabetically=True; this may change panel order from what is currently defined in sections!"
+            )
+
+    def _rebuilt_spec(self, view: Optional[internal.View] = None) -> dict:
+        """The spec the SDK's objects describe, in the shape the app writes
+        for hand-made content.
+
+        The internal models still write the legacy shapes, so this moves the
+        workspace settings into `workspaceSettings` and each section's into
+        `sectionSettings`, as the app's load would, and drops what the app
+        does not write: the default panel layout, `type` on sections, the
+        layout and settings of the two app-managed sections, and the root
+        keys the app only carries through from older specs.
+        """
+        if view is None:
+            view = self._to_model()
+        spec = view.spec.model_dump(by_alias=True, exclude_none=True)
+        spec.pop("vizExpanded", None)
+        spec.pop("libraryExpanded", None)
+        section = spec["section"]
+
+        legacy = section.pop("settings", None) or {}
+        auto_generate = legacy.pop("shouldAutoGeneratePanels", None)
+        organized = _modern_settings.organized_from_legacy(
+            {**section["panelBankConfig"]["settings"], **legacy}
+        )
+        if auto_generate is not None:
+            organized["shouldAutoGeneratePanels"] = auto_generate
+        if organized:
+            section["workspaceSettings"] = organized
+
+        app_managed = [section["panelBankSectionConfig"]]
+        for bank_section in section["panelBankConfig"]["sections"]:
+            bank_section.pop("type", None)
+            if bank_section.get("__id__") == self._hidden_panels_id:
+                app_managed.append(bank_section)
+                continue
+            legacy = bank_section.pop("localPanelSettings", None)
+            if legacy:
+                bank_section["sectionSettings"] = (
+                    _modern_settings.organized_from_legacy(legacy)
+                )
+            for panel in bank_section["panels"]:
+                if panel.get("layout") == DEFAULT_PANEL_LAYOUT:
+                    del panel["layout"]
+        for bank_section in app_managed:
+            for key in ("type", "flowConfig", "localPanelSettings"):
+                bank_section.pop(key, None)
+        return spec
+
+    def _spec_to_save(self, view: internal.View) -> Tuple[dict, dict]:
+        """`(rebuilt, spec)`: what the SDK's objects describe, and the spec to
+        send. For a loaded workspace that is the loaded spec with the user's
+        edits applied, so fields the SDK does not model survive; for a new one
+        it is the rebuilt spec."""
+        rebuilt = self._rebuilt_spec(view)
+        if self._loaded_spec is None or self._loaded_rebuild is None:
+            spec = rebuilt
+        else:
+            # An edit to a setting must write the whole modern block the app
+            # would migrate the stored legacy block to, not the SDK's dump of
+            # it: seed that block, apply the edits, and take the seed back
+            # out where no edit reached it.
+            loaded = copy.deepcopy(self._loaded_spec)
+            seeds = _modern_settings.seed_modern_blocks(loaded)
+            spec = _spec_edits.apply_edits(loaded, self._loaded_rebuild, rebuilt)
+            _modern_settings.unseed_untouched(spec, seeds)
+            self._mark_edited_auto_panels(spec)
+        self._warn_write_errors(spec)
+        return rebuilt, spec
+
+    def _mark_edited_auto_panels(self, spec: dict) -> None:
+        """In a section the app fills itself (`isPanelsAuto: true`), the
+        app's own save keeps only panels marked `isAuto: false` and
+        regenerates the rest, so an edit to a loaded auto panel would be
+        lost. Mark such a panel custom in the spec to send. A panel sent as
+        loaded is left alone, so saving again changes nothing. (A new panel
+        is marked when it is built; see `Section._to_model`.)"""
+        loaded_section = (self._loaded_spec or {}).get("section") or {}
+        loaded_sections = {
+            s.get("__id__") or s.get("name"): s
+            for s in (loaded_section.get("panelBankConfig") or {}).get("sections") or []
+            if isinstance(s, dict)
+        }
+        for section in spec["section"]["panelBankConfig"]["sections"]:
+            if section.get("isPanelsAuto") is not True:
+                continue
+            loaded = loaded_sections.get(section.get("__id__") or section.get("name"))
+            loaded_panels = {
+                p.get("__id__"): p
+                for p in (loaded or {}).get("panels") or []
+                if isinstance(p, dict)
+            }
+            panels = section.get("panels") or []
+            for i, panel in enumerate(panels):
+                if not isinstance(panel, dict) or panel.get("isAuto") is not None:
+                    continue
+                if panel != loaded_panels.get(panel.get("__id__")):
+                    panels[i] = {**panel, "isAuto": False}
+
+    def _warn_write_errors(self, spec: dict) -> None:
+        """Warn where `spec` breaks the write contract. Keys carried over
+        from the loaded spec are sent as they were, as the app does; the
+        server rewrites them. Anything else is the SDK's own output."""
+        errors = _contract.write_errors(spec)
+        if not errors:
+            return
+        carried, produced = [], []
+        for path, _ in errors:
+            found, value = _spec_edits.value_at(spec, path)
+            loaded_found, loaded_value = _spec_edits.value_at(
+                self._loaded_spec or {}, path
+            )
+            if found and loaded_found and value == loaded_value:
+                carried.append(path)
+            else:
+                produced.append(path)
+        if produced:
+            wandb.termwarn(
+                f"The saved spec differs from the view spec schema's write contract "
+                f"at {len(produced)} place(s): {_spec_edits.format_paths(produced)}."
+            )
+        if carried:
+            wandb.termwarn(
+                f"{len(carried)} field(s) loaded with this workspace are no longer "
+                f"part of the view spec schema's write contract and were sent back "
+                f"as loaded: {_spec_edits.format_paths(carried)}."
+            )
+
+    def _set_saved_view(self, saved: Dict[str, Any], spec: dict, rebuilt: dict) -> None:
         # Record what the server returned. After a create, name and id are new and
         # needed for the next save and the URL; after an update they are unchanged.
         self._internal_name = saved["name"]
@@ -1395,6 +1702,9 @@ class Workspace(Base):
         # The new timestamp guards the next save, so saving twice in a row
         # does not conflict with itself.
         self._internal_updated_at = saved.get("updatedAt")
+        # The next save starts from what was just stored.
+        self._loaded_spec = spec
+        self._loaded_rebuild = rebuilt
 
     def save_as_new_view(self):
         """
@@ -1403,14 +1713,16 @@ class Workspace(Base):
         Returns:
             Workspace: The updated workspace with the saved internal name and ID.
         """
+        self._warn_before_save()
         view = self._to_model()
 
         # Generate a new view name and ID
         view.name = _view_names._generate_view_name()
         view.id = ""
 
+        rebuilt, view.raw_spec = self._spec_to_save(view)
         resp = _api.upsert_view2(view)
-        self._set_saved_view(resp["upsertView"]["view"])
+        self._set_saved_view(resp["upsertView"]["view"], view.raw_spec, rebuilt)
 
         wandb.termlog(f"View saved: {self.url}")
         return self
