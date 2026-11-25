@@ -7,6 +7,7 @@ from wandb_workspaces._graphql import execute_graphql, get_app_url
 from wandb_workspaces.utils.validators import validate_spec_version
 from wandb_workspaces.workspaces.errors import ViewSpecConflictError
 
+from . import _contract, _spec_edits
 from ._view_names import (
     _internal_name_to_url_query_str,
     _url_query_str_to_internal_name,
@@ -30,10 +31,19 @@ def fetch_view(entity: str, project: str, view_name: str) -> View:
 
     view_dict = get_view_dict(entity, project, view_query_view_name)
 
-    spec = view_dict["spec"]
+    raw_spec = json.loads(view_dict["spec"])
     display_name = view_dict["displayName"]
     id = view_dict["id"]
-    parsed_spec = WorkspaceViewspec.model_validate_json(spec)
+
+    errors = _contract.read_errors(raw_spec)
+    if errors:
+        wandb.termwarn(
+            f"Workspace `{display_name}` differs from the view spec schema's read "
+            f"contract at {len(errors)} place(s): "
+            f"{_spec_edits.format_paths([path for path, _ in errors])}. "
+            "Loading it anyway."
+        )
+    parsed_spec = WorkspaceViewspec.model_validate(raw_spec)
 
     return View(
         entity=entity,
@@ -43,6 +53,7 @@ def fetch_view(entity: str, project: str, view_name: str) -> View:
         id=id,
         spec=parsed_spec,
         updated_at=view_dict.get("updatedAt"),
+        raw_spec=raw_spec,
     )
 
 
@@ -112,7 +123,10 @@ def _execute_upsert(
 
 def upsert_view2(view: View) -> Dict[str, Any]:
     api = wandb.Api()
-    spec_str = view.spec.model_dump_json(by_alias=True, exclude_none=True)
+    if view.raw_spec is not None:
+        spec_str = json.dumps(view.raw_spec)
+    else:
+        spec_str = view.spec.model_dump_json(by_alias=True, exclude_none=True)
 
     # Default: assume a new view being created, so no `id` yet
     variables = {

@@ -3,34 +3,23 @@
 The round-trip tests check what a save does to loaded content. These check
 the other half: a workspace, section or panel the user creates in the SDK
 must be written the way the app writes hand-made content. Four shapes main
-writes today, none of which the write contract rejects:
+wrote before the save path changed, none of which the write contract rejects:
 
 - a run set with an empty id, unless group colors are set;
 - a new section with no `__id__`;
 - no Hidden Panels section, or one that is no longer last after adding a
   section to a loaded workspace;
 - a default layout block on every panel, all at the same position.
-
-Each is marked `xfail(strict=True)`, so a fix must remove its mark. Only an
-AssertionError counts as the expected failure, so a crash still shows.
 """
 
 import copy
-
-import pytest
 
 import wandb_workspaces.reports.v2 as wr
 import wandb_workspaces.workspaces as ws
 from wandb_workspaces.expr import Config
 
 from .fake_view_server import FakeViewServer, fetch_then_save, save_workspace
-from .spec_harness import SPECS_DIR, load_spec
-
-WRITTEN_ON_MAIN = pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="main writes this shape for new content",
-)
+from .spec_harness import SPECS_DIR, load_spec, write_errors
 
 HIDDEN_PANELS = "Hidden Panels"
 
@@ -71,7 +60,6 @@ def _add_section(workspace):
 # Run set id
 
 
-@WRITTEN_ON_MAIN
 def test_new_workspace_gives_its_run_set_an_id():
     [runset] = _saved(_new_workspace())["section"]["runSets"]
     assert runset.get("id")
@@ -95,12 +83,10 @@ def test_loaded_workspace_keeps_its_run_set_id():
 # Section __id__
 
 
-@WRITTEN_ON_MAIN
 def test_new_workspace_gives_its_sections_an_id():
     assert _section(_saved(_new_workspace()), "Probe").get("__id__")
 
 
-@WRITTEN_ON_MAIN
 def test_section_added_to_a_loaded_workspace_gets_an_id():
     saved = fetch_then_save(copy.deepcopy(APP_SPEC), edit=_add_section)
     assert _section(saved, "Added").get("__id__")
@@ -113,15 +99,36 @@ def test_loaded_sections_keep_their_ids():
     assert kept == loaded
 
 
+def test_a_section_keeps_its_id_across_saves():
+    workspace = _new_workspace()
+    server = FakeViewServer()
+    save_workspace(server, workspace)
+    workspace.sections[0].is_open = True
+    save_workspace(server, workspace)
+    first, second = server.saved_specs()
+    assert _section(first, "Probe")["__id__"] == _section(second, "Probe")["__id__"]
+
+
 # Hidden Panels last
 
 
-@WRITTEN_ON_MAIN
 def test_new_workspace_ends_with_hidden_panels():
     assert _sections(_saved(_new_workspace()))[-1]["name"] == HIDDEN_PANELS
 
 
-@WRITTEN_ON_MAIN
+def test_hidden_panels_survives_later_saves():
+    """The saved spec holds the generated section but `sections` does not;
+    the rebuild must keep producing it or the next save deletes it."""
+    workspace = _new_workspace()
+    server = FakeViewServer()
+    save_workspace(server, workspace)
+    workspace.sections[0].is_open = True
+    save_workspace(server, workspace)
+    save_workspace(server, workspace)
+    for spec in server.saved_specs():
+        assert [s["name"] for s in _sections(spec)] == ["Probe", HIDDEN_PANELS]
+
+
 def test_section_added_to_a_loaded_workspace_goes_before_hidden_panels():
     saved = fetch_then_save(copy.deepcopy(APP_SPEC), edit=_add_section)
     names = [s["name"] for s in _sections(saved)]
@@ -132,7 +139,6 @@ def test_section_added_to_a_loaded_workspace_goes_before_hidden_panels():
 # Panel layout
 
 
-@WRITTEN_ON_MAIN
 def test_panel_with_no_layout_is_saved_without_one():
     panels = _section(_saved(_new_workspace()), "Probe")["panels"]
     assert [p.get("layout") for p in panels] == [None, None]
@@ -145,3 +151,49 @@ def test_panel_layout_the_user_set_is_kept():
     )
     [panel] = _section(_saved(workspace), "Probe")["panels"]
     assert panel["layout"] == {"x": 8, "y": 0, "w": 16, "h": 8}
+
+
+# The shape of a new workspace
+
+
+def test_new_workspace_has_no_stray_root_keys():
+    """The app does not write `vizExpanded` or `libraryExpanded` for a new
+    workspace, and the write contract rejects them."""
+    assert set(_saved(_new_workspace())) == {"section"}
+
+
+def test_new_workspace_passes_the_write_contract():
+    errors = write_errors(_saved(_new_workspace()))
+    assert not errors, "\n".join(f"{path}: {message}" for path, message in errors)
+
+
+def test_new_workspace_writes_its_settings_where_the_app_keeps_them():
+    """Workspace settings go in `workspaceSettings.linePlot`, section settings
+    in `sectionSettings.linePlot`, not the legacy `settings` and
+    `localPanelSettings` blocks the app only migrates from."""
+    workspace = _new_workspace(settings=ws.WorkspaceSettings(ignore_outliers=True))
+    spec = _saved(workspace)
+    section = spec["section"]
+
+    assert "settings" not in section
+    line_plot = section["workspaceSettings"]["linePlot"]
+    assert line_plot["xAxis"] == "_step"
+    assert line_plot["excludeOutliers"] == "exclude-outliers"
+    assert "ignoreOutliers" not in line_plot
+    assert section["workspaceSettings"]["shouldAutoGeneratePanels"] is False
+
+    probe = _section(spec, "Probe")
+    assert "localPanelSettings" not in probe
+    assert probe["sectionSettings"]["linePlot"]["smoothingType"] == "none"
+
+
+def test_app_managed_sections_carry_no_layout_or_settings():
+    """The app writes the Hidden Panels section and `panelBankSectionConfig`
+    with just their identity and panels."""
+    spec = _saved(_new_workspace())
+    hidden = _section(spec, HIDDEN_PANELS)
+    for section in (hidden, spec["section"]["panelBankSectionConfig"]):
+        assert not {"flowConfig", "localPanelSettings", "sectionSettings"} & set(
+            section
+        )
+    assert hidden["isPanelsAuto"] is False
