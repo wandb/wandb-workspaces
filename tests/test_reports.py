@@ -467,6 +467,46 @@ def test_v2_report_url_uses_service_api_app_url_without_client(monkeypatch):
     assert report.url == "https://service.wandb.test/ent/proj/reports/My-Report--abc123"
 
 
+@pytest.mark.parametrize("app_path", ["", "/", "/wandb", "/wandb/", "/some/prefix"])
+def test_v2_report_url_keeps_the_app_url_path(monkeypatch, app_path):
+    class _ServiceApi:
+        app_url = f"https://service.wandb.test{app_path}"
+
+    class _Api:
+        default_entity = "ent"
+
+        def __init__(self):
+            self._service_api = _ServiceApi()
+
+    monkeypatch.setattr(wr.interface, "_get_api", lambda: _Api())
+
+    report = wr.Report(project="proj", entity="ent", title="My Report")
+    report.id = "abc123"
+
+    root = f"https://service.wandb.test{app_path.rstrip('/')}"
+    assert report.url == f"{root}/ent/proj/reports/My-Report--abc123"
+
+
+@pytest.mark.parametrize("app_path", ["", "/wandb", "/some/prefix"])
+def test_url_to_report_id_accepts_an_app_url_path(app_path):
+    url = f"https://service.wandb.test{app_path}/ent/proj/reports/My-Report--dGVzdA"
+
+    assert wr.interface._url_to_report_id(url) == "dGVzdA=="
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://service.wandb.test/",
+        "https://service.wandb.test/ent/proj",
+        "https://service.wandb.test/ent/proj/reports",
+    ],
+)
+def test_url_to_report_id_rejects_a_url_without_a_report_name(url):
+    with pytest.raises(ValueError, match="invalid report URL"):
+        wr.interface._url_to_report_id(url)
+
+
 def test_runset_project_lookup(monkeypatch):
     """Test that Runset._to_model() correctly handles project ID lookup"""
     # Mock the wandb API service transport
